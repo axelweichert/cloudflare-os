@@ -16,8 +16,18 @@ type JsonRpcResponse = {
 export type UpstreamSession = { sessionId: string | null };
 
 /**
+ * Strukturell getypter `fetch`, damit dieser Client sowohl den globalen `fetch` als auch einen
+ * Worker-Service-Binding-`Fetcher` (VON-1821, CEO-Direktive B) akzeptiert — Letzterer umgeht
+ * CF Access intern, ohne Bearer/Access-Header. Kein `cloudflare:workers`-Import nötig.
+ */
+export type FetchLike = (input: string, init: RequestInit) => Promise<Response>;
+
+/**
  * Ruft eine einzelne JSON-RPC-Methode am Upstream ab und liefert das `result` plus die (ggf.
  * aktualisierte) Session-ID. Wirft bei HTTP- oder Protokollfehlern.
+ *
+ * `fetchImpl` erlaubt, statt des globalen `fetch` einen Service-Binding-`Fetcher` zu nutzen; in dem
+ * Fall entfällt CF Access (interner Aufruf) und `authToken` wird üblicherweise weggelassen.
  */
 export async function upstreamCall(
   upstreamUrl: string,
@@ -25,6 +35,7 @@ export async function upstreamCall(
   params: unknown,
   session: UpstreamSession,
   authToken?: string,
+  fetchImpl: FetchLike = fetch,
 ): Promise<unknown> {
   const id = `os-mailbox-${method}`;
   const headers: Record<string, string> = {
@@ -35,7 +46,7 @@ export async function upstreamCall(
   if (session.sessionId) headers["Mcp-Session-Id"] = session.sessionId;
   if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
 
-  const res = await fetch(upstreamUrl, {
+  const res = await fetchImpl(upstreamUrl, {
     method: "POST",
     headers,
     body: JSON.stringify({ jsonrpc: "2.0", id, method, params }),

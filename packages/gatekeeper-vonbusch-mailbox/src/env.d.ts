@@ -13,6 +13,10 @@ declare namespace Cloudflare {
   // Optionales Upstream-Secret (kein Var ⇒ nicht in der generierten worker-configuration.d.ts).
   interface Env {
     MAILBOX_UPSTREAM_TOKEN?: string;
+    // VON-1821 Direktive B: Service-Binding auf den agentic-inbox-Worker. Wird zwar aus der
+    // wrangler.jsonc generiert; hier optional deklariert, damit die Quelle auch ohne frischen
+    // `wrangler types`-Lauf typprüfbar bleibt.
+    MAIL_SERVICE?: Fetcher;
   }
 }
 

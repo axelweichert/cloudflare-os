@@ -9,7 +9,7 @@
 // DO-`props`. Das schließt die per-mailbox-authz-Lücke aus dem Security-Review an der Wurzel.
 
 import { buildPinPlan, gateToolCall, type McpTool, type PinConfig, type PinPlan } from "./pin-mailbox";
-import { upstreamCall, type UpstreamSession } from "./mcp-client";
+import { upstreamCall, type UpstreamSession, type FetchLike } from "./mcp-client";
 
 /** Ein E-Mail-Thread (Konversation) in der Mailbox. */
 export type MailboxThread = {
@@ -70,6 +70,12 @@ export type McpBackendConfig = {
   upstreamUrl: string;
   /** Bearer-Token für den Upstream (Live-Bind-Secret, CEO-Gate). */
   authToken?: string;
+  /**
+   * Optionaler Service-Binding-`Fetcher` auf den agentic-inbox-Worker (VON-1821 Direktive B).
+   * Ist er gesetzt, laufen alle Upstream-Calls intern über das Binding — CF Access wird umgangen,
+   * ein Bearer-Token ist nicht erforderlich. Ohne Binding fällt es auf globales `fetch` + `authToken`.
+   */
+  fetch?: FetchLike;
 };
 
 /**
@@ -93,7 +99,7 @@ export class McpMailboxBackend implements MailboxBackend {
   async #ensurePlan(mailbox: string): Promise<PinPlan> {
     if (this.#plan) return this.#plan;
     const listResult = await upstreamCall(
-      this.config.upstreamUrl, "tools/list", {}, this.#session, this.config.authToken);
+      this.config.upstreamUrl, "tools/list", {}, this.#session, this.config.authToken, this.config.fetch);
     const tools = ((listResult as { tools?: McpTool[] }).tools ?? []);
     this.#plan = buildPinPlan(tools, this.#pinConfig(mailbox));
     return this.#plan;
@@ -116,7 +122,7 @@ export class McpMailboxBackend implements MailboxBackend {
     }
     return upstreamCall(
       this.config.upstreamUrl, "tools/call",
-      { name: tool, arguments: gate.args }, this.#session, this.config.authToken);
+      { name: tool, arguments: gate.args }, this.#session, this.config.authToken, this.config.fetch);
   }
 
   async listThreads(mailbox: string, query?: string): Promise<MailboxThread[]> {

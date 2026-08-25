@@ -85,7 +85,14 @@ type BindingProps = { accountId: string; mailbox: string; resourceUrl: string };
 
 /** Baut das Backend aus der Env. Ausgelagert, damit Session und applyAction dieselbe Quelle nutzen. */
 function makeBackend(env: Cloudflare.Env): MailboxBackend {
-  return new McpMailboxBackend({ upstreamUrl: env.UPSTREAM_MCP_URL, authToken: env.MAILBOX_UPSTREAM_TOKEN });
+  // VON-1821 Direktive B: liegt das Service-Binding auf den agentic-inbox-Worker vor, laufen alle
+  // Upstream-Calls intern darüber (umgeht CF Access, kein Bearer). Sonst globaler fetch + Token.
+  const service = env.MAIL_SERVICE;
+  return new McpMailboxBackend({
+    upstreamUrl: env.UPSTREAM_MCP_URL,
+    authToken: service ? undefined : env.MAILBOX_UPSTREAM_TOKEN,
+    fetch: service ? (input, init) => service.fetch(input, init) : undefined,
+  });
 }
 
 /** Parst die Mailbox-ID aus einer Ressourcen-URL (`.../inbox/<id>`). */
