@@ -1,0 +1,42 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "gatekeeper-vonbusch-mail",
+
+  // Wie gatekeeper-test / gatekeeper-vonbusch-crm zeigt `main` direkt auf die Quelle. Sobald der
+  // Live-Bind (CEO-Gate) ansteht, kann auf den capnweb-validate-Build (wie gatekeeper-linear)
+  // umgestellt werden.
+  "main": "src/mail-gatekeeper.ts",
+
+  "compatibility_date": "2026-02-02",
+  "compatibility_flags": ["nodejs_compat", "allow_irrevocable_stub_storage"],
+
+  // DO-Klassen werden über ctx.exports erreicht; kein durable_objects-Binding nötig.
+  // Nur MailGatekeeper ist ein DurableObject; Vendor/Account/Verifier sind WorkerEntrypoints.
+  // SQLite-backed, weil die Approval-Queue-Persistenz die ctx.storage.kv-API nutzt.
+  "migrations": [
+    {
+      "tag": "v0",
+      "new_sqlite_classes": ["MailGatekeeper"]
+    }
+  ],
+
+  // Ausgehender Mailversand über den CF Email Service. Absender muss auf vonbusch.app onboardet
+  // sein. Kein allowed_destination_addresses → unrestricted binding (beliebige Empfänger, wie
+  // printgemein). Die einzige Sendegewalt ist der menschliche Approve-Pfad (OS-ApprovalQueue →
+  // applyAction → env.EMAIL.send); CF Access bleibt die Zugangsboundary.
+  "send_email": [
+    { "name": "EMAIL" }
+  ],
+
+  // Sender-Allowlist + Standardabsender. Wird zur Laufzeit gegen jeden Vorschlag geprüft.
+  "vars": {
+    "ALLOWED_FROM": "noreply@vonbusch.app",
+    "DEFAULT_FROM": "noreply@vonbusch.app"
+  },
+
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1,
+    "logs": { "invocation_logs": false }
+  }
+}
