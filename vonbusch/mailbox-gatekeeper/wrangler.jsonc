@@ -1,0 +1,21 @@
+{
+  // vonBuschOS — Mailbox-Pinning-Proxy (VON-1798)
+  // Lokal starten: UPSTREAM_MCP_URL=... MAILBOX_ID=... wrangler dev vonbusch/mailbox-gatekeeper/wrangler.jsonc
+  "name": "mailbox-pin",
+  "main": "./worker.ts",
+  "compatibility_date": "2025-08-01",
+  "durable_objects": {
+    "bindings": [
+      { "name": "MailboxPinSession", "class_name": "MailboxPinSession" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_classes": ["MailboxPinSession"] }
+  ],
+  "vars": {
+    // Overrides koennen via CLI-Flag oder .dev.vars gesetzt werden.
+    "UPSTREAM_MCP_URL": "https://mcp.agentmail.to/mcp",
+    "MAILBOX_ID": "inbox_ceo@vonbusch.digital",
+    "PASSTHROUGH_TOOLS": "[\"get_server_status\"]"
+  }
+}
