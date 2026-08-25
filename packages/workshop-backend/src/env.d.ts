@@ -83,6 +83,20 @@ declare global {
       // Minimum connected-account balance (USD) to proceed via BYOK. Defaults to
       // MINIMUM_CLOUDFLARE_BALANCE.
       MINIMUM_CLOUDFLARE_BALANCE?: string;
+
+      // ---------------------------------------------------------------------------------------------
+      // vonBusch AI-Gateway-Integration (K8 / VON-1820): OPTIONALES Per-User-€/USD-Budget.
+      // CF-OS begrenzt die Free-Tier nativ nur per TAGES-CALL-ANZAHL (DAILY_LLM_CALL_LIMIT); dies
+      // ergänzt eine kosten- statt anzahlbasierte Grenze + Chargeback. OFF by default; ohne die
+      // Flags fällt der Backend-Pfad exakt auf das bisherige Verhalten zurück (siehe
+      // src/vonbusch-ai-budget/). Guardrails/Routing selbst sind Gateway-KONFIG, nicht Env.
+      // ---------------------------------------------------------------------------------------------
+      ENABLE_VONBUSCH_BUDGET?: string;     // "true" aktiviert das Per-User-€-Budget-Gate.
+      VONBUSCH_BUDGET?: KVNamespace;        // KV-Persistenz für Per-User/Perioden-Ausgaben.
+      VONBUSCH_BUDGET_CAP_USD?: string;     // Default-Obergrenze (USD) pro Nutzer & Periode, > 0.
+      VONBUSCH_BUDGET_PERIOD?: string;      // "day" (Default) | "month".
+      VONBUSCH_BUDGET_CAPS_JSON?: string;   // Optional: {"user-id": capUsd, …} Overrides.
+      VONBUSCH_BUDGET_TTL_SEC?: string;     // Optional: KV-TTL (Sekunden) für Perioden-Zeilen.
     }
   }
 }
