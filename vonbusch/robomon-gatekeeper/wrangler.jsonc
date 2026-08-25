@@ -1,0 +1,21 @@
+{
+  // vonBuschOS — Robomon-Gatekeeper (VON-1803 / K6)
+  // Read-only Auth-/Run-Health-Observations aus der von-authmon-KV (VON-1689).
+  "name": "gatekeeper-robomon",
+  "main": "worker.ts",
+  "compatibility_date": "2026-01-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // von-authmon `STATE`-Namespace (bootAt, hb, alarm). Dieser Gatekeeper liest ihn
+  // AUSSCHLIESSLICH lesend — kein put/delete im Code. Die Lese-Beschränkung wird
+  // beim Deploy zusätzlich über ein read-only API-Token erzwungen (CF-Account →
+  // CEO-Gate). id = von-authmon STATE (siehe ops/authmon/wrangler.toml).
+  "kv_namespaces": [
+    {
+      "binding": "AUTHMON_KV",
+      "id": "37aa431b6d464a56b8397ccf17a82913"
+    }
+  ]
+
+  // Kein Cron, kein send_email, kein DO: rein observierend (Strategy D, low-stakes).
+}
