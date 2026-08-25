@@ -1,0 +1,18 @@
+{
+  "$comment": "GENERIERT aus src/angebot-erstellen/blueprint.json durch build-blueprints.mjs — dort editieren, nicht hier.",
+  "blueprintId": "vonbusch.angebot",
+  "title": "Angebot erstellen",
+  "description": "Firmen-Workflow: erstellt aus einer Kundenanfrage einen kalkulierten Angebotsentwurf. Der Agent liest den Kontakt/Deal aus dem CRM, kalkuliert den Preis über die Preiserhebung und legt das Angebot als CRM-Aktivität an — statt jedes Mal denselben Prompt neu zu tippen.",
+  "output": {
+    "id": "workflow",
+    "noun": "Angebot",
+    "plural": "Angebote",
+    "icon": "flowArrow"
+  },
+  "author": {
+    "type": "user",
+    "name": "von Busch Digital",
+    "id": "cto@vonbusch.digital"
+  },
+  "revision": 1
+}
