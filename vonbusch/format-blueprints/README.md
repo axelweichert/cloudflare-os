@@ -30,17 +30,45 @@ Ressourcen-Zugriffe sind vorverdrahtet und laufen über die approval-pflichtigen
 ## Bauen
 
 ```
-# 1) Archive aus src/ erzeugen (nach jeder Quelländerung):
+# Archive aus src/ erzeugen (nur nach einer Quelländerung nötig):
 node vonbusch/format-blueprints/build-blueprints.mjs
-
-# 2) In das Worker-Bundle ziehen — der Fork zeigt FORMAT_BLUEPRINTS_DIR auf DIESES Verzeichnis:
-cd packages/workshop-backend && FORMAT_BLUEPRINTS_DIR=../../vonbusch/format-blueprints \
-  node scripts/build-format-blueprints.mjs
 ```
 
-`FORMAT_BLUEPRINTS_DIR` **ersetzt** das Default-Set (docs/sheets/slides) durch dieses. Sollen die
-Cloudflare-Defaults erhalten bleiben, deren Paare einmal hierher kopieren und mitpflegen (so
-empfiehlt es der Upstream-README, damit das Submodul unangetastet bleibt).
+Das Einziehen ins Worker-Bundle ist **fest verdrahtet** (VON-1819, siehe „OS-Integration" unten):
+`packages/workshop-backend` `build:worker` (und die `test:*`-Skripte) rufen den Upstream-Generator
+`scripts/build-format-blueprints.mjs` bereits mit `FORMAT_BLUEPRINTS_DIR=../../vonbusch/format-blueprints`
+auf. Ein `wrangler deploy` regeneriert damit `src/generated/format-blueprints.ts` aus DIESEM
+Verzeichnis — kein manueller Zweitschritt mehr.
+
+`FORMAT_BLUEPRINTS_DIR` **ersetzt** das Default-Set (docs/sheets/slides) durch dieses. Damit die
+Cloudflare-Defaults erhalten bleiben, liegen ihre Paare (`workspace-docs`, `workspace-sheets`,
+`workspace-slides`) **mit hier** — dieses Verzeichnis ist das *vollständige* Format-Set des
+Deployments (2 von-Busch-Blueprints + 3 Cloudflare-Defaults = 5). Ein Rebuild bundelt alle fünf.
+
+## OS-Integration (VON-1819)
+
+K7 ist die **Sonderform** unter den Port-Kind-Issues: die Firmen-Blueprints sind **kein**
+klassischer `GatekeeperVendor`/`Gatekeeper<Session>`-Ressourcen-Gadget und brauchen daher **kein
+eigenes `packages/gatekeeper-vonbusch-*`-Package und keinen zweiten Worker/Service**. Sie werden über
+die native OS-Format-Blueprint-Fläche (`FORMAT_BLUEPRINTS_DIR` → generiertes, ins Backend-Bundle
+gebackenes `src/generated/format-blueprints.ts`) integriert. Die Integration ist damit **reine
+Backend-Build-Konfig** am bestehenden `cloudflareos-backend` — beantwortet die im Issue gestellte
+Frage „eigenes Package oder reine Backend-Konfig?" mit **Backend-Konfig**.
+
+Was der Port konkret geändert hat:
+
+1. `packages/workshop-backend` `build:worker` regeneriert das Bundle jetzt aus diesem Verzeichnis
+   (vorher lief der Generator nur in `test:*` und **nie** im Deploy-Pfad — ein `wrangler deploy`
+   hätte ein veraltetes/defaults-freies Artefakt verwendet).
+2. Die drei Cloudflare-Default-Blueprints wurden hierher kopiert, sodass das Zeigen von
+   `FORMAT_BLUEPRINTS_DIR` auf dieses Verzeichnis sie nicht mehr fallen lässt.
+3. Die `test:*`-Skripte zeigen ebenfalls hierher, damit sie das Bundle nicht auf „nur Defaults"
+   zurücksetzen.
+
+Die einzige echte Laufzeit-Abhängigkeit der Blueprints sind die `spawnerOnly`-Gatekeeper `crm` und
+`preise` (aus K2 `gatekeeper-vonbusch-crm` / K4 `preiserhebung`): deren Service-Bindings müssen am
+Backend anliegen, damit ein gespawnter Agent ins CRM/Preise schreiben kann. Das ist der Deploy-Gate
+der jeweiligen Port-Issues (VON-1817/1816/…), nicht von K7 selbst.
 
 ## Prüfen
 
@@ -55,7 +83,9 @@ wirklich aufruft, und die Bindings-Stimmigkeit (agentSpawner-`env` verweist nur 
 
 ## Status / offene Gates
 
-- **Code + Build + Test: fertig**, Branch `von-1805-agentspawner-blueprints` (kein main-Merge).
+- **Code + Build + Test: fertig** (Branch `von-1805-agentspawner-blueprints`, in `main` gemerged VON-1813).
+- **OS-Integration verdrahtet: fertig** (VON-1819, Branch `von-1819-blueprints-port`): Deploy-Pfad
+  regeneriert das Bundle aus diesem Verzeichnis; alle 5 Blueprints landen im generierten Modul; K7-Test grün.
 - **Live-Smoke-Test (Board-Gate):** Die Gadget-`server.js`/`client.js` sind am kanonischen
   Gadget-Muster (DurableObject + WorkerEntrypoint) modelliert, aber noch nicht gegen eine laufende
   Cloudflare-OS-Workshop instanziiert. End-to-end (Blueprint im `+`-Menü → Gadget erstellen →
