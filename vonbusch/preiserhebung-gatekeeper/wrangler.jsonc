@@ -1,0 +1,24 @@
+{
+  // vonBuschOS Preiserhebungs-Gatekeeper (VON-1801)
+  //
+  // READ-ONLY-Charakter der Preis-D1 wird zweifach abgesichert:
+  //  1) Code: dieser Worker führt ausschließlich SELECTs aus (kein INSERT/UPDATE/
+  //     DELETE, keine batch()-Writes). Die PreisRepo-Abstraktion bietet keine
+  //     Schreibmethode.
+  //  2) Deploy: dem Worker wird ein D1 mit lesenden Rechten gebunden bzw. das
+  //     API-Token auf read-only beschränkt (CF-Account-Aktion → CEO-Gate).
+  "name": "vonbusch-preiserhebung-gatekeeper",
+  "main": "worker.ts",
+  "compatibility_date": "2026-02-02",
+  "compatibility_flags": ["nodejs_compat"],
+  "d1_databases": [
+    {
+      "binding": "PREIS_DB",
+      "database_name": "printgemein",
+      // Prod-D1-ID: printgemein 33b8cb23-… (siehe Memory printgemein-deploy-mechanism).
+      // Für `wrangler dev --local` wird eine lokale SQLite-Instanz mit demselben
+      // Schema/Seed genutzt.
+      "database_id": "REPLACE_WITH_PRINTGEMEIN_D1_ID"
+    }
+  ]
+}
