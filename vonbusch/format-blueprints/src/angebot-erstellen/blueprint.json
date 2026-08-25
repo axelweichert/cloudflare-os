@@ -1,0 +1,39 @@
+{
+  "blueprintId": "vonbusch.angebot",
+  "version": 1,
+  "created": "2026-08-25T00:00:00.000Z",
+  "sidecar": {
+    "title": "Angebot erstellen",
+    "description": "Firmen-Workflow: erstellt aus einer Kundenanfrage einen kalkulierten Angebotsentwurf. Der Agent liest den Kontakt/Deal aus dem CRM, kalkuliert den Preis über die Preiserhebung und legt das Angebot als CRM-Aktivität an — statt jedes Mal denselben Prompt neu zu tippen.",
+    "output": { "id": "workflow", "noun": "Angebot", "plural": "Angebote", "icon": "flowArrow" },
+    "author": { "type": "user", "name": "von Busch Digital", "id": "cto@vonbusch.digital" },
+    "revision": 1
+  },
+  "bindings": {
+    "WORKFLOW": {
+      "title": "Angebots-Agent",
+      "description": "Der KI-Agent, der den Angebotsentwurf erstellt. Der Agent bekommt Zugriff auf CRM und Preiserhebung (siehe unten); wählen Sie nur, mit welchem Modell er laufen soll.",
+      "type": "agentSpawner",
+      "env": {
+        "crm": { "type": "binding", "name": "crm" },
+        "preise": { "type": "binding", "name": "preise" }
+      }
+    },
+    "crm": {
+      "title": "CRM (von Busch)",
+      "description": "Gatekeeper auf das von-Busch-CRM. Reads direkt, Writes (Aktivität/Angebot anlegen) approval-pflichtig.",
+      "spawnerOnly": true,
+      "type": "gatekeeper",
+      "gatekeeperName": "vonbusch-crm",
+      "typeUrlPattern": "https://gatekeeper-vonbusch-crm.vonbusch.workers.dev/*"
+    },
+    "preise": {
+      "title": "Preiserhebung",
+      "description": "Read-only Gatekeeper auf die Preis-/Kalkulationsparameter (Druck + DMS-ROI).",
+      "spawnerOnly": true,
+      "type": "gatekeeper",
+      "gatekeeperName": "preiserhebung",
+      "typeUrlPattern": "https://preiserhebung-gatekeeper.vonbusch.workers.dev/*"
+    }
+  }
+}

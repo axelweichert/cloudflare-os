@@ -1,0 +1,18 @@
+{
+  "$comment": "GENERIERT aus src/lead-qualifizieren/blueprint.json durch build-blueprints.mjs — dort editieren, nicht hier.",
+  "blueprintId": "vonbusch.lead",
+  "title": "Lead qualifizieren",
+  "description": "Firmen-Workflow: qualifiziert einen eingehenden Lead nach BANT (Budget, Authority, Need, Timeline), vergibt einen Score und legt Ergebnis + nächsten Schritt als CRM-Aktivität an. Ein Blueprint statt eines wiederkehrenden Einzelprompts.",
+  "output": {
+    "id": "workflow",
+    "noun": "Lead",
+    "plural": "Leads",
+    "icon": "flowArrow"
+  },
+  "author": {
+    "type": "user",
+    "name": "von Busch Digital",
+    "id": "cto@vonbusch.digital"
+  },
+  "revision": 1
+}
