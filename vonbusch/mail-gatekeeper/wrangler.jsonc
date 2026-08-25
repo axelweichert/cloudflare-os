@@ -1,0 +1,26 @@
+{
+  // vonBuschOS — Mail-Gatekeeper (VON-1802 / K5)
+  // Lokal: wrangler dev vonbusch/mail-gatekeeper/wrangler.jsonc
+  // Deploy: wrangler deploy -c vonbusch/mail-gatekeeper/wrangler.jsonc  (CF Access vor / erforderlich!)
+  "name": "gatekeeper-vonbusch-mail",
+  "main": "./worker.ts",
+  "compatibility_date": "2025-08-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "durable_objects": {
+    "bindings": [
+      { "name": "MailGatekeeper", "class_name": "MailGatekeeper" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_classes": ["MailGatekeeper"] }
+  ],
+  // Ausgehende Mail über CF Email Service. Absender muss auf vonbusch.app onboardet sein.
+  // Kein allowed_destination_addresses → unrestricted binding (beliebige Empfänger, wie printgemein).
+  "send_email": [
+    { "name": "EMAIL" }
+  ],
+  "vars": {
+    "ALLOWED_FROM": "noreply@vonbusch.app",
+    "DEFAULT_FROM": "noreply@vonbusch.app"
+  }
+}
