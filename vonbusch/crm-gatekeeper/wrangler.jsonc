@@ -1,0 +1,29 @@
+{
+  // vonBuschOS — CRM-Gatekeeper (VON-1800 / K2)
+  // Lokal: wrangler dev vonbusch/crm-gatekeeper/wrangler.jsonc --local
+  // Deploy: wrangler deploy -c vonbusch/crm-gatekeeper/wrangler.jsonc  (CF Access vor / erforderlich!)
+  //
+  // WIRING-GATE (CEO): echte database_id von vonbusch-crm-eu unten eintragen und
+  // `wrangler secret put API_KEY` setzen. Empfehlung: der Agenten-API-Key ist SCHREIB-neutral —
+  // echte Schreibgewalt hat nur der Freigabe-Approve-Pfad (menschlich, CF-Access-gated).
+  "name": "gatekeeper-vonbusch-crm",
+  "main": "./worker.ts",
+  "compatibility_date": "2025-08-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "durable_objects": {
+    "bindings": [
+      { "name": "CrmGatekeeper", "class_name": "CrmGatekeeper" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_classes": ["CrmGatekeeper"] }
+  ],
+  "d1_databases": [
+    {
+      "binding": "CRM_DB",
+      "database_name": "vonbusch-crm-eu",
+      "database_id": "REPLACE_WITH_VONBUSCH_CRM_EU_ID"
+    }
+  ]
+  // API_KEY wird als Secret gesetzt (nicht als var): wrangler secret put API_KEY
+}
