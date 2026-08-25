@@ -1,0 +1,35 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "gatekeeper-vonbusch-mailbox",
+
+  // Wie gatekeeper-test zeigt `main` direkt auf die Quelle. Sobald der Live-Bind (CEO-Gate) ansteht,
+  // kann auf den capnweb-validate-Build (wie gatekeeper-linear/-context) umgestellt werden.
+  "main": "src/mailbox-gatekeeper.ts",
+
+  "compatibility_date": "2026-02-02",
+  "compatibility_flags": ["nodejs_compat", "allow_irrevocable_stub_storage"],
+
+  // DO-Klassen werden über ctx.exports erreicht; kein durable_objects-Binding nötig.
+  // Nur MailboxGatekeeper ist ein DurableObject; Vendor/Account/Verifier sind WorkerEntrypoints.
+  "migrations": [
+    {
+      "tag": "v0",
+      "new_sqlite_classes": ["MailboxGatekeeper"]
+    }
+  ],
+
+  // Live-Bind-Konfiguration (CEO-Gate, NFR-Account 6d2a1d59…):
+  //   UPSTREAM_MCP_URL       — agentic-inbox /mcp (z. B. https://mail.vonbusch.app/mcp)
+  //   MAILBOX_UPSTREAM_TOKEN — Bearer-Secret für den Upstream  (wrangler secret put)
+  //   MAILBOX_ACL            — JSON: { "mailboxes": { "<inbox>": ["a@x"] }, "admins": ["b@x"] }
+  "vars": {
+    "UPSTREAM_MCP_URL": "https://mail.vonbusch.app/mcp",
+    "MAILBOX_ACL": "{\"mailboxes\":{}}"
+  },
+
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1,
+    "logs": { "invocation_logs": false }
+  }
+}
