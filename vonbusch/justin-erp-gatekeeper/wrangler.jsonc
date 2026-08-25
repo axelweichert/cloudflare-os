@@ -1,0 +1,32 @@
+{
+  // vonBuschOS — JustIn-ERP-Gatekeeper (VON-1804 / K3)
+  // Lokal: wrangler dev -c vonbusch/justin-erp-gatekeeper/wrangler.jsonc --local
+  // Deploy: wrangler deploy -c vonbusch/justin-erp-gatekeeper/wrangler.jsonc  (CF Access vor / erforderlich!)
+  //
+  // WIRING-GATE (CEO) — ERP-API-Oberfläche/Auth vorab klären (Issue VON-1804):
+  //   1. ERP_ENDPOINT unten auf die reale JustIn-REST-Basis-URL setzen (var).
+  //   2. `wrangler secret put ERP_TOKEN` — Bearer-Token/API-Key des ERP.
+  //   3. `wrangler secret put API_KEY`   — interner Agenten-API-Key für /mcp.
+  //   4. Pfad-/Feld-Mapping in erp-adapter.ts (DEFAULT_JUSTIN_PROFILE) gegen die echte
+  //      JustIn-Schnittstelle prüfen; bei Abweichung ein eigenes ErpHttpProfile setzen.
+  //   5. CF Access vor GET / spannen (nur Menschen dürfen freigeben).
+  "name": "gatekeeper-justin-erp",
+  "main": "./worker.ts",
+  "compatibility_date": "2025-08-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "durable_objects": {
+    "bindings": [
+      { "name": "ErpGatekeeper", "class_name": "ErpGatekeeper" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_classes": ["ErpGatekeeper"] }
+  ],
+  "vars": {
+    // Platzhalter — vor Prod durch die echte JustIn-Basis-URL ersetzen.
+    "ERP_ENDPOINT": "https://REPLACE_WITH_JUSTIN_ERP_BASE_URL"
+  }
+  // ERP_TOKEN und API_KEY werden als Secrets gesetzt (nicht als var):
+  //   wrangler secret put ERP_TOKEN
+  //   wrangler secret put API_KEY
+}
