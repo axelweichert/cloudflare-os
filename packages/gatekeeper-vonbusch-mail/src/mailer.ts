@@ -48,7 +48,9 @@ export function buildMime(msg: EmailProposal, messageId: string): string {
  * `cloudflare:email` dynamisch importiert (Unit-Tests laden diese Funktion nicht).
  */
 export function makeCloudflareMailer(binding: {
-  send(message: unknown): Promise<void>;
+  // Rückgabe bewusst `Promise<unknown>`: nimmt sowohl die reale CF `SendEmail`-Bindung
+  // (`Promise<EmailSendResult>`) als auch Test-Fakes (`Promise<void>`) an; der Wert wird verworfen.
+  send(message: unknown): Promise<unknown>;
 }, newId: () => string = () => crypto.randomUUID()): Mailer {
   return {
     async send(msg: EmailProposal): Promise<{ id: string }> {
