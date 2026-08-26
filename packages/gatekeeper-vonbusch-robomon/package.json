@@ -1,0 +1,26 @@
+{
+  "name": "@gadgets/gatekeeper-vonbusch-robomon",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "./src/index.ts",
+  "scripts": {
+    "dev": "echo \"run 'pnpm dev-server' in the root directory instead\" >&2 && exit 1",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "test:node": "node --experimental-strip-types --test __tests__/observations.node.test.ts",
+    "test:run": "vitest run"
+  },
+  "dependencies": {
+    "@gadgets/workshop-shared": "workspace:*",
+    "capnweb": "catalog:"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "catalog:",
+    "@types/node": "26.1.0",
+    "capnweb-validate": "catalog:",
+    "miniflare": "5.20260801.0-alpha",
+    "typescript": "catalog:",
+    "vitest": "catalog:",
+    "wrangler": "catalog:"
+  }
+}

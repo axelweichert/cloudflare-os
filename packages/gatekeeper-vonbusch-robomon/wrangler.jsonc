@@ -1,0 +1,34 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  // Robomon-Gatekeeper-Gadget (VON-1814) — read-only Auth-/Run-Health der Agenten-Flotte.
+  // Deploy auf demselben NFR-Account 6d2a1d59… wie der bestehende CloudflareOS-Deploy;
+  // gebunden am `workshop-backend` als Service `gatekeeper-vonbusch-robomon`.
+  "name": "gatekeeper-vonbusch-robomon",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-02-02",
+  "compatibility_flags": ["nodejs_compat", "allow_irrevocable_stub_storage"],
+
+  // DO-Klassen werden über ctx.exports erreicht; kein durable_objects-Binding nötig.
+  "migrations": [
+    {
+      "tag": "v0",
+      "new_sqlite_classes": ["RobomonGatekeeper"]
+    }
+  ],
+
+  // von-authmon `STATE`-Namespace (bootAt, hb, alarm). AUSSCHLIESSLICH lesend — kein put/delete
+  // auf diesem KV im Code. Die Lese-Beschränkung wird beim Deploy zusätzlich über ein read-only
+  // API-Token erzwungen (NFR-Account → CEO-Gate, VON-1814 Deploy-Gate).
+  // id = von-authmon STATE (ops/authmon/wrangler.toml).
+  "kv_namespaces": [
+    {
+      "binding": "AUTHMON_KV",
+      "id": "37aa431b6d464a56b8397ccf17a82913"
+    }
+  ],
+
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  }
+}

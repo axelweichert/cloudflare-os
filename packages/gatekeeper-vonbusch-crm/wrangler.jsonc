@@ -1,0 +1,39 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "gatekeeper-vonbusch-crm",
+
+  // Wie gatekeeper-test / gatekeeper-vonbusch-mailbox zeigt `main` direkt auf die Quelle. Sobald
+  // der Live-Bind (CEO-Gate) ansteht, kann auf den capnweb-validate-Build (wie gatekeeper-linear)
+  // umgestellt werden.
+  "main": "src/crm-gatekeeper.ts",
+
+  "compatibility_date": "2026-02-02",
+  "compatibility_flags": ["nodejs_compat", "allow_irrevocable_stub_storage"],
+
+  // DO-Klassen werden über ctx.exports erreicht; kein durable_objects-Binding nötig.
+  // Nur CrmGatekeeper ist ein DurableObject; Vendor/Account/Verifier sind WorkerEntrypoints.
+  "migrations": [
+    {
+      "tag": "v0",
+      "new_sqlite_classes": ["CrmGatekeeper"]
+    }
+  ],
+
+  // Live-Bind-Konfiguration (CEO-Gate, NFR-Account 6d2a1d59…):
+  //   CRM_DB — D1-Binding auf vonbusch-crm-eu; echte database_id unten eintragen.
+  // Es werden KEINE Schreib-Credentials benötigt: die einzige Schreibgewalt ist der menschliche
+  // Approve-Pfad (OS-ApprovalQueue → applyAction) — CF Access bleibt die Zugangsboundary.
+  "d1_databases": [
+    {
+      "binding": "CRM_DB",
+      "database_name": "vonbusch-crm-eu",
+      "database_id": "d44390a9-4f6e-4ecc-9193-e8385e98e412"
+    }
+  ],
+
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1,
+    "logs": { "invocation_logs": false }
+  }
+}

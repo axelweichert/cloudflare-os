@@ -1,0 +1,41 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  // Preiserhebungs-Gatekeeper-Gadget (VON-1816) — read-only Druckpreis (printgemein) + DMS-ROI.
+  // Deploy auf demselben NFR-Account 6d2a1d59… wie der bestehende CloudflareOS-Deploy; gebunden am
+  // `workshop-backend` als Service `gatekeeper-vonbusch-preiserhebung`.
+  //
+  // READ-ONLY-Charakter der Preis-D1 wird zweifach abgesichert:
+  //  1) Code: dieser Worker führt ausschließlich SELECTs aus (kein INSERT/UPDATE/DELETE, keine
+  //     batch()-Writes). Die PreisRepo-Abstraktion bietet keine Schreibmethode.
+  //  2) Deploy: dem Worker wird ein D1 mit lesenden Rechten gebunden bzw. das API-Token auf
+  //     read-only beschränkt (CF-Account-Aktion → CEO-Gate, VON-1816 Deploy-Gate).
+  "name": "gatekeeper-vonbusch-preiserhebung",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-02-02",
+  "compatibility_flags": ["nodejs_compat", "allow_irrevocable_stub_storage"],
+
+  // DO-Klassen werden über ctx.exports erreicht; kein durable_objects-Binding nötig.
+  "migrations": [
+    {
+      "tag": "v0",
+      "new_sqlite_classes": ["PreiserhebungGatekeeper"]
+    }
+  ],
+
+  // printgemein-Preis-D1 (`preisparameter`-Tabelle). AUSSCHLIESSLICH lesend — kein Write im Code.
+  // Prod-D1-ID: printgemein 33b8cb23-… (Memory printgemein-deploy-mechanism); die echte ID +
+  // read-only-Token setzt der CEO beim Deploy (VON-1816 Deploy-Gate). Für `wrangler dev --local`
+  // wird eine lokale SQLite-Instanz mit demselben Schema/Seed genutzt.
+  "d1_databases": [
+    {
+      "binding": "PREIS_DB",
+      "database_name": "printgemein",
+      "database_id": "33b8cb23-7ba5-4dee-a323-b91e7fe4b767"
+    }
+  ],
+
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  }
+}

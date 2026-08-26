@@ -39,6 +39,7 @@ import { recordAnalytics } from "./analytics";
 import { reportIssue } from "@gadgets/backend-utils/error-reporting";
 import type { ProductAnalyticsConnectionType, ProductAnalyticsGadgetInput } from "./analytics";
 import { checkUsageAndBalance } from "./ai-gateway-billing/limits/usage-checker";
+import { getVonbuschBudgetLedger, DEFAULT_PREFLIGHT_USAGE } from "./vonbusch-ai-budget";
 import { completeAgentCatalogSnapshot, normalizeAgentCatalog } from "./agent-catalog";
 import { refreshCachedBalance } from "./ai-gateway-billing/cloudflare/connection-service";
 import { SharingManager, SharingCaller, CollaboratorRecord, ShareKeyRecord } from "./sharing";
@@ -5682,6 +5683,25 @@ class OverseerImpl implements AgentHooks {
           byokRouting = usage.byokRouting;
           if (byokRouting) byokOwnerStub = ownerStub;
         }
+
+        // vonBusch K8 (VON-1820): OPTIONALES Per-User-€/USD-Budget zusätzlich zur nativen
+        // Call-Anzahl-Grenze oben. `getVonbuschBudgetLedger` liefert `undefined`, solange das
+        // Feature nicht per Env aktiv ist → dieser Zweig ist dann ein No-op. Pre-Flight-Schätzung;
+        // die autoritative Ist-Kost bucht #getCostFromAiGateway per ledger.record() nach.
+        let budgetLedger = getVonbuschBudgetLedger(this.env);
+        if (budgetLedger) {
+          let decision = await budgetLedger.check(
+              this.ownerId, aiModel.profile.id, DEFAULT_PREFLIGHT_USAGE, Date.now());
+          if (!decision.allow) {
+            this.postAgentErrorMessage(chatId, aiModel.profile,
+                decision.reason ?? "Budget-Obergrenze erreicht.", "usage_limit");
+            turnLogger.debug("agent run finished", {
+              event: "agent.run.finished", outcome: "usage_limit",
+              durationMs: Date.now() - startedAt,
+            });
+            return;
+          }
+        }
       }
 
       let sessionAffinity = await computeSessionAffinity(this.ctx.id.toString(), chatId);
@@ -7146,6 +7166,20 @@ class OverseerImpl implements AgentHooks {
     cost ||= estimatedCost;
     if (cost) {
       this.#addChatCost(chatId, cost);
+
+      // vonBusch K8 (VON-1820): AUTORITATIVE Gateway-Ist-Kost auf das Per-User-€-Budget buchen
+      // (dieselbe Owner-Attribution wie das Pre-Flight-Gate). No-op solange das Budget-Feature aus
+      // ist; Buchungsfehler dürfen die Kosten-Nachverfolgung nicht crashen.
+      let budgetLedger = this.ownerId ? getVonbuschBudgetLedger(this.env) : undefined;
+      if (budgetLedger && this.ownerId) {
+        try {
+          await budgetLedger.record(this.ownerId, cost, Date.now());
+        } catch (err) {
+          this.logger.warn("failed to record vonBusch per-user budget", {
+            event: "vonbusch.budget.record.failed", error: err,
+          });
+        }
+      }
     }
   }
 

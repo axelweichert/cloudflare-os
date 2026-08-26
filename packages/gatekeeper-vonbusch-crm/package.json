@@ -1,0 +1,20 @@
+{
+  "name": "@gadgets/gatekeeper-vonbusch-crm",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "./src/crm-gatekeeper.ts",
+  "scripts": {
+    "dev": "echo \"run 'pnpm dev-server' in the root directory instead\" >&2 && exit 1",
+    "deploy": "wrangler deploy",
+    "test:run": "node --import tsx --test test/*.test.ts"
+  },
+  "dependencies": {
+    "@gadgets/workshop-shared": "workspace:*",
+    "capnweb": "catalog:"
+  },
+  "devDependencies": {
+    "tsx": "^4.23.12",
+    "typescript": "catalog:",
+    "wrangler": "catalog:"
+  }
+}

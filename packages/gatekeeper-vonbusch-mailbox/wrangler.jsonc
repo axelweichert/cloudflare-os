@@ -1,0 +1,41 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "gatekeeper-vonbusch-mailbox",
+
+  // Wie gatekeeper-test zeigt `main` direkt auf die Quelle. Sobald der Live-Bind (CEO-Gate) ansteht,
+  // kann auf den capnweb-validate-Build (wie gatekeeper-linear/-context) umgestellt werden.
+  "main": "src/mailbox-gatekeeper.ts",
+
+  "compatibility_date": "2026-02-02",
+  "compatibility_flags": ["nodejs_compat", "allow_irrevocable_stub_storage"],
+
+  // DO-Klassen werden über ctx.exports erreicht; kein durable_objects-Binding nötig.
+  // Nur MailboxGatekeeper ist ein DurableObject; Vendor/Account/Verifier sind WorkerEntrypoints.
+  "migrations": [
+    {
+      "tag": "v0",
+      "new_sqlite_classes": ["MailboxGatekeeper"]
+    }
+  ],
+
+  // Live-Bind-Konfiguration (VON-1821, CEO-Direktive, NFR-Account 6d2a1d59…):
+  //   MAIL_SERVICE           — Service-Binding auf den agentic-inbox-Worker (Direktive B): interne
+  //                            Calls umgehen CF Access, kein Bearer/Access-Secret nötig.
+  //   UPSTREAM_MCP_URL       — Ziel-URL für den Request (nur der Pfad /mcp zählt beim Service-Bind).
+  //   MAILBOX_UPSTREAM_TOKEN — nur Fallback, wenn ohne Service-Binding direkt gegen die HTTP-URL.
+  //   MAILBOX_ACL            — JSON: { "mailboxes": { "<inbox>": ["a@x"] }, "admins": ["b@x"] }.
+  //                            CEO wählte „vorerst leer lassen (nur admins)" → nur Owner als Admin.
+  "services": [
+    { "binding": "MAIL_SERVICE", "service": "vonbusch-app-agentic-inbox" }
+  ],
+  "vars": {
+    "UPSTREAM_MCP_URL": "https://mail.vonbusch.app/mcp",
+    "MAILBOX_ACL": "{\"mailboxes\":{},\"admins\":[\"axel.weichert@vonbusch.digital\"]}"
+  },
+
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1,
+    "logs": { "invocation_logs": false }
+  }
+}
