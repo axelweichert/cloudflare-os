@@ -173,13 +173,13 @@ class AuthenticatedApiImpl extends RpcTarget implements AuthenticatedApi {
   async setAvatar(data: Uint8Array | null): Promise<void> {
     if (data) {
       if (data.byteLength > 100 * 1024) {
-        throw new Error("Avatar too large (max 100 KB)");
+        throw new Error("Avatar zu groß (max. 100 KB)");
       }
       // Verify the data starts with a known image magic-byte header.
       let isJpeg = data[0] === 0xFF && data[1] === 0xD8 && data[2] === 0xFF;
       let isPng = data[0] === 0x89 && data[1] === 0x50 && data[2] === 0x4E && data[3] === 0x47;
       if (!isJpeg && !isPng) {
-        throw new Error("Avatar must be a JPEG or PNG image");
+        throw new Error("Avatar muss ein JPEG- oder PNG-Bild sein");
       }
     }
     // Avatar data lives in KV (global), not the user's DO storage, so we
@@ -651,7 +651,7 @@ class PublicApiImpl extends RpcTarget implements PublicApi {
 
   async startGatekeeperLogin(vendorId: string): Promise<{ url: string; attempt: RpcStub<LoginAttempt> }> {
     if (!getAuthGatekeeperAllowlist(this.env).includes(vendorId)) {
-      throw new Error(`Sign-in via "${vendorId}" is not enabled on this deployment.`);
+      throw new Error(`Die Anmeldung über „${vendorId}" ist auf diesem Deployment nicht aktiviert.`);
     }
     const vendor = getAuthVendorBinding(this.env, vendorId);
     if (!vendor) throw new Error(`No such auth gatekeeper: ${vendorId}`);
@@ -720,10 +720,10 @@ class PublicApiImpl extends RpcTarget implements PublicApi {
 
   async login(username: string, passwordHash: Uint8Array): Promise<string | null> {
     if (this.env.CF_ACCESS_AUD) {
-      throw new Error("This deployment requires Cloudflare Access authentication.");
+      throw new Error("Dieses Deployment erfordert eine Cloudflare-Access-Authentifizierung.");
     }
     if (!isPasswordAuthEnabled(this.env)) {
-      throw new Error("Password login is disabled on this deployment. Use a sign-in option.");
+      throw new Error("Die Passwort-Anmeldung ist auf diesem Deployment deaktiviert. Nutze eine Anmeldeoption.");
     }
 
     username = normalizeUsername(username);
@@ -744,13 +744,13 @@ class PublicApiImpl extends RpcTarget implements PublicApi {
   async createAccount(username: string, displayName: string, passwordHash: Uint8Array)
       : Promise<string | null> {
     if (this.env.CF_ACCESS_AUD) {
-      throw new Error("This deployment requires Cloudflare Access authentication.");
+      throw new Error("Dieses Deployment erfordert eine Cloudflare-Access-Authentifizierung.");
     }
     if (!isPasswordAuthEnabled(this.env)) {
-      throw new Error("Password signup is disabled on this deployment. Use a sign-in option.");
+      throw new Error("Die Passwort-Registrierung ist auf diesem Deployment deaktiviert. Nutze eine Anmeldeoption.");
     }
     if (!(await readAdminConfig(this.env)).signupsEnabled) {
-      throw new Error("New signups are currently disabled on this deployment.");
+      throw new Error("Neuregistrierungen sind auf diesem Deployment derzeit deaktiviert.");
     }
 
     username = normalizeUsername(username);

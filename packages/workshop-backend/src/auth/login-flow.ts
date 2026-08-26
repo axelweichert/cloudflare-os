@@ -104,7 +104,7 @@ export class LoginConnectCallbackImpl
         loginLogger.info("gatekeeper login finished", {
           event: "gatekeeper.login.finished", outcome: "no_email",
         });
-        await pending.fail("This account has no verified email, so it can't be used to sign in.");
+        await pending.fail("Dieses Konto hat keine verifizierte E-Mail-Adresse und kann daher nicht zur Anmeldung verwendet werden.");
         return;
       }
       const userStub = this.ctx.exports.UserDurableObject.get(
@@ -117,7 +117,7 @@ export class LoginConnectCallbackImpl
         loginLogger.info("gatekeeper login finished", {
           event: "gatekeeper.login.finished", outcome: "signups_disabled",
         });
-        await pending.fail("New sign-ups are currently disabled on this deployment.");
+        await pending.fail("Neuregistrierungen sind auf diesem Deployment derzeit deaktiviert.");
         return;
       }
       // For Cloudflare, signing in also links the account for AI Gateway billing: startGatekeeperLogin
@@ -139,7 +139,7 @@ export class LoginConnectCallbackImpl
       loginLogger.info("gatekeeper login finished", {
         event: "gatekeeper.login.finished", outcome: "error",
       });
-      await pending.fail("Sign-in failed. Please try again.");
+      await pending.fail("Anmeldung fehlgeschlagen. Bitte versuche es erneut.");
     }
   }
 

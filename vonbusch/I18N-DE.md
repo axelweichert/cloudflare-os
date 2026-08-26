@@ -128,11 +128,30 @@ Umgebende Beschreibungstexte werden aber übersetzt.
   `.json`-Sidecars werden committed. Die Kopien unter `packages/workshop-backend/format-blueprints/`
   sind das Upstream-Default-Set und werden vom Deployment NICHT genutzt; bewusst unangetastet, um die
   Merge-Fläche bei Upstream-Syncs klein zu halten.
+- **Backend-Fehlermeldungen (nutzersichtbar) übersetzt.** Ausnahme zur Glossar-Regel „`throw new
+  Error` = Dev-Diagnose": Das Backend läuft capnweb ohne `onSendError`-Override, d. h. geworfene
+  `Error.message` werden zum Browser serialisiert, und das Frontend rendert `err.message` direkt als
+  Toast/Banner (bestätigt in `LoginPage`/`SignupPage`/`OAuthButtons` → `setError(err.message)`,
+  ebenso `ShareModal`, `AdminPage`, `SettingsPage`). Übersetzt wurden daher die nutzersichtbaren
+  Validierungs-/Auth-Meldungen in: `auth/login-flow.ts` (Anmeldefehler), `server.ts` (Avatar-Upload,
+  Passwort-Login/-Signup-Gates, Gatekeeper-Login), `user.ts` (Passwort/Registrierung, Modell-/
+  Blueprint-/Konto-/Gatekeeper-Fehler, Benutzername-Validierung, „unavailable"-Vendor-Fallback),
+  `sharing.ts` (Mitarbeiter-/Freigabe-Link-Fehler; die `action`-Verben `kopieren`/`bearbeiten`/
+  `widerrufen` an den Call-Sites mitübersetzt, weil sie in den Satz interpoliert werden),
+  `admin-settings.ts` (Längen-/Format-Meldungen), `site-logo.ts` (Logo-Validierung). „Deployment",
+  „Blueprint", „Gatekeeper", „Gadget", „Avatar", „Cloudflare Access", „AI Gateway" bleiben als
+  Produkt-/Eigennamen stehen.
 - **Bewusst NICHT übersetzt:** `slash-commands.ts` (nur `console.error` + datengetriebene Labels der
   Gatekeeper), `agent-catalog.ts` (modellseitiger System-Prompt-Text + `logger.warn`),
-  `client-errors.ts` HTTP-Status-Bodies (programmatisch, kein UI-Text). `revision`-Felder der
-  Sidecars NICHT gebumpt (Archiv-Bytes unverändert; `formatBlueprintsManifestVersion()`
-  fingerprintet bereits title/description/output und löst die Neuinstallation aus).
+  `client-errors.ts` HTTP-Status-Bodies (programmatisch, kein UI-Text); rein programmatische/
+  defensive Invarianten-Throws (`"No such account."`, `"No such service"`, `"Blueprint not found."`
+  u. ä.). `revision`-Felder der Sidecars NICHT gebumpt (Archiv-Bytes unverändert;
+  `formatBlueprintsManifestVersion()` fingerprintet bereits title/description/output und löst die
+  Neuinstallation aus).
+- **Offen (Folgeaufgabe [VON-1896]):** Chat-/Agent-seitige Tool-Oberfläche — `agent.ts` Tool-`label`s
+  (z. B. „Read file"), `web-fetch.ts` Tool-Fehlertexte, `overseer.ts` `/compact`-Beschreibung und
+  Fallback-Titel, `external-message-gateway`-Antworten. Getrennt, weil pro String der Chat-Render-Pfad
+  bestätigt und modellseitiger Schema-Text (Tool-`description`s) ausgeschlossen werden muss.
 
 ### Anmerkungen zu [VON-1891]
 
