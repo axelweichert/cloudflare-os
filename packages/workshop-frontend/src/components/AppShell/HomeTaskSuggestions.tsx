@@ -24,43 +24,43 @@ type TaskSuggestion = {
 const SUGGESTIONS: TaskSuggestion[] = [
   {
     id: 'one-on-one',
-    label: 'Write a 1:1 pre-read',
-    description: 'A doc with a snapshot, things to inspect, and one ask',
+    label: '1:1-Vorbereitung schreiben',
+    description: 'Ein Dokument mit Momentaufnahme, Prüfpunkten und einer klaren Bitte',
     icon: FileText,
     prompt:
-      'Create a document to prepare for my next 1:1 with a direct report: a current snapshot, a coaching frame, things to inspect, carryover items from last time, and one clear ask.',
+      'Erstelle ein Dokument zur Vorbereitung meines nächsten 1:1-Gesprächs mit einer direkt unterstellten Person: eine aktuelle Momentaufnahme, ein Coaching-Rahmen, Prüfpunkte, offene Punkte vom letzten Mal und eine klare Bitte.',
   },
   {
     id: 'team-meeting',
-    label: 'Build a team meeting deck',
-    description: 'Slides with progress, risks, and what needs a decision',
+    label: 'Team-Meeting-Präsentation erstellen',
+    description: 'Folien mit Fortschritt, Risiken und offenen Entscheidungen',
     icon: Presentation,
     prompt:
-      'Create a slide deck for my next team meeting: where things stand, what shipped, risks and blockers, and the decisions I need from the room. Ask me what the team is working on first.',
+      'Erstelle eine Foliensammlung für mein nächstes Team-Meeting: Stand der Dinge, was ausgeliefert wurde, Risiken und Blocker sowie die Entscheidungen, die ich vom Team brauche. Frag mich zuerst, woran das Team gerade arbeitet.',
   },
   {
     id: 'insights',
-    label: 'Find insights in my data',
-    description: 'Turn a spreadsheet or CSV into trends and recommendations',
+    label: 'Erkenntnisse in meinen Daten finden',
+    description: 'Aus einer Tabelle oder CSV Trends und Empfehlungen ableiten',
     icon: ChartLineUp,
     prompt:
-      'Turn a dataset I will share (a spreadsheet, CSV, or pasted table) into a narrative analysis: key trends, anomalies, the "so what", and concrete recommendations.',
+      'Verwandle einen Datensatz, den ich teile (eine Tabelle, CSV oder eingefügte Tabelle), in eine erzählende Analyse: zentrale Trends, Auffälligkeiten, das „Na und?" und konkrete Empfehlungen.',
   },
   {
     id: 'workflow',
-    label: 'Automate a workflow',
-    description: 'Trigger an agent when a new email arrives',
+    label: 'Einen Workflow automatisieren',
+    description: 'Einen Agenten auslösen, wenn eine neue E-Mail eintrifft',
     icon: Lightning,
     prompt:
-      'Create an agent workflow that runs automatically when a new email arrives: read the message, decide what to do, and take action or draft a reply. Ask me which inbox to watch and what it should handle.',
+      'Erstelle einen Agenten-Workflow, der automatisch startet, wenn eine neue E-Mail eintrifft: die Nachricht lesen, entscheiden, was zu tun ist, und handeln oder eine Antwort entwerfen. Frag mich, welches Postfach überwacht werden soll und was er bearbeiten soll.',
   },
   {
     id: 'app',
-    label: 'Build a quick tool',
-    description: 'A small interactive app, calculator, or dashboard',
+    label: 'Ein schnelles Tool bauen',
+    description: 'Eine kleine interaktive App, ein Rechner oder ein Dashboard',
     icon: AppWindow,
     prompt:
-      'Build a small interactive tool I can use right here — a calculator, dashboard, or explorer. Ask me what it should do, then create it.',
+      'Baue ein kleines interaktives Tool, das ich direkt hier nutzen kann – einen Rechner, ein Dashboard oder einen Explorer. Frag mich, was es können soll, und erstelle es dann.',
   },
 ]
 
@@ -122,9 +122,9 @@ export default function HomeTaskSuggestions({
   const visible = useMemo(pickSuggestions, [])
 
   return (
-    <section aria-label="Example tasks" className="flex flex-col gap-1">
+    <section aria-label="Beispielaufgaben" className="flex flex-col gap-1">
       <h3 className="px-1 pb-1 text-[12px] font-medium uppercase tracking-[0.06em] text-kumo-inactive">
-        Get started
+        Erste Schritte
       </h3>
       <ul className="flex flex-col gap-0.5">
         {visible.map((suggestion) => (

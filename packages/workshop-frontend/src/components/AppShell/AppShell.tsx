@@ -125,7 +125,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             ref={drawerRef}
             role="dialog"
             aria-modal="true"
-            aria-label="Primary navigation"
+            aria-label="Hauptnavigation"
             tabIndex={-1}
             className="fixed inset-y-0 left-0 z-50 outline-none md:hidden"
           >
@@ -148,7 +148,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             type="button"
             ref={menuButtonRef}
             onClick={() => setMobileOpen((o) => !o)}
-            aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
+            aria-label={mobileOpen ? 'Menü schließen' : 'Menü öffnen'}
             className="flex h-11 w-11 items-center justify-center rounded-md text-kumo-default transition-colors hover:bg-kumo-tint md:hidden"
           >
             {mobileOpen ? <X size={16} /> : <List size={16} />}

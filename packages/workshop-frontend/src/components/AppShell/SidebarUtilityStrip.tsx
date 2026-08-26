@@ -11,20 +11,28 @@ function nextThemeMode(mode: ThemeMode): ThemeMode {
   return THEME_SEQUENCE[(THEME_SEQUENCE.indexOf(mode) + 1) % THEME_SEQUENCE.length]
 }
 
+// German display names for the theme modes. The mode values themselves ('system' | 'light' | 'dark')
+// are code identifiers and stay in English; only the user-facing label is localized.
+const THEME_MODE_LABELS_DE: Record<ThemeMode, string> = {
+  system: 'System',
+  light: 'Hell',
+  dark: 'Dunkel',
+}
+
 function ThemeModeButton() {
   const { themeMode, resolvedThemeMode, setThemeMode } = useTheme()
   const label = themeMode === 'system'
-    ? `Theme: system (${resolvedThemeMode})`
-    : `Theme: ${themeMode}`
+    ? `Erscheinungsbild: System (${THEME_MODE_LABELS_DE[resolvedThemeMode]})`
+    : `Erscheinungsbild: ${THEME_MODE_LABELS_DE[themeMode]}`
   const nextMode = nextThemeMode(themeMode)
 
   return (
     <Tooltip
-      content={`${label}. Switch to ${nextMode}.`}
+      content={`${label}. Zu ${THEME_MODE_LABELS_DE[nextMode]} wechseln.`}
       render={(
         <button
           type="button"
-          aria-label={`${label}. Switch to ${nextMode}.`}
+          aria-label={`${label}. Zu ${THEME_MODE_LABELS_DE[nextMode]} wechseln.`}
           onClick={() => setThemeMode(nextMode)}
           className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-kumo-inactive transition-colors hover:bg-kumo-tint hover:text-kumo-default focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-kumo-ring focus-visible:ring-offset-2 focus-visible:ring-offset-kumo-elevated"
         >

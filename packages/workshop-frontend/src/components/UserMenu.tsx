@@ -20,8 +20,8 @@ export default function UserMenu() {
         render={
           <button
             className="flex h-11 w-11 cursor-pointer items-center justify-center overflow-hidden rounded-full bg-kumo-tint transition-colors hover:bg-kumo-fill md:h-7 md:w-7"
-            title="Open profile menu"
-            aria-label="Open profile menu"
+            title="Profilmenü öffnen"
+            aria-label="Profilmenü öffnen"
           >
             {avatarUrl ? (
               <img src={avatarUrl} alt="" className="w-full h-full object-cover" />
@@ -36,13 +36,13 @@ export default function UserMenu() {
           onClick={() => navigate({ to: '/profile' })}
           className={MENU_ITEM}
         >
-          Profile
+          Profil
         </DropdownMenu.Item>
         <DropdownMenu.Item
           onClick={() => navigate({ to: '/providers' })}
           className={MENU_ITEM}
         >
-          Providers
+          Anbieter
         </DropdownMenu.Item>
         {isAdmin && (
           <DropdownMenu.Item
@@ -58,7 +58,7 @@ export default function UserMenu() {
           onClick={logout}
           className={MENU_ITEM_DANGER}
         >
-          Sign out
+          Abmelden
         </DropdownMenu.Item>
       </DropdownMenu.Content>
     </DropdownMenu>
