@@ -66,10 +66,10 @@ export interface SubmittedAction { actionId: number; status: "pending_approval";
 /**
  * Die RPC-Fähigkeit des vonBusch-CRM. Reads sind auditierte Observations und laufen sofort;
  * Writes (propose*) werden zur menschlichen Freigabe eingereiht und erst nach Approval ausgeführt.
- * Erlaubte Spalten:
- *   contact:  name, email, phone, company, status, owner, notes
- *   deal:     title, contact_id, value, stage, status, owner, close_date, notes
- *   activity: contact_id, deal_id, type, subject, body, status, owner, due_at
+ * Erlaubte Spalten (echtes Prod-Schema vonbusch-crm-eu, VON-1850):
+ *   contact:  first_name, last_name, email, phone, mobile, position, department, company_id, status, account_manager_id, notes
+ *   deal:     title, company_id, contact_id, owner_id, bereich, stage, value, probability, expected_close, status, notes
+ *   activity: type, subject, body, contact_id, deal_id, company_id, owner_id, status, due_at, prio
  */
 export interface Crm {
   listContacts(opts?: ReadOptions): Promise<CrmRow[]>;

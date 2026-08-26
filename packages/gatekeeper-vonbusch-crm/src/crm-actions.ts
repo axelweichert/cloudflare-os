@@ -17,10 +17,13 @@ export type CrmEntity = "contact" | "deal" | "activity";
 export type WriteOp = "create" | "update";
 
 /** Erlaubte Spalten pro Entity. Alles außerhalb wird abgelehnt. */
+// Spalten gegen das ECHTE Prod-Schema `vonbusch-crm-eu` (verifiziert via pragma_table_info,
+// VON-1850): contacts hat first_name/last_name/company_id/account_manager_id (kein name/company/owner);
+// deals hat owner_id/expected_close (kein owner/close_date).
 export const COLUMN_ALLOWLIST: Record<CrmEntity, readonly string[]> = {
-  contact: ["name", "email", "phone", "company", "status", "owner", "notes"],
-  deal: ["title", "contact_id", "value", "stage", "status", "owner", "close_date", "notes"],
-  activity: ["contact_id", "deal_id", "type", "subject", "body", "status", "owner", "due_at"],
+  contact: ["first_name", "last_name", "email", "phone", "mobile", "position", "department", "company_id", "status", "account_manager_id", "notes"],
+  deal: ["title", "company_id", "contact_id", "owner_id", "bereich", "stage", "value", "probability", "expected_close", "status", "notes"],
+  activity: ["type", "subject", "body", "contact_id", "deal_id", "company_id", "owner_id", "status", "due_at", "prio"],
 };
 
 export type CrmValue = string | number | boolean | null;
