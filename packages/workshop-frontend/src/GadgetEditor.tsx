@@ -175,14 +175,14 @@ function rightTabs(output?: BlueprintOutput): { value: RightTab; label: string }
   return [
     { value: 'app', label: formatOf(output).noun },
     { value: 'code', label: 'Code' },
-    { value: 'connections', label: 'Connections' },
+    { value: 'connections', label: 'Verbindungen' },
   ]
 }
 
 const ACTIVITY_TABS: { value: ActivityView; label: string }[] = [
-  { value: 'review', label: 'Needs review' },
-  { value: 'auto', label: 'Auto-approval' },
-  { value: 'history', label: 'History' },
+  { value: 'review', label: 'Prüfung erforderlich' },
+  { value: 'auto', label: 'Automatische Freigabe' },
+  { value: 'history', label: 'Verlauf' },
 ]
 
 // Names what the pane is showing. `icon` is for the workspace-level views (Activity); a workpiece
@@ -295,7 +295,7 @@ function PaneWorkpieceTabs({
             <span className="truncate">{gadget.title}</span>
             {gadget.chatId !== undefined && (
               <span className="flex-shrink-0 rounded-full bg-kumo-fill px-1.5 py-0.5 text-[10px] font-medium leading-none text-kumo-subtle">
-                Draft
+                Entwurf
               </span>
             )}
           </button>
@@ -413,10 +413,10 @@ function NoGadgetPlaceholder({ height }: { height: string }) {
     <div className="flex items-center justify-center px-6 text-center" style={{ height }}>
       <div className="max-w-[360px]">
         <p className="m-0 text-[15px] leading-[22px] font-semibold tracking-[-0.3px] text-kumo-default">
-          No gadgets yet
+          Noch keine Gadgets
         </p>
         <p className="mt-1.5 mb-0 text-[13px] leading-[19px] tracking-[-0.25px] text-kumo-subtle">
-          Ask the agent in chat to build something, and it will appear here.
+          Bitte den Agenten im Chat, etwas zu erstellen, dann erscheint es hier.
         </p>
       </div>
     </div>
@@ -476,7 +476,7 @@ export default function GadgetEditor() {
       if (id) navigate({ to: '/workspace/$id', params: { id }, search: {}, replace: true })
     },
     onInvalidShareKey: () => {
-      toasts.add({ title: 'Invalid or expired share link.', variant: 'error' })
+      toasts.add({ title: 'Ungültiger oder abgelaufener Freigabelink.', variant: 'error' })
     },
   })
   const [userInfo, setUserInfo] = useState<AiChatAuthorInfo | null>(null)
@@ -1222,7 +1222,7 @@ export default function GadgetEditor() {
     try {
       await target.setTitle(title)
     } catch {
-      toasts.add({ title: 'Failed to rename gadget', variant: 'error' })
+      toasts.add({ title: 'Gadget konnte nicht umbenannt werden', variant: 'error' })
     } finally {
       target[Symbol.dispose]()
     }
@@ -1268,7 +1268,7 @@ export default function GadgetEditor() {
       await overseer.stub.setTitle(titleInput.trim())
       updateTitle(titleInput.trim())
       setIsEditingTitle(false)
-    } catch { toasts.add({ title: 'Failed to update title', variant: 'error' }) }
+    } catch { toasts.add({ title: 'Titel konnte nicht aktualisiert werden', variant: 'error' }) }
     finally { titleSaveInFlight.current = false }
   }
   const handleCancelEdit = () => {
@@ -1292,7 +1292,7 @@ export default function GadgetEditor() {
       await overseer.stub.deleteSelf()
       navigate({ to: '/' })
     } catch {
-      toasts.add({ title: 'Failed to delete workspace', variant: 'error' })
+      toasts.add({ title: 'Arbeitsbereich konnte nicht gelöscht werden', variant: 'error' })
       setIsDeleting(false)
       setDeleteDialogOpen(false)
     }
@@ -1322,10 +1322,10 @@ export default function GadgetEditor() {
         </p>
         <div className="flex items-center gap-2">
           <WorkshopButton tone="secondary" onClick={handleGoToWorkspaces}>
-            Go to workspaces
+            Zu den Arbeitsbereichen
           </WorkshopButton>
           <WorkshopButton tone="primary" onClick={retryOpen}>
-            Try again
+            Erneut versuchen
           </WorkshopButton>
         </div>
       </div>
@@ -1340,7 +1340,7 @@ export default function GadgetEditor() {
       <div className="flex min-h-full items-center justify-center bg-kumo-base">
         <div className="flex flex-col items-center gap-3">
           <div className="w-8 h-8 border-2 border-kumo-brand border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm text-kumo-subtle">Loading workspace…</p>
+          <p className="text-sm text-kumo-subtle">Arbeitsbereich wird geladen …</p>
         </div>
         {observerConfig && (
           <ObserverConfigModal
@@ -1391,7 +1391,7 @@ export default function GadgetEditor() {
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <Link
             to="/"
-            aria-label="Home"
+            aria-label="Start"
             className="flex-shrink-0 hover:opacity-80 transition-opacity"
           >
             <SiteLogo size={22}>
@@ -1419,14 +1419,14 @@ export default function GadgetEditor() {
                 onClick={handleSaveTitle}
                 disabled={!titleInput.trim()}
                 className="!h-9 !w-9 hover:text-kumo-brand disabled:opacity-30 md:!h-7 md:!w-7"
-                aria-label="Save workspace title"
+                aria-label="Titel des Arbeitsbereichs speichern"
               >
                 <Check size={14} />
               </WorkshopIconButton>
               <WorkshopIconButton
                 onClick={handleCancelEdit}
                 className="!h-9 !w-9 md:!h-7 md:!w-7"
-                aria-label="Cancel title edit"
+                aria-label="Titelbearbeitung abbrechen"
               >
                 <X size={14} />
               </WorkshopIconButton>
@@ -1440,8 +1440,8 @@ export default function GadgetEditor() {
                 <WorkshopIconButton
                   onClick={() => setIsEditingTitle(true)}
                   className="!h-7 !w-7 flex-shrink-0"
-                  title="Rename workspace"
-                  aria-label="Rename workspace"
+                  title="Arbeitsbereich umbenennen"
+                  aria-label="Arbeitsbereich umbenennen"
                 >
                   <Pencil size={16} />
                 </WorkshopIconButton>
@@ -1451,7 +1451,7 @@ export default function GadgetEditor() {
 
           {metadata.owner && (
             <span className="hidden text-xs text-kumo-inactive sm:inline">
-              by {metadata.owner.name}
+              von {metadata.owner.name}
             </span>
           )}
         </div>
@@ -1480,8 +1480,8 @@ export default function GadgetEditor() {
 
           <WorkshopIconButton
             onClick={() => setShareModalOpen(true)}
-            title="Share workspace"
-            aria-label="Share workspace"
+            title="Arbeitsbereich teilen"
+            aria-label="Arbeitsbereich teilen"
           >
             <ShareNetwork size={15} />
           </WorkshopIconButton>
@@ -1499,8 +1499,8 @@ export default function GadgetEditor() {
             <WorkshopIconButton
               danger
               onClick={() => setDeleteDialogOpen(true)}
-              title="Delete workspace"
-              aria-label="Delete workspace"
+              title="Arbeitsbereich löschen"
+              aria-label="Arbeitsbereich löschen"
             >
               <Trash size={16} />
             </WorkshopIconButton>
@@ -1541,7 +1541,7 @@ export default function GadgetEditor() {
             mobilePreviewActive ? 'bg-kumo-tint text-kumo-default' : 'text-kumo-subtle'
           }`}
         >
-          Preview
+          Vorschau
         </button>
         <button
           type="button"
@@ -1551,7 +1551,7 @@ export default function GadgetEditor() {
             paneShowsActivity ? 'bg-kumo-tint text-kumo-default' : 'text-kumo-subtle'
           }`}
         >
-          Activity
+          Aktivität
           {pendingActionsCount > 0 && (
             <span className="ml-1.5 h-1.5 w-1.5 rounded-full bg-kumo-brand" />
           )}
@@ -1562,7 +1562,7 @@ export default function GadgetEditor() {
               <button
                 type="button"
                 ref={mobileMenuButtonRef}
-                aria-label="More workspace views and actions"
+                aria-label="Weitere Ansichten und Aktionen des Arbeitsbereichs"
                 className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg ${
                   mobileMoreActive ? 'bg-kumo-tint text-kumo-default' : 'text-kumo-subtle'
                 }`}
@@ -1584,7 +1584,7 @@ export default function GadgetEditor() {
               onClick={() => openMobilePane('connections')}
               className={MENU_ITEM}
             >
-              Connections
+              Verbindungen
             </DropdownMenu.Item>
             {visibleGadgets.length > 1 && <DropdownMenu.Separator />}
             {visibleGadgets.length > 1 && visibleGadgets.map(workpiece => (
@@ -1598,10 +1598,10 @@ export default function GadgetEditor() {
             ))}
             <DropdownMenu.Separator />
             <DropdownMenu.Item onClick={() => setIsEditingTitle(true)} className={MENU_ITEM}>
-              Rename workspace
+              Arbeitsbereich umbenennen
             </DropdownMenu.Item>
             <DropdownMenu.Item onClick={() => setShareModalOpen(true)} className={MENU_ITEM}>
-              Share workspace
+              Arbeitsbereich teilen
             </DropdownMenu.Item>
             <DropdownMenu.Item
               disabled={!selectedGadgetStub}
@@ -1615,7 +1615,7 @@ export default function GadgetEditor() {
               onClick={enterGadgetFullscreen}
               className={MENU_ITEM}
             >
-              Full-screen preview
+              Vollbildvorschau
             </DropdownMenu.Item>
             {!metadata.owner && (
               <>
@@ -1625,7 +1625,7 @@ export default function GadgetEditor() {
                   onClick={() => setDeleteDialogOpen(true)}
                   className={MENU_ITEM_DANGER}
                 >
-                  Delete workspace
+                  Arbeitsbereich löschen
                 </DropdownMenu.Item>
               </>
             )}
@@ -1697,7 +1697,7 @@ export default function GadgetEditor() {
                 <div className="absolute inset-0 flex items-center justify-center bg-kumo-base">
                   <div className="flex flex-col items-center gap-3">
                     <div className="w-6 h-6 border-2 border-kumo-brand border-t-transparent rounded-full animate-spin" />
-                    <p className="text-sm text-kumo-subtle">Loading conversation…</p>
+                    <p className="text-sm text-kumo-subtle">Unterhaltung wird geladen …</p>
                   </div>
                 </div>
               )}
@@ -1736,7 +1736,7 @@ export default function GadgetEditor() {
           >
             <div className="flex min-w-0 flex-1 items-center overflow-hidden">
               {paneShowsActivity ? (
-                <PaneLabel icon={Pulse} title="Activity" />
+                <PaneLabel icon={Pulse} title="Aktivität" />
               ) : visibleGadgets.length > 1 ? (
                 <PaneWorkpieceTabs
                   gadgets={visibleGadgets}
@@ -1747,7 +1747,7 @@ export default function GadgetEditor() {
                 <PaneLabel
                   output={selectedGadgetSummary.output}
                   title={selectedGadgetSummary.title}
-                  badge={selectedGadgetSummary.chatId !== undefined ? 'Draft' : undefined}
+                  badge={selectedGadgetSummary.chatId !== undefined ? 'Entwurf' : undefined}
                 />
               )}
             </div>
@@ -1784,10 +1784,10 @@ export default function GadgetEditor() {
 
               {!paneShowsActivity && (
                 <WorkshopIconButton
-                  aria-label="Enter full screen"
+                  aria-label="Vollbild öffnen"
                   title={activeTab === 'app' && !previewMode
-                    ? 'Full screen'
-                    : `Full screen is available in ${formatOf(selectedGadgetSummary?.output).noun} view`}
+                    ? 'Vollbild'
+                    : `Vollbild ist in der Ansicht „${formatOf(selectedGadgetSummary?.output).noun}" verfügbar`}
                   onClick={enterGadgetFullscreen}
                   disabled={activeTab !== 'app' || previewMode}
                 >
@@ -1796,8 +1796,8 @@ export default function GadgetEditor() {
               )}
 
               <WorkshopIconButton
-                aria-label={paneShowsActivity ? 'Close activity' : 'Close gadget pane'}
-                title="Close"
+                aria-label={paneShowsActivity ? 'Aktivität schließen' : 'Gadget-Bereich schließen'}
+                title="Schließen"
                 onClick={closeWorkspacePane}
               >
                 <X size={16} />
@@ -1836,7 +1836,7 @@ export default function GadgetEditor() {
               tabIndex={isGadgetFullscreen ? -1 : undefined}
               role={isGadgetFullscreen ? 'dialog' : undefined}
               aria-modal={isGadgetFullscreen ? true : undefined}
-              aria-label={isGadgetFullscreen ? 'Gadget full screen' : undefined}
+              aria-label={isGadgetFullscreen ? 'Gadget-Vollbild' : undefined}
               className={
                 activeTab !== 'app' || previewMode
                   ? 'hidden'
@@ -1866,7 +1866,7 @@ export default function GadgetEditor() {
                   className="pointer-events-none absolute left-1/2 top-4 z-10 -translate-x-1/2 transform"
                 >
                   <div className="rounded-full border border-kumo-line bg-kumo-base/90 px-4 py-1.5 text-[13px] leading-[18px] text-kumo-default shadow-md backdrop-blur-sm">
-                    Press <kbd className="rounded border border-kumo-line bg-kumo-elevated px-1.5 py-0.5 text-[11px] font-medium">Esc</kbd> to exit full screen
+                    Drücke <kbd className="rounded border border-kumo-line bg-kumo-elevated px-1.5 py-0.5 text-[11px] font-medium">Esc</kbd> zum Verlassen des Vollbilds
                   </div>
                 </div>
               )}
@@ -1976,8 +1976,8 @@ export default function GadgetEditor() {
 
       <DeleteConfirmationDialog
         open={deleteDialogOpen}
-        title="Delete workspace?"
-        description={<>This removes <span className="font-medium text-kumo-default">{metadata.title}</span>. You can&apos;t undo this.</>}
+        title="Arbeitsbereich löschen?"
+        description={<>Dadurch wird <span className="font-medium text-kumo-default">{metadata.title}</span> entfernt. Das kannst du nicht rückgängig machen.</>}
         isDeleting={isDeleting}
         onOpenChange={setDeleteDialogOpen}
         onConfirm={handleDeleteConfirm}

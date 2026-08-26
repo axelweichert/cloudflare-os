@@ -32,7 +32,7 @@ export default function ComposerFormatMenuItems({
   return (
     <>
       <p className="px-2 pb-1 pt-1.5 text-[10px] font-medium uppercase leading-4 tracking-[0.06em] text-kumo-inactive">
-        Start with
+        Beginne mit
       </p>
       {formats.map((format) => (
         <DropdownMenu.Item
@@ -49,7 +49,7 @@ export default function ComposerFormatMenuItems({
             />
           </span>
           <span className="flex-1 truncate">
-            {creating === format.blueprintId ? 'Creating…' : format.output.noun}
+            {creating === format.blueprintId ? 'Wird erstellt …' : format.output.noun}
           </span>
         </DropdownMenu.Item>
       ))}

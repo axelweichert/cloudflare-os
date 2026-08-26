@@ -93,4 +93,17 @@ Umgebende Beschreibungstexte werden aber übersetzt.
   Start-Beispielaufgaben) — [VON-1888]
 - ✅ Authentifizierung & Onboarding (`LoginPage`, `SignupPage`, `OnboardingWizard`,
   `components/auth/*`, `AnnouncementBanner`, `ProtectedRoute`) — [VON-1889]
+- ✅ Gadget-Editor, Code & Formate (`GadgetEditor`, `GadgetCodeInterface`, `CodeEditor`,
+  `CodeDiffEditor`, `GadgetExportMenu`, `components/format/*`) — [VON-1891]
 - ⏳ Restliche Oberflächen: siehe Kind-Issues unter [VON-1888].
+
+### Anmerkungen zu [VON-1891]
+
+- `Diff` bleibt als Fachbegriff stehen (Layout-Labels: „Gestapeltes Diff" / „Geteiltes Diff").
+- Dynamische `{noun}`-Konstruktionen (z. B. „New Doc") sind nicht genusflektierbar; Buttons als
+  „{noun} erstellen", reine Anzeige-Pills/-Titel als „Neu {noun}".
+- Bewusst **nicht** übersetzt (kein reines Anzeige-Label): `AdminFormatsPanel.tsx` Zeile ~385
+  spiegelt wörtlich den an das Modell gesendeten Prompt-Text (Backend `overseer.ts`
+  `#listStandardFormats`); der `DiffStatus`-Wert (`Modified`/`Added`/…) in `CodeDiffEditor.tsx`
+  wird per `===` verglichen — Lokalisierung erfordert ein Anzeige-Mapping (Folgeaufgabe, außerhalb
+  Scope).
