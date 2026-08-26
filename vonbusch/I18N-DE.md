@@ -106,6 +106,9 @@ Umgebende Beschreibungstexte werden aber übersetzt.
   `ResourceConfiguratorHost`, `ObserverConfigModal`, `WorkpiecePicker`, `gatekeeper-modal/*`) — [VON-1893]
 - ✅ Backend- & vonbusch-Gatekeeper-Nutzertexte (`workshop-backend/src` nutzersichtbare Strings,
   `gatekeeper-vonbusch-*/src/app-ui.ts`, `vonbusch/*`, `format-blueprints`) — [VON-1895]
+- ✅ Einstellungen, Profil, Admin, Abrechnung & Modelle (`SettingsPage`, `routes/profile`,
+  `routes/admin`, `AdminPage`, `routes/providers`, `AddModelModal`, `components/billing/*`,
+  `ShareModal`, `AutoApproveConfirmDialog`, `HookToggle`, `DeleteConfirmationDialog`) — [VON-1894]
 - ⏳ Restliche Oberflächen: siehe Kind-Issues unter [VON-1888].
 
 ### Anmerkungen zu [VON-1895]
@@ -171,3 +174,25 @@ Umgebende Beschreibungstexte werden aber übersetzt.
 - Ohne Änderung (keine statischen englischen Anzeige-Strings): `gatekeepers_.$appId.tsx`
   (nur `'App'`-Fallback), `ConnectionChips.tsx`, `ConnectionConfigField.tsx` („Optional" ist
   DE-identisch).
+
+### Anmerkungen zu [VON-1894]
+
+- Ansprache durchgehend „Du". Neue Begriffe: „Provider" → „Anbieter", „Quick model" →
+  „Schnellmodell", „Site name" → „Website-Name", „Accent color" → „Akzentfarbe", „Sign-ups" →
+  „Registrierungen", „Collaborator" → „Mitarbeiter", „Share link" → „Freigabelink", „Owner" →
+  „Eigentümer", „Add credits" → „Guthaben aufladen". Produktbegriffe unübersetzt: `Blueprint`,
+  `Gadget`, `Gatekeeper`, `Agent`, `App`, `Admin`, `Dashboard`, `Deployment`, `Hook`, `Markdown`,
+  `AI Gateway`, `Workers AI`; Provider-Eigennamen (`Anthropic`, `OpenAI`, `Google`, `Ollama`).
+- Enum-Werte bleiben technisch englisch, Anzeige über Label-Maps: neue `BANNER_LABELS` in
+  `AdminPage.tsx` (`neutral`→„Neutral", `success`→„Erfolg", `warning`→„Warnung", `danger`→„Gefahr",
+  `brand`→„Marke"); `ACCENT_PRESETS`-Labels lokalisiert, Hex-Werte unverändert.
+- Ausnahmsweise übersetzt, weil direkt in UI (Toast/`setError`/Banner): `err.message`-Fallbacks in
+  allen Handlern (`ShareModal`, `AdminPage`, `AddModelModal`, `providers`, `billing/*`), der
+  `setPasswordError`-Fallback in `SettingsPage`, sowie der native `confirm(...)`-Text in
+  `providers.tsx` (Provider löschen).
+- Bewusst **nicht** übersetzt: der Dashboard-Navigationspfad im Cloudflare-API-Token-Hinweis
+  (`AddModelModal.tsx` „Workers AI > Use REST API > …") ist ein wörtliches Zitat der
+  Cloudflare-eigenen UI; alle `console.error`-Diagnosen; Enum-/Konfig-Werte (`themeMode`,
+  `BannerColor`, `AmbientGatekeeperMode`, `CollaboratorRole`), `localStorage`/Query-Keys.
+- `routes/profile.tsx` und `routes/admin.tsx` sind reine Route-Wrapper ohne Strings — in Scope,
+  aber ohne Änderung. Kompakte Relativzeit in `ShareModal` als „vor X Min./Std./Tg.".

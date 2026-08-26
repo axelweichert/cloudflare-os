@@ -39,12 +39,12 @@ export default function AutoApproveConfirmDialog({
         <div className="flex items-start justify-between gap-4 border-b border-kumo-line px-5 py-4">
           <div className="min-w-0">
             <Dialog.Title className="text-[15px] leading-5 font-medium tracking-[-0.3px] text-kumo-default">
-              Always approve “{actionLabel}”?
+              „{actionLabel}" immer genehmigen?
             </Dialog.Title>
             <Dialog.Description className="mt-1 text-[12px] leading-4 font-normal tracking-[-0.2px] text-kumo-subtle">
-              Future <span className="font-medium text-kumo-default">{actionLabel}</span> actions on{' '}
-              <span className="font-medium text-kumo-default">{resourceTitle}</span> will be applied
-              automatically, without asking for approval. This action will be applied now too.
+              Künftige <span className="font-medium text-kumo-default">{actionLabel}</span>-Aktionen auf{' '}
+              <span className="font-medium text-kumo-default">{resourceTitle}</span> werden automatisch
+              angewendet, ohne dich um Genehmigung zu bitten. Diese Aktion wird jetzt ebenfalls angewendet.
             </Dialog.Description>
           </div>
           <Dialog.Close
@@ -53,7 +53,7 @@ export default function AutoApproveConfirmDialog({
                 {...props}
                 className="!h-7 !w-7"
                 disabled={isProcessing}
-                aria-label="Close"
+                aria-label="Schließen"
               >
                 <X size={16} />
               </WorkshopIconButton>
@@ -65,7 +65,7 @@ export default function AutoApproveConfirmDialog({
           <Dialog.Close
             render={(props) => (
               <WorkshopButton {...props} className="!h-9" disabled={isProcessing}>
-                Cancel
+                Abbrechen
               </WorkshopButton>
             )}
           />
@@ -75,7 +75,7 @@ export default function AutoApproveConfirmDialog({
             disabled={isProcessing}
             className="!h-9 min-w-[64px]"
           >
-            {isProcessing ? 'Enabling...' : 'Always approve'}
+            {isProcessing ? 'Wird aktiviert …' : 'Immer genehmigen'}
           </WorkshopButton>
         </div>
       </Dialog>

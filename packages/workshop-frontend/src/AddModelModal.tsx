@@ -29,7 +29,7 @@ const API_TOKEN_PLACEHOLDERS: Record<AiModelProvider, string> = {
   anthropic: 'sk-ant-...',
   openai: 'sk-...',
   google: 'AIza...',
-  cloudflare: 'Cloudflare API token',
+  cloudflare: 'Cloudflare-API-Token',
   ollama: '(optional)',
 }
 
@@ -81,7 +81,7 @@ function buildOptions(gatewayMode: boolean, enabledProviders: Set<string> | null
 
     options.push({
       value: encodeSelection(provider),
-      label: `Other ${PROVIDER_LABELS[provider] || provider}...`,
+      label: `Anderes ${PROVIDER_LABELS[provider] || provider}-Modell…`,
       provider,
     })
   }
@@ -151,12 +151,12 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
     const newErrors: Record<string, string> = {}
 
     if (!selection) {
-      newErrors.selection = gatewayMode ? 'Please select a provider' : 'Please select a model'
+      newErrors.selection = gatewayMode ? 'Bitte wähle einen Anbieter aus' : 'Bitte wähle ein Modell aus'
     }
 
     if (selection?.type === 'custom') {
-      if (!modelId.trim()) newErrors.modelId = 'Please enter the model ID'
-      if (!displayName.trim()) newErrors.displayName = 'Please enter a display name'
+      if (!modelId.trim()) newErrors.modelId = 'Bitte gib die Modell-ID ein'
+      if (!displayName.trim()) newErrors.displayName = 'Bitte gib einen Anzeigenamen ein'
     }
 
     const isOllama = selection?.provider === 'ollama'
@@ -164,15 +164,15 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
     const showCredentials = !gatewayMode
 
     if (showCredentials && selection && !isOllama && !apiToken.trim()) {
-      newErrors.apiToken = 'Please enter your API token'
+      newErrors.apiToken = 'Bitte gib deinen API-Token ein'
     }
 
     if (showCredentials && isCloudflare && !accountId.trim()) {
-      newErrors.accountId = 'Please enter your Cloudflare account ID'
+      newErrors.accountId = 'Bitte gib deine Cloudflare-Konto-ID ein'
     }
 
     if (showCredentials && isOllama && !apiUrl.trim()) {
-      newErrors.apiUrl = 'Please enter the Ollama API URL'
+      newErrors.apiUrl = 'Bitte gib die Ollama-API-URL ein'
     }
 
     setErrors(newErrors)
@@ -203,11 +203,11 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
       }
 
       await authenticatedApi.addModel(profile, config)
-      toasts.add({ title: 'AI model added successfully', variant: 'success' })
+      toasts.add({ title: 'KI-Modell erfolgreich hinzugefügt', variant: 'success' })
       onSuccess()
     } catch (error: any) {
       console.error('Failed to add model:', error)
-      toasts.add({ title: 'Failed to add model', variant: 'error' })
+      toasts.add({ title: 'Modell konnte nicht hinzugefügt werden', variant: 'error' })
     } finally {
       setLoading(false)
     }
@@ -235,15 +235,15 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
     <Dialog.Root open={visible} onOpenChange={(open) => { if (!open) onCancel() }}>
       <Dialog className="responsive-dialog overflow-y-auto p-6" size="lg">
         <Dialog.Title className="text-lg font-semibold mb-4">
-          Add AI Model
+          KI-Modell hinzufügen
         </Dialog.Title>
 
         <div className="space-y-4">
           {/* Model / Provider selection */}
           <Select
-            label={gatewayMode ? 'Select Provider' : 'Select Model'}
+            label={gatewayMode ? 'Anbieter auswählen' : 'Modell auswählen'}
             className="w-full text-sm"
-            placeholder={gatewayMode ? 'Choose a provider...' : 'Choose an AI model...'}
+            placeholder={gatewayMode ? 'Anbieter wählen …' : 'KI-Modell wählen …'}
             value={selectValue}
             onValueChange={(v) => handleModelSelect(v as string)}
             error={errors.selection}
@@ -273,9 +273,9 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
           {showCustomFields && (
             <>
               <Input
-                label="Model ID"
-                placeholder={`e.g., ${example!.modelId}`}
-                description={`The model identifier as specified by the provider (e.g., '${example!.modelId}')`}
+                label="Modell-ID"
+                placeholder={`z. B. ${example!.modelId}`}
+                description={`Die vom Anbieter angegebene Modellkennung (z. B. '${example!.modelId}')`}
                 value={modelId}
                 onChange={(e) => { setModelId(e.target.value); setErrors(prev => ({ ...prev, modelId: '' })) }}
                 error={errors.modelId}
@@ -283,9 +283,9 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
               />
 
               <Input
-                label="Display Name"
-                placeholder={`e.g., ${example!.name}`}
-                description="Human-readable name shown in the UI"
+                label="Anzeigename"
+                placeholder={`z. B. ${example!.name}`}
+                description="Lesbarer Name, der in der Oberfläche angezeigt wird"
                 value={displayName}
                 onChange={(e) => { setDisplayName(e.target.value); setErrors(prev => ({ ...prev, displayName: '' })) }}
                 error={errors.displayName}
@@ -297,9 +297,9 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
           {/* Cloudflare account ID (the Workers AI REST endpoint is account-scoped) */}
           {showCredentials && isCloudflare && (
             <Input
-              label="Cloudflare Account ID"
-              placeholder="e.g., 0123456789abcdef0123456789abcdef"
-              description="The Cloudflare account to bill for Workers AI usage"
+              label="Cloudflare-Konto-ID"
+              placeholder="z. B. 0123456789abcdef0123456789abcdef"
+              description="Das Cloudflare-Konto, das für die Workers-AI-Nutzung abgerechnet wird"
               value={accountId}
               onChange={(e) => { setAccountId(e.target.value); setErrors(prev => ({ ...prev, accountId: '' })) }}
               error={errors.accountId}
@@ -310,14 +310,14 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
           {/* API Token */}
           {showCredentials && selection && (
             <SensitiveInput
-              label="API Token"
+              label="API-Token"
               placeholder={API_TOKEN_PLACEHOLDERS[selection.provider]}
               description={
                 isOllama
-                  ? 'Optional for local Ollama access'
+                  ? 'Optional für lokalen Ollama-Zugriff'
                   : isCloudflare
-                  ? 'An API token with Workers AI Read + Edit permissions (in the dashboard: Workers AI > Use REST API > Create a Workers AI API Token)'
-                  : `Your ${PROVIDER_LABELS[selection.provider]} API token for billing`
+                  ? 'Ein API-Token mit den Workers-AI-Berechtigungen „Read" + „Edit" (im Dashboard: Workers AI > Use REST API > Create a Workers AI API Token)'
+                  : `Dein ${PROVIDER_LABELS[selection.provider]}-API-Token für die Abrechnung`
               }
               value={apiToken}
               onValueChange={(v) => { setApiToken(v); setErrors(prev => ({ ...prev, apiToken: '' })) }}
@@ -329,9 +329,9 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
           {/* Ollama API URL (always visible for Ollama) */}
           {showCredentials && isOllama && (
             <Input
-              label="API URL"
+              label="API-URL"
               placeholder="http://localhost:11434"
-              description="URL of your Ollama server"
+              description="URL deines Ollama-Servers"
               value={apiUrl}
               onChange={(e) => { setApiUrl(e.target.value); setErrors(prev => ({ ...prev, apiUrl: '' })) }}
               error={errors.apiUrl}
@@ -345,12 +345,12 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
               open={advancedOpen}
               onOpenChange={setAdvancedOpen}
             >
-              <Collapsible.DefaultTrigger>Advanced Settings</Collapsible.DefaultTrigger>
+              <Collapsible.DefaultTrigger>Erweiterte Einstellungen</Collapsible.DefaultTrigger>
               <Collapsible.DefaultPanel>
                 <Input
-                  label="API URL"
+                  label="API-URL"
                   placeholder="https://..."
-                  description="Override the default API endpoint (useful for proxies like Cloudflare AI Gateway)"
+                  description="Überschreibt den Standard-API-Endpoint (nützlich für Proxys wie Cloudflare AI Gateway)"
                   value={apiUrl}
                   onChange={(e) => setApiUrl(e.target.value)}
                 />
@@ -363,7 +363,7 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
         <div className="mt-6 flex justify-end gap-2">
           <Dialog.Close render={(props) => (
             <Button variant="secondary" {...props} disabled={loading}>
-              Cancel
+              Abbrechen
             </Button>
           )} />
           <Button
@@ -372,7 +372,7 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
             loading={loading}
             disabled={!selection}
           >
-            Add Model
+            Modell hinzufügen
           </Button>
         </div>
       </Dialog>
