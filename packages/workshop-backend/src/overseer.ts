@@ -880,7 +880,7 @@ function actionRecordToLog(record: ActionRecord): ActionLogEntry {
       return {
         id: record.id,
         gatekeeperId,
-        resourceTitle: record.resourceTitle || "(title unavailable)",
+        resourceTitle: record.resourceTitle || "(Titel nicht verfügbar)",
         resourceUrl: record.resourceUrl,
         createdAt: record.createdAt,
         state: record.state,
@@ -891,7 +891,7 @@ function actionRecordToLog(record: ActionRecord): ActionLogEntry {
       return {
         id: record.id,
         gatekeeperId,
-        resourceTitle: record.resourceTitle || "(title unavailable)",
+        resourceTitle: record.resourceTitle || "(Titel nicht verfügbar)",
         resourceUrl: record.resourceUrl,
         createdAt: record.createdAt,
         appliedAt: record.appliedAt,
@@ -905,7 +905,7 @@ function actionRecordToLog(record: ActionRecord): ActionLogEntry {
       return {
         id: record.id,
         gatekeeperId,
-        resourceTitle: record.resourceTitle || "(title unavailable)",
+        resourceTitle: record.resourceTitle || "(Titel nicht verfügbar)",
         resourceUrl: record.resourceUrl,
         createdAt: record.createdAt,
         state: record.state,
@@ -6087,7 +6087,7 @@ class OverseerImpl implements AgentHooks {
       output: gadget.output,
       bindings: this.visibleBindings(gadget, forChatId).map(([name, edge]) => ({
         name,
-        title: this.storage.gatekeepers.get(edge.target)?.resourceTitle || "(title unavailable)",
+        title: this.storage.gatekeepers.get(edge.target)?.resourceTitle || "(Titel nicht verfügbar)",
         target: edge.target,
       })),
     }));
@@ -6591,7 +6591,7 @@ class OverseerImpl implements AgentHooks {
       let gk = this.storage.gatekeepers.get(target);
       if (!gk) continue;
       let info: SeedBindingInfo =
-          {name, target, title: gk.resourceTitle || "(untitled resource)", isGadget: false};
+          {name, target, title: gk.resourceTitle || "(unbenannte Ressource)", isGadget: false};
       if (ambientSet.has(target)) info.catalog = catalogs.get(target) ?? null;
       result.push(info);
     }
@@ -6609,7 +6609,7 @@ class OverseerImpl implements AgentHooks {
     return [{
       selection: {builtin: true, commandId: "compact"},
       name: "compact",
-      description: "Summarize older context while preserving recent messages.",
+      description: "Fasst älteren Kontext zusammen und behält die letzten Nachrichten.",
       providerLabel: resolveSiteName((await readAdminConfig(this.env)).siteName),
     }, ...await collectSlashCommands(sources)];
   }
@@ -8350,7 +8350,7 @@ export class OverseerDurableObject extends DurableObject<Cloudflare.Env> {
     input: ExternalMessageSubmitInput,
   ): Promise<SubmitExternalMessageResult> {
     if (!input.prompt.trim()) {
-      return { accepted: false, message: "Please include a prompt." };
+      return { accepted: false, message: "Bitte gib einen Prompt an." };
     }
 
     // Resolve the caller.
@@ -8361,7 +8361,7 @@ export class OverseerDurableObject extends DurableObject<Cloudflare.Env> {
       let siteName = resolveSiteName((await readAdminConfig(this.impl.env)).siteName);
       return {
         accepted: false,
-        message: `Please create a ${siteName} account to continue.`,
+        message: `Bitte erstelle ein ${siteName}-Konto, um fortzufahren.`,
       };
     }
 
@@ -8382,14 +8382,14 @@ export class OverseerDurableObject extends DurableObject<Cloudflare.Env> {
       if (this.impl.storage.prohibitAllSharing.get()) {
         return {
           accepted: false,
-          message: "This workspace has sharing disabled, so only its owner can access it.",
+          message: "Für diesen Arbeitsbereich ist die Freigabe deaktiviert, daher kann nur sein Eigentümer darauf zugreifen.",
         };
       }
       let role = (await this.impl.getSharingManager()).getEffectiveRole(callerProfile.id);
       if (role !== "build") {
         return {
           accepted: false,
-          message: "You do not have access to interact with this workspace through its agent.",
+          message: "Du hast keinen Zugriff, um mit diesem Arbeitsbereich über seinen Agenten zu interagieren.",
         };
       }
     }
@@ -8423,7 +8423,7 @@ export class OverseerDurableObject extends DurableObject<Cloudflare.Env> {
       let siteName = resolveSiteName((await readAdminConfig(this.impl.env)).siteName);
       return {
         accepted: false,
-        message: `Your ${siteName} account needs an AI model configured before it can respond.`,
+        message: `Für dein ${siteName}-Konto muss ein KI-Modell konfiguriert sein, bevor es antworten kann.`,
       };
     }
 
@@ -9648,7 +9648,7 @@ class OverseerClientInterface extends RpcTarget implements Overseer {
         // resourceTitle is a denormalized cache of the gatekeeper's describe().title, populated in a
         // second step after the record is first persisted (see addGatekeeper). It can be absent if
         // that describe() failed, or for records predating the field, so fall back to a placeholder.
-        resourceTitle: gk.resourceTitle || "(title unavailable)",
+        resourceTitle: gk.resourceTitle || "(Titel nicht verfügbar)",
         vendorId: gk.creationSpec?.type === "gatekeeper" ? gk.creationSpec.vendorId : undefined,
         actionKind,
         alreadyEnabled:
@@ -10791,7 +10791,7 @@ class GadgetClientImpl extends RpcTarget implements GadgetClient {
       return {
         name,
         target: edge.target,
-        resourceTitle: gatekeeper?.resourceTitle || "(title unavailable)",
+        resourceTitle: gatekeeper?.resourceTitle || "(Titel nicht verfügbar)",
         vendorId: gatekeeper?.creationSpec?.type === "gatekeeper"
             ? gatekeeper.creationSpec.vendorId
             : undefined,
@@ -11091,7 +11091,7 @@ class GatekeeperClientImpl<Session extends RpcCompatible<Session>>
   }
 
   async getTitle(): Promise<string> {
-    return this.#getRecord().resourceTitle || "(title unavailable)";
+    return this.#getRecord().resourceTitle || "(Titel nicht verfügbar)";
   }
 
   async setTitle(title: string): Promise<void> {

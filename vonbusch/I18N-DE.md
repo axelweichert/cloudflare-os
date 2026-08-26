@@ -109,12 +109,11 @@ Umgebende Beschreibungstexte werden aber übersetzt.
 - ✅ Einstellungen, Profil, Admin, Abrechnung & Modelle (`SettingsPage`, `routes/profile`,
   `routes/admin`, `AdminPage`, `routes/providers`, `AddModelModal`, `components/billing/*`,
   `ShareModal`, `AutoApproveConfirmDialog`, `HookToggle`, `DeleteConfirmationDialog`) — [VON-1894]
-- ⏳ Einzig verbleibende nutzerseitige Fläche: Chat-/Agent-Tool-Oberfläche des Backends
-  (Tool-`label`s, `web-fetch.ts`-Fehlertexte, `overseer.ts` `/compact`, Fallback-Titel,
-  `external-message-gateway`-Antworten) — ausgelagert nach [VON-1896]. Alle Frontend-Slices
-  (App-Shell, Auth/Onboarding, Start/Chat/Arbeitsbereich, Gadget-Editor, Blueprints/Entdecken,
-  Verbindungen/Gatekeeper, Einstellungen/Profil/Admin/Abrechnung) und die nutzersichtbaren
-  Backend-/Gatekeeper-Texte sind erledigt.
+- ✅ Chat-/Agent-Tool-Oberfläche des Backends (`web-fetch.ts`-Fehlertexte, webFetch-Beobachtungskarte,
+  `overseer.ts` `/compact`-Beschreibung, Fallback-Titel, `receiveExternalMessage`-Antworten) —
+  [VON-1896]. Damit sind alle Frontend-Slices (App-Shell, Auth/Onboarding, Start/Chat/Arbeitsbereich,
+  Gadget-Editor, Blueprints/Entdecken, Verbindungen/Gatekeeper, Einstellungen/Profil/Admin/Abrechnung)
+  und die nutzersichtbaren Backend-/Gatekeeper-Texte erledigt.
 
 ### Anmerkungen zu [VON-1895]
 
@@ -157,6 +156,47 @@ Umgebende Beschreibungstexte werden aber übersetzt.
   (z. B. „Read file"), `web-fetch.ts` Tool-Fehlertexte, `overseer.ts` `/compact`-Beschreibung und
   Fallback-Titel, `external-message-gateway`-Antworten. Getrennt, weil pro String der Chat-Render-Pfad
   bestätigt und modellseitiger Schema-Text (Tool-`description`s) ausgeschlossen werden muss.
+
+### Anmerkungen zu [VON-1896]
+
+Ansatz dieser Aufgabe: **pro String den Chat-Render-Pfad im Frontend bestätigt**, bevor übersetzt
+wurde (modellseitiger Schema-Text und reine Logs bleiben unangetastet).
+
+- **Übersetzt (Render-Pfad bestätigt):**
+  - `web-fetch.ts` Tool-Fehlertexte (`Ungültige URL`, `Nur https://-URLs …`, `URLs mit eingebetteten
+    Zugangsdaten …`, Content-Signal-Meldung). Diese werden geworfen → in `agent.ts` `webFetch.execute`
+    per `toolCallNotes.set(id, {error: toolErrorText(e)})` als `AiToolCall.error` persistiert und im
+    Frontend in `ToolCallDetails` (rotes Fehler-Panel, `tc.error`) gerendert. Gleiche Ausnahme zur
+    „`throw` = Dev-Diagnose"-Regel wie [VON-1895] (Fehler wird zum Browser serialisiert).
+  - `agent.ts` webFetch-**Beobachtungskarte** (`recordAgentObservation`): `title` `Fetched {host}` →
+    `Abgerufen: {host}` (konsistent mit dem Frontend-Verb „Abgerufen" aus `getToolCallSummary`),
+    `resourceTitle` `Web fetch:` → `Web-Abruf:`, sowie die Beschreibungs-Klartexte (`(nicht angegeben)`,
+    `Textkörper: … Zeichen`, `, gekürzt`). Gerendert in `ObservationDetails`
+    (`log.description.title`/`.description` via `MarkdownMessage`) und `NestedObservationRow`. HTTP-Token
+    (`GET`, `Status`, `Content-Type`, URL) bewusst belassen.
+  - `overseer.ts` `/compact`-Beschreibung (`SlashCommandChoice.description`, gerendert im
+    `SlashCommandPicker`/Befehlsmenü). Der Command-`name` `compact` (Slash-Token `/compact`) bleibt technisch.
+  - `overseer.ts` Fallback-Titel `"(title unavailable)"` → `"(Titel nicht verfügbar)"` (7×) und
+    `"(untitled resource)"` → `"(unbenannte Ressource)"` (1×) — beides `resourceTitle`-Platzhalter,
+    die in Aktions-/Gatekeeper-/Beobachtungskarten sichtbar sind.
+  - `overseer.ts` `receiveExternalMessage`-Ablehnungstexte (`SubmitExternalMessageResult.message`).
+    Der Shared-Typ dokumentiert das Feld ausdrücklich als „User-facing explanation of an actionable
+    submission rejection"; Zustellung erfolgt extern über den Chat-Gateway-Worker — Firmensprache DE.
+- **Bewusst NICHT übersetzt (Render-Pfad widerlegt / modellseitig / Dev-Diagnose):**
+  - `agent.ts` Tool-**`label`s** (`"Read file"`, `"Write file"`, …). Diese sind **nicht** im
+    Live-Render-Pfad: die Chat-Tool-Call-Karten leiten ihre (bereits deutschen) Labels aus
+    `getToolCallSummary(tc)` in `ChatInterface.tsx` ab, verschlüsselt über `tc.toolName` (erledigt in
+    [VON-1890]). `AiToolCall` trägt gar kein `label`-Feld (Backend serialisiert es nie zum Client);
+    `pi-agent-core` konsumiert das `AgentTool.label` nicht (kein Modell-Schema, keine UI). Die einzigen
+    Komponenten, die `.label` lesen (`components/chat/ToolCallCard.tsx`, `ChatMessage.tsx`), sind
+    Upstream-Demo-Bausteine, die aus Mock-Daten (`data/chat.ts`) gespeist werden — nicht die Live-App.
+    Übersetzung wäre toter Aufwand → gemäß Auftrag zurückgestellt statt geraten.
+  - `web-fetch.ts` `Fetch timed out after …ms` und `Markdown conversion failed: …` — technisch/
+    diagnostisch geprägt, außerhalb der kuratierten Trace-Scope-Liste; belassen.
+  - `external-message-gateway.ts` `"ExternalMessageGateway source prop is required."` — programmatische
+    Konfig-Invariante (fehlendes Binding-Prop), keine Nutzer-Meldung.
+  - Alle gepaarten `*_TOOL_DESCRIPTION`-Konstanten und Parameter-`description`s (modellseitiger
+    Tool-Schema-Text) sowie `console.*`/Logs — unverändert.
 
 ### Anmerkungen zu [VON-1891]
 

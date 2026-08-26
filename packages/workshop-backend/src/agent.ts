@@ -2536,16 +2536,16 @@ export async function runAgent(
           let host = new URL(result.finalUrl).host;
           await hooks.recordAgentObservation(
               chatId,
-              `Web fetch: ${host}`,
+              `Web-Abruf: ${host}`,
               result.finalUrl,
               {
-                title: `Fetched ${host}`,
+                title: `Abgerufen: ${host}`,
                 description:
                     `GET \`${result.finalUrl}\`\n\n` +
                     `Status: ${result.status}\n` +
-                    `Content-Type: \`${result.contentType || "(unspecified)"}\`\n` +
-                    `Body: ${result.body.length} chars` +
-                    (result.truncated ? ", truncated" : ""),
+                    `Content-Type: \`${result.contentType || "(nicht angegeben)"}\`\n` +
+                    `Textkörper: ${result.body.length} Zeichen` +
+                    (result.truncated ? ", gekürzt" : ""),
               });
 
           let formatted = formatWebFetchResult(result);
