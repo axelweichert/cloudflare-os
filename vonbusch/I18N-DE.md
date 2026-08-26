@@ -109,7 +109,12 @@ Umgebende Beschreibungstexte werden aber übersetzt.
 - ✅ Einstellungen, Profil, Admin, Abrechnung & Modelle (`SettingsPage`, `routes/profile`,
   `routes/admin`, `AdminPage`, `routes/providers`, `AddModelModal`, `components/billing/*`,
   `ShareModal`, `AutoApproveConfirmDialog`, `HookToggle`, `DeleteConfirmationDialog`) — [VON-1894]
-- ⏳ Restliche Oberflächen: siehe Kind-Issues unter [VON-1888].
+- ⏳ Einzig verbleibende nutzerseitige Fläche: Chat-/Agent-Tool-Oberfläche des Backends
+  (Tool-`label`s, `web-fetch.ts`-Fehlertexte, `overseer.ts` `/compact`, Fallback-Titel,
+  `external-message-gateway`-Antworten) — ausgelagert nach [VON-1896]. Alle Frontend-Slices
+  (App-Shell, Auth/Onboarding, Start/Chat/Arbeitsbereich, Gadget-Editor, Blueprints/Entdecken,
+  Verbindungen/Gatekeeper, Einstellungen/Profil/Admin/Abrechnung) und die nutzersichtbaren
+  Backend-/Gatekeeper-Texte sind erledigt.
 
 ### Anmerkungen zu [VON-1895]
 
