@@ -698,6 +698,9 @@ importers:
       '@gadgets/workshop-shared':
         specifier: workspace:*
         version: link:../workshop-shared
+      capnweb:
+        specifier: 'catalog:'
+        version: 0.12.0
     devDependencies:
       tsx:
         specifier: ^4.23.12

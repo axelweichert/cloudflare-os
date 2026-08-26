@@ -15,11 +15,13 @@
 // Nur Klassen und der Default-Handler dürfen aus einem Worker-Entry-Modul exportiert werden.
 
 import { DurableObject, WorkerEntrypoint, type RpcStub, RpcTarget } from "cloudflare:workers";
+import { RpcStub as NativeRpcStub } from "capnweb";
 import type {
-  AccountDescription, ActionKind, ApprovalQueue, Gatekeeper, GatekeeperConnectCallback,
-  GatekeeperUser, GatekeeperUserVerifier, ResourceConfiguratorFrame, ResourceDescription,
-  SupportedResource, VendorDescription,
+  AccountDescription, ActionKind, AppUiContext, ApprovalQueue, Gatekeeper, GatekeeperConnectCallback,
+  GatekeeperUiFrame, GatekeeperUser, GatekeeperUserVerifier, ResourceConfiguratorFrame,
+  ResourceDescription, SupportedResource, VendorDescription,
 } from "@gadgets/workshop-shared/gatekeeper";
+import { MailboxManagementApi, buildMailboxAppHtml, buildMailboxAppView } from "./app-ui";
 import {
   McpMailboxBackend, type MailboxBackend, type MailboxDraft, type MailboxMessage, type MailboxThread,
 } from "./mailbox-backend";
@@ -160,7 +162,29 @@ export class MailboxAccount
       displayName: "vonBusch Mailbox",
       uniqueName: this.ctx.props.accountId,
       avatar: AVATAR,
+      // Macht die Mailbox in der Board-UI als oeffenbare App-Kachel nutzbar (VON-1845). Ohne
+      // providesUi bleibt der Vendor nur ein gebundener Connector, nicht bedienbar.
+      providesUi: { title: "vonBusch Mailbox", icon: AVATAR },
     };
+  }
+
+  /**
+   * Read-only Management-Frame (VON-1845): leitet Sicherheits-/Freigabe-Haltung serverseitig aus der
+   * Env ab (ACL-Metadaten, Backend-Modus) und backt sie ins netzisolierte iframe-HTML. Der
+   * Erst-Render braucht kein Browser-capnweb; die mitgelieferte `ui`-Capability
+   * (MailboxManagementApi) ermoeglicht spaeteren Live-Refresh. Zeigt bewusst nur Metadaten — nie
+   * ACL-Identitaeten oder Tokens.
+   */
+  async startAppUi(context: AppUiContext): Promise<GatekeeperUiFrame> {
+    const view = buildMailboxAppView({
+      aclRaw: this.env.MAILBOX_ACL,
+      isAdmin: context.isAdmin,
+      hasService: !!this.env.MAIL_SERVICE,
+      hasToken: !!this.env.MAILBOX_UPSTREAM_TOKEN,
+      upstreamUrl: this.env.UPSTREAM_MCP_URL,
+    });
+    const ui = new NativeRpcStub(new MailboxManagementApi(view));
+    return { iframeHtml: buildMailboxAppHtml(view), ui };
   }
 
   async getSupportedResources(): Promise<SupportedResource[]> {
