@@ -62,7 +62,7 @@ export default function Header() {
               activeProps={{ className: navLinkActiveClass }}
               activeOptions={{ exact: true }}
             >
-              Home
+              Start
             </Link>
             <Link
               to="/gatekeepers"
@@ -70,14 +70,14 @@ export default function Header() {
               activeProps={{ className: navLinkActiveClass }}
               activeOptions={{ exact: true }}
             >
-              Gatekeepers
+              Torwächter
             </Link>
             <Link
               to="/explore"
               className={navLinkClass}
               activeProps={{ className: navLinkActiveClass }}
             >
-              Explore
+              Entdecken
             </Link>
             {gatekeeperApps.map((app) => (
               <Link
@@ -125,7 +125,7 @@ export default function Header() {
               activeProps={{ className: navLinkActiveClass }}
               activeOptions={{ exact: true }}
             >
-              Home
+              Start
             </Link>
             <Link
               to="/gatekeepers"
@@ -134,7 +134,7 @@ export default function Header() {
               activeProps={{ className: navLinkActiveClass }}
               activeOptions={{ exact: true }}
             >
-              Gatekeepers
+              Torwächter
             </Link>
             <Link
               to="/explore"

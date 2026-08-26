@@ -99,7 +99,7 @@ export default function BlueprintModal({ open, onClose, overseer, gadget, metada
       setBlueprints(await overseer.listBlueprints())
     } catch (err) {
       console.error('Failed to load blueprints:', err)
-      toasts.add({ title: 'Blueprints konnten nicht geladen werden', variant: 'error' })
+      toasts.add({ title: 'Baupläne konnten nicht geladen werden', variant: 'error' })
     } finally {
       setLoading(false)
     }
@@ -205,7 +205,7 @@ export default function BlueprintModal({ open, onClose, overseer, gadget, metada
         newDescription.trim() || undefined,
         screenshot,
       )
-      toasts.add({ title: 'Blueprint erstellt.', variant: 'success' })
+      toasts.add({ title: 'Bauplan erstellt.', variant: 'success' })
       setFormMode('list')
       setNewTitle(metadata.title)
       setNewDescription('')
@@ -214,7 +214,7 @@ export default function BlueprintModal({ open, onClose, overseer, gadget, metada
       setClearScreenshot(false)
       await loadBlueprints()
     } catch (err: any) {
-      setCreateError(err.message || 'Blueprint konnte nicht erstellt werden.')
+      setCreateError(err.message || 'Bauplan konnte nicht erstellt werden.')
     } finally {
       setCreating(false)
     }
@@ -244,7 +244,7 @@ export default function BlueprintModal({ open, onClose, overseer, gadget, metada
         updateBindings: true,
         screenshot,
       })
-      toasts.add({ title: 'Blueprint aktualisiert.', variant: 'success' })
+      toasts.add({ title: 'Bauplan aktualisiert.', variant: 'success' })
       setFormMode('list')
       setEditingBlueprint(null)
       setNewScreenshotBlob(null)
@@ -252,7 +252,7 @@ export default function BlueprintModal({ open, onClose, overseer, gadget, metada
       setClearScreenshot(false)
       await loadBlueprints()
     } catch (err: any) {
-      setCreateError(err.message || 'Blueprint konnte nicht aktualisiert werden.')
+      setCreateError(err.message || 'Bauplan konnte nicht aktualisiert werden.')
     } finally {
       setCreating(false)
     }
@@ -262,11 +262,11 @@ export default function BlueprintModal({ open, onClose, overseer, gadget, metada
     setDeletingId(id)
     try {
       await overseer.deleteBlueprint(id)
-      toasts.add({ title: 'Blueprint gelöscht.', variant: 'success' })
+      toasts.add({ title: 'Bauplan gelöscht.', variant: 'success' })
       setConfirmingDeleteId(null)
       await loadBlueprints()
     } catch (err: any) {
-      toasts.add({ title: err.message || 'Blueprint konnte nicht gelöscht werden.', variant: 'error' })
+      toasts.add({ title: err.message || 'Bauplan konnte nicht gelöscht werden.', variant: 'error' })
     } finally {
       setDeletingId(null)
     }
@@ -284,13 +284,13 @@ export default function BlueprintModal({ open, onClose, overseer, gadget, metada
             <div className="flex min-w-0 items-start gap-3">
               <div className="min-w-0">
               <Dialog.Title className="text-[17px] leading-6 font-medium tracking-[-0.35px] text-kumo-default">
-                {formMode === 'create' ? 'Blueprint erstellen' : formMode === 'edit' ? 'Blueprint bearbeiten' : 'Blueprints'}
+                {formMode === 'create' ? 'Bauplan erstellen' : formMode === 'edit' ? 'Bauplan bearbeiten' : 'Baupläne'}
               </Dialog.Title>
               <Dialog.Description className="mt-1 text-[13px] leading-[18px] font-normal tracking-[-0.25px] text-kumo-subtle">
                 {formMode === 'create'
-                  ? 'Beschreibe, was Nutzer erhalten, wenn sie mit diesem Blueprint starten.'
+                  ? 'Beschreibe, was Nutzer erhalten, wenn sie mit diesem Bauplan starten.'
                   : formMode === 'edit'
-                    ? 'Aktualisiere Details, Screenshot und Verbindungshinweise für diesen Blueprint.'
+                    ? 'Aktualisiere Details, Screenshot und Verbindungshinweise für diesen Bauplan.'
                     : 'Mache aus diesem Gadget einen wiederverwendbaren Ausgangspunkt.'}
               </Dialog.Description>
               </div>
@@ -314,14 +314,14 @@ export default function BlueprintModal({ open, onClose, overseer, gadget, metada
                   <div className="space-y-3">
                     <WorkshopInput
                       placeholder="Titel"
-                      aria-label="Blueprint-Titel"
+                      aria-label="Bauplan-Titel"
                       value={newTitle}
                       onChange={(e) => setNewTitle(e.target.value)}
                       className="w-full"
                     />
                     <WorkshopInputArea
                       placeholder="Beschreibung (optional)"
-                      aria-label="Blueprint-Beschreibung"
+                      aria-label="Bauplan-Beschreibung"
                       value={newDescription}
                       onChange={(e) => setNewDescription(e.target.value)}
                       rows={3}
@@ -376,7 +376,7 @@ export default function BlueprintModal({ open, onClose, overseer, gadget, metada
                         <div className="mt-3 overflow-hidden rounded-lg border border-kumo-line bg-kumo-tint">
                           <img
                             src={screenshotPreviewUrl}
-                            alt="Vorschau des Blueprint-Screenshots"
+                            alt="Vorschau des Bauplan-Screenshots"
                             className="max-h-[320px] w-full object-contain"
                           />
                         </div>
@@ -511,16 +511,16 @@ export default function BlueprintModal({ open, onClose, overseer, gadget, metada
                       onUpdateCode={async () => {
                         try {
                           await overseer.updateBlueprint(bp.id, { updateCode: true })
-                          toasts.add({ title: 'Blueprint auf aktuellen Code aktualisiert.', variant: 'success' })
+                          toasts.add({ title: 'Bauplan auf aktuellen Code aktualisiert.', variant: 'success' })
                           loadBlueprints()
                         } catch (err: any) {
-                          toasts.add({ title: err.message || 'Blueprint konnte nicht aktualisiert werden.', variant: 'error' })
+                          toasts.add({ title: err.message || 'Bauplan konnte nicht aktualisiert werden.', variant: 'error' })
                         }
                       }}
                       onRetryPublish={async () => {
                         try {
                           await overseer.retryBlueprintPublish(bp.id)
-                          toasts.add({ title: 'Blueprint erfolgreich veröffentlicht.', variant: 'success' })
+                          toasts.add({ title: 'Bauplan erfolgreich veröffentlicht.', variant: 'success' })
                           loadBlueprints()
                         } catch (err: any) {
                           toasts.add({ title: err.message || 'Erneuter Versuch fehlgeschlagen.', variant: 'error' })
@@ -685,7 +685,7 @@ function BlueprintRow({
             type="button"
             onClick={onStartEdit}
             className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md bg-transparent text-kumo-subtle transition-colors hover:bg-kumo-tint hover:text-kumo-default"
-            aria-label="Blueprint bearbeiten"
+            aria-label="Bauplan bearbeiten"
           >
             <Pencil size={13} />
           </button>
@@ -693,7 +693,7 @@ function BlueprintRow({
             type="button"
             onClick={onStartDelete}
             className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md bg-transparent text-kumo-subtle transition-colors hover:bg-kumo-danger-tint hover:text-kumo-danger"
-            aria-label="Blueprint löschen"
+            aria-label="Bauplan löschen"
           >
             <Trash size={13} />
           </button>

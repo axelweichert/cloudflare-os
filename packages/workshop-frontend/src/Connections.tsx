@@ -333,10 +333,10 @@ export default function Connections({ overseer, gadget, chatId, authenticatedApi
                             </WorkshopIconButton>
                           </Tooltip>
                           {!isPending && (
-                            <Tooltip content="Blueprint-Einstellungen bearbeiten" asChild>
+                            <Tooltip content="Bauplan-Einstellungen bearbeiten" asChild>
                               <WorkshopIconButton
                                 onClick={() => setAnnotationTarget(gk)}
-                                aria-label="Blueprint-Einstellungen bearbeiten"
+                                aria-label="Bauplan-Einstellungen bearbeiten"
                               >
                                 <Blueprint size={14} />
                               </WorkshopIconButton>
@@ -482,7 +482,7 @@ export default function Connections({ overseer, gadget, chatId, authenticatedApi
         gadget={gadget}
         onClose={() => setAnnotationTarget(null)}
         onSaved={() => {
-          toasts.add({ title: 'Blueprint-Einstellungen gespeichert.', variant: 'success' })
+          toasts.add({ title: 'Bauplan-Einstellungen gespeichert.', variant: 'success' })
           setAnnotationTarget(null)
         }}
       />

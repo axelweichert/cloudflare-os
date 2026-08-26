@@ -106,7 +106,7 @@ export default function BlueprintLandingPage({ rpcStub }: Props) {
         setNotFound(true)
       }
     }).catch(err => {
-      setError(err.message || 'Blueprint konnte nicht geladen werden.')
+      setError(err.message || 'Bauplan konnte nicht geladen werden.')
     }).finally(() => {
       setLoading(false)
     })
@@ -570,7 +570,7 @@ export default function BlueprintLandingPage({ rpcStub }: Props) {
       let metadata = await overseer.getMetadata()
       window.location.href = `/workspace/${metadata.id}`
     } catch (err: any) {
-      setError(err.message || 'Gadget konnte nicht aus dem Blueprint erstellt werden.')
+      setError(err.message || 'Gadget konnte nicht aus dem Bauplan erstellt werden.')
     } finally {
       overseer.then(stub => stub[Symbol.dispose]()).catch(() => {})
       setCreating(false)
@@ -587,13 +587,13 @@ export default function BlueprintLandingPage({ rpcStub }: Props) {
         () => rpcStub.downloadBlueprint(id),
         makeBlueprintFilename(blueprint.metadata.title, blueprint.metadata.version),
         {
-          description: 'Gadget Blueprint',
+          description: 'Gadget-Bauplan',
           contentType: 'application/octet-stream',
           extension: BLUEPRINT_ARCHIVE_EXTENSION,
         },
       )
     } catch (err: any) {
-      setError(err.message || 'Blueprint konnte nicht heruntergeladen werden.')
+      setError(err.message || 'Bauplan konnte nicht heruntergeladen werden.')
     } finally {
       setDownloading(false)
     }
@@ -611,7 +611,7 @@ export default function BlueprintLandingPage({ rpcStub }: Props) {
     } catch (err: any) {
       console.error('Failed to update featured status:', err)
       toasts.add({
-        title: nextFeatured ? 'Blueprint konnte nicht hervorgehoben werden' : 'Hervorhebung des Blueprints konnte nicht aufgehoben werden',
+        title: nextFeatured ? 'Bauplan konnte nicht hervorgehoben werden' : 'Hervorhebung des Bauplans konnte nicht aufgehoben werden',
         variant: 'error',
       })
     } finally {
@@ -636,7 +636,7 @@ export default function BlueprintLandingPage({ rpcStub }: Props) {
         setIsInLibrary(true)
         setIsUploadedBlueprint(false)
       }
-      toasts.add({ title: nextPinned ? 'Blueprint favorisiert' : 'Blueprint aus Favoriten entfernt', variant: 'success' })
+      toasts.add({ title: nextPinned ? 'Bauplan favorisiert' : 'Bauplan aus Favoriten entfernt', variant: 'success' })
     } catch (err) {
       console.error('Failed to update blueprint pin:', err)
       toasts.add({ title: 'Favoritenstatus konnte nicht aktualisiert werden', variant: 'error' })
@@ -661,10 +661,10 @@ export default function BlueprintLandingPage({ rpcStub }: Props) {
     try {
       await authenticatedApi.addBlueprintToLibrary(id)
       setIsInLibrary(true)
-      toasts.add({ title: 'Blueprint zur Bibliothek hinzugefügt', variant: 'success' })
+      toasts.add({ title: 'Bauplan zur Bibliothek hinzugefügt', variant: 'success' })
     } catch (err) {
       console.error('Failed to add blueprint to library:', err)
-      toasts.add({ title: 'Blueprint konnte nicht zur Bibliothek hinzugefügt werden', variant: 'error' })
+      toasts.add({ title: 'Bauplan konnte nicht zur Bibliothek hinzugefügt werden', variant: 'error' })
     } finally {
       setAddingToLibrary(false)
     }
@@ -678,17 +678,17 @@ export default function BlueprintLandingPage({ rpcStub }: Props) {
       await authenticatedApi.removeBlueprintFromLibrary(id)
       if (isUploadedBlueprint) {
         setShowDeleteConfirm(false)
-        toasts.add({ title: 'Blueprint gelöscht', variant: 'success' })
+        toasts.add({ title: 'Bauplan gelöscht', variant: 'success' })
         navigate({ to: '/' })
       } else {
         setIsInLibrary(false)
         setIsPinned(false)
-        toasts.add({ title: 'Blueprint aus Bibliothek entfernt', variant: 'success' })
+        toasts.add({ title: 'Bauplan aus Bibliothek entfernt', variant: 'success' })
       }
     } catch (err) {
       console.error('Failed to remove blueprint from library:', err)
       toasts.add({
-        title: isUploadedBlueprint ? 'Blueprint konnte nicht gelöscht werden' : 'Blueprint konnte nicht aus der Bibliothek entfernt werden',
+        title: isUploadedBlueprint ? 'Bauplan konnte nicht gelöscht werden' : 'Bauplan konnte nicht aus der Bibliothek entfernt werden',
         variant: 'error',
       })
     } finally {
@@ -711,11 +711,11 @@ export default function BlueprintLandingPage({ rpcStub }: Props) {
         await authenticatedApi.deleteOrphanedBlueprint(id)
       }
       setShowDeleteConfirm(false)
-      toasts.add({ title: 'Blueprint gelöscht', variant: 'success' })
+      toasts.add({ title: 'Bauplan gelöscht', variant: 'success' })
       navigate({ to: '/' })
     } catch (err) {
       console.error('Failed to delete blueprint:', err)
-      toasts.add({ title: 'Blueprint konnte nicht gelöscht werden', variant: 'error' })
+      toasts.add({ title: 'Bauplan konnte nicht gelöscht werden', variant: 'error' })
     } finally {
       overseer?.then(stub => stub[Symbol.dispose]()).catch(() => {})
       setRemovingFromLibrary(false)
@@ -727,14 +727,14 @@ export default function BlueprintLandingPage({ rpcStub }: Props) {
   }
 
   if (loading || authLoading) {
-    return <BlueprintStatePage title="Blueprint wird geladen …" loading />
+    return <BlueprintStatePage title="Bauplan wird geladen …" loading />
   }
 
   if (notFound) {
     return (
       <BlueprintStatePage
-        title="Blueprint nicht gefunden"
-        message="Dieser Blueprint wurde möglicherweise entfernt oder der Link ist falsch."
+        title="Bauplan nicht gefunden"
+        message="Dieser Bauplan wurde möglicherweise entfernt oder der Link ist falsch."
         actionLabel="Zurück zu Entdecken"
         onAction={() => navigate({ to: '/explore' })}
       />
@@ -744,8 +744,8 @@ export default function BlueprintLandingPage({ rpcStub }: Props) {
   if (!blueprint) {
     return (
       <BlueprintStatePage
-        title="Blueprint konnte nicht geladen werden"
-        message={error || 'Blueprint konnte nicht geladen werden.'}
+        title="Bauplan konnte nicht geladen werden"
+        message={error || 'Bauplan konnte nicht geladen werden.'}
         actionLabel="Zurück zu Entdecken"
         onAction={() => navigate({ to: '/explore' })}
       />
@@ -840,7 +840,7 @@ export default function BlueprintLandingPage({ rpcStub }: Props) {
               <Tooltip content={isAuthenticated ? 'Zur Bibliothek hinzufügen' : 'Zum Hinzufügen zur Bibliothek anmelden'} asChild>
                 <button
                   type="button"
-                  aria-label={isAuthenticated ? 'Blueprint zur Bibliothek hinzufügen' : 'Zum Hinzufügen des Blueprints zur Bibliothek anmelden'}
+                  aria-label={isAuthenticated ? 'Bauplan zur Bibliothek hinzufügen' : 'Zum Hinzufügen des Bauplans zur Bibliothek anmelden'}
                   onClick={handleAddToLibrary}
                   disabled={addingToLibrary || loadingLibraryState}
                   className="press inline-flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-kumo-line bg-kumo-base p-0 text-kumo-subtle transition-colors duration-150 ease-out hover:border-kumo-fill hover:bg-kumo-tint hover:text-kumo-default disabled:cursor-not-allowed disabled:opacity-60"
@@ -854,7 +854,7 @@ export default function BlueprintLandingPage({ rpcStub }: Props) {
               <DropdownMenu.Trigger
                 render={(
                   <WorkshopIconButton
-                    aria-label="Weitere Blueprint-Aktionen"
+                    aria-label="Weitere Bauplan-Aktionen"
                     className="!h-10 !w-10 shrink-0 rounded-lg border border-kumo-line bg-kumo-base text-kumo-subtle hover:border-kumo-fill hover:bg-kumo-tint hover:text-kumo-default data-[popup-open]:border-kumo-fill data-[popup-open]:bg-kumo-tint data-[popup-open]:text-kumo-default"
                   >
                     <DotsThree size={18} weight="bold" />
@@ -899,7 +899,7 @@ export default function BlueprintLandingPage({ rpcStub }: Props) {
                       onClick={() => setShowDeleteConfirm(true)}
                       className={MENU_ITEM_DANGER}
                     >
-                      Blueprint löschen
+                      Bauplan löschen
                     </DropdownMenu.Item>
                   </>
                 )}
@@ -914,7 +914,7 @@ export default function BlueprintLandingPage({ rpcStub }: Props) {
                         onClick={() => setShowDeleteConfirm(true)}
                         className={MENU_ITEM_DANGER}
                       >
-                        Blueprint löschen
+                        Bauplan löschen
                       </DropdownMenu.Item>
                     ) : (
                       <DropdownMenu.Item
@@ -939,7 +939,7 @@ export default function BlueprintLandingPage({ rpcStub }: Props) {
                       disabled={updatingFeatured}
                       className={MENU_ITEM}
                     >
-                      {updatingFeatured ? 'Wird aktualisiert …' : (isFeatured ? 'Hervorhebung aufheben' : 'Blueprint hervorheben')}
+                      {updatingFeatured ? 'Wird aktualisiert …' : (isFeatured ? 'Hervorhebung aufheben' : 'Bauplan hervorheben')}
                     </DropdownMenu.Item>
                   </>
                 )}
@@ -985,7 +985,7 @@ export default function BlueprintLandingPage({ rpcStub }: Props) {
                 Keine Verbindungen erforderlich
               </p>
               <p className="mt-1 text-[13px] leading-[18px] font-normal tracking-[-0.25px] text-kumo-subtle">
-                Dieser Blueprint kann ein Gadget erstellen, ohne externe Ressourcen zu konfigurieren.
+                Dieser Bauplan kann ein Gadget erstellen, ohne externe Ressourcen zu konfigurieren.
               </p>
             </section>
           )}
@@ -1075,12 +1075,12 @@ export default function BlueprintLandingPage({ rpcStub }: Props) {
       >
         <Dialog className="responsive-dialog overflow-y-auto p-8" size="sm">
           <Dialog.Title className="text-lg font-semibold">
-            Blueprint löschen
+            Bauplan löschen
           </Dialog.Title>
           <Dialog.Description className="mt-2 text-kumo-subtle">
             „{blueprint?.metadata.title}" löschen? {canDeleteOwnedBlueprint
-              ? 'Der Blueprint-Link funktioniert dann nicht mehr, aber bereits daraus erstellte Gadgets sind nicht betroffen.'
-              : 'Dieser Blueprint wurde manuell hochgeladen und kann nicht wiederhergestellt werden.'}
+              ? 'Der Bauplan-Link funktioniert dann nicht mehr, aber bereits daraus erstellte Gadgets sind nicht betroffen.'
+              : 'Dieser Bauplan wurde manuell hochgeladen und kann nicht wiederhergestellt werden.'}
           </Dialog.Description>
           <div className="mt-6 flex justify-end gap-2">
             <Dialog.Close
@@ -1624,7 +1624,7 @@ function BlueprintGatekeeperBindingField({
     return (
       <div className="rounded-lg border border-kumo-danger/30 bg-kumo-danger-tint px-3 py-2.5 text-sm text-kumo-danger">
         <p className="font-semibold mb-0.5">{title}</p>
-        <p>Der Gatekeeper „{binding.gatekeeperName}" ist in diesem Workshop nicht verfügbar, daher kann diese Verbindung nicht konfiguriert werden.</p>
+        <p>Der Torwächter „{binding.gatekeeperName}" ist in diesem Workshop nicht verfügbar, daher kann diese Verbindung nicht konfiguriert werden.</p>
       </div>
     )
   }
@@ -1656,7 +1656,7 @@ function BlueprintGatekeeperBindingField({
         <div className="space-y-2.5">
           {binding.resourceUrl && (
             <p className="m-0 pl-[2px] text-[12px] leading-4 font-normal tracking-[-0.2px] text-kumo-subtle">
-              Blueprint empfiehlt: <span className="break-all text-kumo-default">{formatSuggestedResource(binding.resourceUrl)}</span>
+              Bauplan empfiehlt: <span className="break-all text-kumo-default">{formatSuggestedResource(binding.resourceUrl)}</span>
             </p>
           )}
 

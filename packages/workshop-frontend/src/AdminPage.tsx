@@ -411,7 +411,7 @@ export default function AdminPage() {
         onValueChange={setActiveTab}
         tabs={[
           { value: 'general', label: 'Allgemein' },
-          { value: 'gatekeepers', label: 'Gatekeepers' },
+          { value: 'gatekeepers', label: 'Torwächter' },
           { value: 'formats', label: 'Formate' },
           { value: 'access', label: 'Zugriff' },
         ]}
@@ -624,7 +624,7 @@ export default function AdminPage() {
             value={bannerTextDraft}
             onValueChange={setBannerTextDraft}
             rows={1}
-            placeholder={'z. B. \uD83C\uDF89 Neu: Blueprints unterst\u00FCtzen jetzt Importe \u2014 [mehr erfahren](https://example.com).'}
+            placeholder={'z. B. \uD83C\uDF89 Neu: Baupl\u00E4ne unterst\u00FCtzen jetzt Importe \u2014 [mehr erfahren](https://example.com).'}
             maxLength={MAX_ANNOUNCEMENT_LENGTH}
             error={
               bannerTextDraft.length > MAX_ANNOUNCEMENT_LENGTH
@@ -803,17 +803,17 @@ export default function AdminPage() {
       {/* Gatekeeper resources */}
       {activeTab === 'gatekeepers' && (
         <div className="bg-kumo-elevated border border-kumo-line rounded-xl p-6">
-          <h2 className="text-lg font-semibold text-kumo-strong mb-1">Gatekeepers</h2>
+          <h2 className="text-lg font-semibold text-kumo-strong mb-1">Torwächter</h2>
           <p className="text-sm text-kumo-subtle mb-5">
             Aktiviere oder deaktiviere Konnektoren und Ressourcentypen für jeden Dienst. Automatisch
-            bereitgestellte Gatekeeper (wie die Kontextbibliothek) haben drei Modi &mdash; deaktiviert,
+            bereitgestellte Torwächter (wie die Kontextbibliothek) haben drei Modi &mdash; deaktiviert,
             optional oder für alle aktiviert. Änderungen sind weich: Sie entziehen keinen Zugriff, den
             ein Gadget bereits besitzt.
           </p>
 
           {resourceVendors.length === 0 && (
             <p className="text-sm text-kumo-subtle">
-              Auf diesem Deployment sind keine konfigurierbaren Gatekeeper installiert.
+              Auf diesem Deployment sind keine konfigurierbaren Torwächter installiert.
             </p>
           )}
 

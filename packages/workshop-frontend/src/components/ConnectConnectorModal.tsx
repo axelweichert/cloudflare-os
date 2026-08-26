@@ -165,7 +165,7 @@ export default function ConnectConnectorModal({
           ? accountDescription?.uniqueName
             ? `${accountDisplayName} / ${accountDescription.uniqueName}`
             : accountDisplayName
-          : 'Anmeldedaten abgelaufen; verbinde erneut über die Gatekeeper-Seite'}
+          : 'Anmeldedaten abgelaufen; verbinde erneut über die Torwächter-Seite'}
       </span>
     </div>
   ) : (
@@ -251,7 +251,7 @@ export default function ConnectConnectorModal({
                   ? isManage
                     ? 'Ressourcen'
                     : 'Zu aktivierende Ressourcen'
-                  : 'Was dieser Gatekeeper kann'}
+                  : 'Was dieser Torwächter kann'}
               </h3>
               <ul className="space-y-2">
                 {supportedResources.map((resource) => {
@@ -317,11 +317,11 @@ export default function ConnectConnectorModal({
                 />
                 <div className="text-[12px] leading-[17px] font-normal tracking-[-0.2px] text-kumo-default">
                   <span className="font-medium">
-                    Gatekeeper sitzt zwischen {vendorDescription.displayName} und deinen Gadgets.
+                    Der Torwächter sitzt zwischen {vendorDescription.displayName} und deinen Gadgets.
                   </span>{' '}
                   <span className="text-kumo-subtle">
                     Jedes Gadget sieht nur die Ressourcen, die du verbindest. Wenn der Arbeitsbereich
-                    geteilt ist, prüft Gatekeeper, ob andere Nutzer die erforderlichen Berechtigungen
+                    geteilt ist, prüft der Torwächter, ob andere Nutzer die erforderlichen Berechtigungen
                     haben, bevor sie auf diese Ressourcen zugreifen können.
                   </span>
                 </div>

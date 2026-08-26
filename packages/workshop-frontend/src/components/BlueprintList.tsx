@@ -75,7 +75,7 @@ function BlueprintRow({
         <div className="flex items-center gap-2">
           {item.pinned && <Star size={12} weight="fill" className="flex-shrink-0 text-kumo-brand" />}
           <h3 className="truncate text-sm font-medium text-kumo-default">
-            {item.title || 'Unbenannter Blueprint'}
+            {item.title || 'Unbenannter Bauplan'}
           </h3>
         </div>
         {item.description && (
@@ -146,7 +146,7 @@ export default function BlueprintList() {
         const ensure = (id: string): BlueprintItem => {
           let it = map.get(id)
           if (!it) {
-            it = { id, title: 'Unbenannter Blueprint', description: '', recency: 0, pinned: false, inLibrary: false, isOwn: false }
+            it = { id, title: 'Unbenannter Bauplan', description: '', recency: 0, pinned: false, inLibrary: false, isOwn: false }
             map.set(id, it)
           }
           return it
@@ -193,11 +193,11 @@ export default function BlueprintList() {
     setUploading(true)
     try {
       await authenticatedApi.importBlueprint(file.stream() as ReadableStream<Uint8Array>)
-      toasts.add({ title: 'Blueprint hochgeladen', variant: 'success' })
+      toasts.add({ title: 'Bauplan hochgeladen', variant: 'success' })
       load()
     } catch (err) {
       console.error('Failed to upload blueprint:', err)
-      toasts.add({ title: 'Blueprint konnte nicht hochgeladen werden', variant: 'error' })
+      toasts.add({ title: 'Bauplan konnte nicht hochgeladen werden', variant: 'error' })
     } finally {
       setUploading(false)
     }
@@ -235,7 +235,7 @@ export default function BlueprintList() {
       toasts.add({ title: 'Aus Bibliothek entfernt', variant: 'success' })
     } catch (err) {
       console.error('Failed to remove blueprint from library:', err)
-      toasts.add({ title: 'Blueprint konnte nicht entfernt werden', variant: 'error' })
+      toasts.add({ title: 'Bauplan konnte nicht entfernt werden', variant: 'error' })
     }
   }
 
@@ -266,7 +266,7 @@ export default function BlueprintList() {
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Blueprints durchsuchen…"
+              placeholder="Baupläne durchsuchen…"
               className="h-9 w-full rounded-lg border border-kumo-line bg-kumo-base pl-9 pr-4 text-[13px] tracking-[-0.25px] text-kumo-default placeholder:text-kumo-inactive transition-[border-color,box-shadow] duration-150 ease-out focus:border-kumo-ring focus:outline-none focus:ring-[3px] focus:ring-kumo-ring/15"
             />
           </div>
@@ -314,7 +314,7 @@ export default function BlueprintList() {
                 <BlueprintIcon size={18} />
               </div>
               <div>
-                <p className="text-sm font-medium text-kumo-default">Noch keine Blueprints</p>
+                <p className="text-sm font-medium text-kumo-default">Noch keine Baupläne</p>
                 <p className="mt-1 text-[13px] leading-[18px] text-kumo-subtle">
                   Veröffentliche einen Arbeitsbereich als Blueprint oder füge einen über Entdecken hinzu.
                 </p>

@@ -1489,8 +1489,8 @@ export default function GadgetEditor() {
           <WorkshopIconButton
             onClick={() => setBlueprintModalOpen(true)}
             disabled={!selectedGadgetStub}
-            title="Blueprints"
-            aria-label="Blueprints"
+            title="Baupläne"
+            aria-label="Baupläne"
           >
             <Blueprint size={16} />
           </WorkshopIconButton>
@@ -1608,7 +1608,7 @@ export default function GadgetEditor() {
               onClick={() => setBlueprintModalOpen(true)}
               className={MENU_ITEM}
             >
-              Blueprints
+              Baupläne
             </DropdownMenu.Item>
             <DropdownMenu.Item
               disabled={!mobilePreviewActive}

@@ -151,7 +151,7 @@ export default function AdminFormatsPanel({
               <FormatGlyph output={candidate.declared} size="lg" className="shrink-0 text-kumo-subtle" />
               <span className="min-w-0">
                 <span className="block truncate text-[13px] text-kumo-default">
-                  {candidate.title || 'Blueprint ohne Titel'}
+                  {candidate.title || 'Bauplan ohne Titel'}
                 </span>
                 <span className="block truncate text-[11px] text-kumo-inactive">
                   {candidate.declared
@@ -246,7 +246,7 @@ function FormatRow({
           {format.missing ? (
             <span
               className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-kumo-tint text-kumo-danger"
-              title="Dieses Blueprint existiert nicht mehr"
+              title="Dieser Bauplan existiert nicht mehr"
             >
               <Warning size={16} />
             </span>
@@ -267,9 +267,9 @@ function FormatRow({
             </span>
             <span className="mt-0.5 block truncate text-xs text-kumo-subtle">
               {format.missing
-                ? 'Blueprint gelöscht. Entferne diesen Eintrag.'
+                ? 'Bauplan gelöscht. Entferne diesen Eintrag.'
                 : needsNaming
-                ? 'Dieses Blueprint deklariert nicht, was es erzeugt. Gib ihm einen Namen, um es anzubieten.'
+                ? 'Dieser Bauplan deklariert nicht, was er erzeugt. Gib ihm einen Namen, um ihn anzubieten.'
                 : `${format.blueprintTitle} · unter ${format.output!.plural} bei Ergebnisse angezeigt`}
             </span>
           </span>
@@ -313,9 +313,9 @@ function FormatRow({
               <Fieldset
                 title="Wie es dargestellt wird"
                 detail={
-                  'Lass ein Feld leer, um den vom Blueprint deklarierten Namen zu verwenden. ' +
+                  'Lass ein Feld leer, um den vom Bauplan deklarierten Namen zu verwenden. ' +
                   (format.bundled
-                    ? 'Ein gebündeltes Blueprint kann seine deklarierten Namen ändern, wenn dieses ' +
+                    ? 'Ein gebündelter Bauplan kann seine deklarierten Namen ändern, wenn dieses ' +
                       'Deployment aktualisiert wird; ein hier eingegebener Wert bleibt so, wie du ihn gesetzt hast. '
                     : '') +
                   'Gilt für ab jetzt erstellte Ergebnisse — bestehende behalten den Namen, mit dem ' +
@@ -365,7 +365,7 @@ function FormatRow({
 
               <Fieldset
                 title="Wie der Agent es auswählt"
-                detail="Standardformate stehen im Katalog des Agents an erster Stelle, als der Eintrag unten — die Beschreibung des Blueprints erledigt den Großteil der Arbeit. Füge einen Hinweis nur hinzu, wenn der Agent wissen muss, wann er dieses Format einem anderen vorziehen soll."
+                detail="Standardformate stehen im Katalog des Agents an erster Stelle, als der Eintrag unten — die Beschreibung des Bauplans erledigt den Großteil der Arbeit. Füge einen Hinweis nur hinzu, wenn der Agent wissen muss, wann er dieses Format einem anderen vorziehen soll."
               >
                 <OverrideField
                   label="Hinweis"

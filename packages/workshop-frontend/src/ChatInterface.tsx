@@ -789,7 +789,7 @@ function getToolCallSummary(
     case "observeUserChanges":
       return { verb: "Nutzeränderungen beobachtet" };
     case "listBlueprints":
-      return { verb: "Blueprints aufgelistet" };
+      return { verb: "Baupläne aufgelistet" };
     case "listConnectableResources":
       return { verb: "Verbindbare Ressourcen aufgelistet", target: tc.input.vendorId };
     case "requestConnection":
@@ -963,7 +963,7 @@ function getProvisionalToolVerb(toolName: AiToolCall["toolName"]): string {
     case "webFetch": return "Ruft ab";
     case "observeUserChanges": return "Nutzeränderungen werden beobachtet";
     case "giveUp": return "Wird gestoppt";
-    case "listBlueprints": return "Blueprints werden aufgelistet";
+    case "listBlueprints": return "Baupläne werden aufgelistet";
     case "listConnectableResources": return "Verbindbare Ressourcen werden aufgelistet";
     case "requestConnection": return "Verbindung wird angefragt";
   }
@@ -987,7 +987,7 @@ function describeProvisionalToolCount(toolName: AiToolCall["toolName"], count: n
     case "createGadget": return `${pluralize(count, "Gadget", "Gadgets")} werden erstellt`;
     case "observeUserChanges": return `${pluralize(count, "Änderungssatz", "Änderungssätze")} werden beobachtet`;
     case "giveUp": return "Wird gestoppt";
-    case "listBlueprints": return "Blueprints werden aufgelistet";
+    case "listBlueprints": return "Baupläne werden aufgelistet";
     case "listConnectableResources": return "Verbindbare Ressourcen werden aufgelistet";
     case "requestConnection": return `${pluralize(count, "Verbindung", "Verbindungen")} werden angefragt`;
   }
