@@ -15,10 +15,11 @@
 // Nur Klassen und der Default-Handler dürfen aus einem Worker-Entry-Modul exportiert werden.
 
 import { DurableObject, WorkerEntrypoint, type RpcStub, RpcTarget } from "cloudflare:workers";
+import { RpcStub as NativeRpcStub } from "capnweb";
 import type {
-  AccountDescription, ActionKind, ApprovalQueue, Gatekeeper, GatekeeperConnectCallback,
-  GatekeeperUser, GatekeeperUserVerifier, ResourceConfiguratorFrame, ResourceDescription,
-  SupportedResource, VendorDescription,
+  AccountDescription, ActionKind, AppUiContext, ApprovalQueue, Gatekeeper,
+  GatekeeperConnectCallback, GatekeeperUiFrame, GatekeeperUser, GatekeeperUserVerifier,
+  ResourceConfiguratorFrame, ResourceDescription, SupportedResource, VendorDescription,
 } from "@gadgets/workshop-shared/gatekeeper";
 import {
   MailSessionCore, MAIL_SEND_KIND,
@@ -29,6 +30,10 @@ import {
   parseAllowedFrom, resolveDefaultFrom, type QueueConfig,
 } from "./mail-actions";
 import { makeCloudflareMailer } from "./mailer";
+import {
+  buildMailAppHtml, MailManagementApi,
+  type PendingApprovalSource, type PendingApprovalView,
+} from "./app-ui";
 
 // ---------------------------------------------------------------------------
 
@@ -98,6 +103,20 @@ function makeConfig(env: Cloudflare.Env): QueueConfig {
   return { allowedFrom: parseAllowedFrom(env.ALLOWED_FROM, env.DEFAULT_FROM) };
 }
 
+/**
+ * Stub auf den Mail-Approval-Index — eine deterministisch benannte `MailGatekeeper`-Instanz
+ * (getByName(MAIL_SINGLETON)), die die offenen Sende-Freigaben aller Verbindungen bündelt. Sie ist
+ * von jeder Facet (zum Spiegeln des Lebenszyklus) UND vom Account (startAppUi/ui) erreichbar; die
+ * per-Verbindungs-Facets selbst sind vom Account NICHT adressierbar (Overseer-verwaltete IDs),
+ * daher dieser gemeinsame, benennbare Index als einzige account-lesbare Sicht auf die Queue.
+ */
+function mailApprovalIndex(
+  exports: Cloudflare.Exports,
+): DurableObjectStub<MailGatekeeper> {
+  const ns = exports.MailGatekeeper as unknown as DurableObjectNamespace<MailGatekeeper>;
+  return ns.getByName(MAIL_SINGLETON);
+}
+
 /** Prüft, dass eine gebundene URL wirklich den Mailer adressiert. */
 function assertMailUrl(url: string): void {
   const u = new URL(url);
@@ -151,7 +170,26 @@ export class MailAccount
       displayName: "vonBusch Mail",
       uniqueName: this.ctx.props.accountId,
       avatar: AVATAR,
+      // Macht den Mailer in der Board-UI als öffenbare App-Kachel nutzbar (VON-1847). Ohne
+      // providesUi bleibt der Vendor nur ein gebundener Connector, nicht bedienbar.
+      providesUi: { title: "vonBusch Mail — Freigaben", icon: AVATAR },
     };
+  }
+
+  /**
+   * Approval-Queue-Panel (VON-1847): liest die offenen Mail-Sendefreigaben serverseitig aus dem
+   * Approval-Index (deterministische MailGatekeeper-Singleton-Instanz) und backt den Snapshot ins
+   * iframe-HTML. Der Erst-Render braucht kein Browser-capnweb; die mitgelieferte `ui`-Capability
+   * (MailManagementApi) ermöglicht späteren Live-Refresh der Queue. Reine Anzeige — Freigeben/
+   * Ablehnen bleibt allein beim OS-Approve-Pfad (menschliche ApprovalQueue → applyAction).
+   */
+  async startAppUi(_context: AppUiContext): Promise<GatekeeperUiFrame> {
+    const pending = await mailApprovalIndex(this.ctx.exports).listPendingApprovals();
+    const source: PendingApprovalSource = {
+      listPendingApprovals: () => mailApprovalIndex(this.ctx.exports).listPendingApprovals(),
+    };
+    const ui = new NativeRpcStub(new MailManagementApi(source));
+    return { iframeHtml: buildMailAppHtml(pending, new Date().toISOString()), ui };
   }
 
   async getSupportedResources(): Promise<SupportedResource[]> {
@@ -269,6 +307,10 @@ export class MailGatekeeper
           awaitDecision: description.awaitDecision,
           actionKind: description.actionKind,
         });
+        // In den account-lesbaren Approval-Index spiegeln, damit das Board-UI-Panel (startAppUi)
+        // die offene Sende-Freigabe zeigt. Best-effort: ein Index-Fehler darf den (bereits
+        // eingereihten) Approval-Fluss nicht brechen.
+        await this.#mirrorPending(id, email);
         return id;
       },
     };
@@ -290,6 +332,61 @@ export class MailGatekeeper
     const next = (this.ctx.storage.kv.get<number>(COUNTER_KEY) ?? 0) + 1;
     this.ctx.storage.kv.put(COUNTER_KEY, next);
     return next;
+  }
+
+  /** Verbindungs-/Facet-Kennung für den Index (dieselbe Facet ⇒ derselbe Token). */
+  #connToken(): string {
+    return this.ctx.props.accountId;
+  }
+
+  /** Spiegelt eine frisch eingereihte Mail in den gemeinsamen Approval-Index (best-effort). */
+  async #mirrorPending(id: number, email: PendingEmail): Promise<void> {
+    const view: PendingApprovalView = {
+      connToken: this.#connToken(),
+      actionId: id,
+      to: email.to,
+      from: email.from,
+      subject: email.subject,
+      text: email.text,
+      reason: email.reason,
+      proposedBy: email.proposedBy,
+      proposedAt: Date.now(),
+    };
+    try {
+      await mailApprovalIndex(this.ctx.exports).recordPendingApproval(view);
+    } catch {
+      // Index nicht erreichbar → Panel zeigt diese Mail evtl. nicht; Approval bleibt intakt.
+    }
+  }
+
+  /** Entfernt eine versendete/abgelehnte Mail aus dem Index (best-effort). */
+  async #unmirrorPending(id: number): Promise<void> {
+    try {
+      await mailApprovalIndex(this.ctx.exports).resolvePendingApproval(this.#connToken(), id);
+    } catch {
+      // Index nicht erreichbar → verwaister Eintrag; nächster startAppUi-Refresh gleicht ab.
+    }
+  }
+
+  // --- Approval-Index (deterministische Singleton-Instanz, getByName(MAIL_SINGLETON)) ---------
+  // Diese drei Methoden laufen auf der INDEX-Instanz; die per-Verbindungs-Facets rufen sie
+  // cross-DO auf, der Account (startAppUi/ui) liest sie. Rein Sichtbarkeit — keine Sendegewalt.
+
+  async recordPendingApproval(view: PendingApprovalView): Promise<void> {
+    this.ctx.storage.kv.put<PendingApprovalView>(`pending:${view.connToken}:${view.actionId}`, view);
+  }
+
+  async resolvePendingApproval(connToken: string, actionId: number): Promise<void> {
+    this.ctx.storage.kv.delete(`pending:${connToken}:${actionId}`);
+  }
+
+  async listPendingApprovals(): Promise<PendingApprovalView[]> {
+    const out: PendingApprovalView[] = [];
+    for (const [, v] of this.ctx.storage.kv.list<PendingApprovalView>({ prefix: "pending:" })) {
+      out.push(v);
+    }
+    out.sort((a, b) => a.proposedAt - b.proposedAt);
+    return out;
   }
 
   #readProposals(): ProposalView[] {
@@ -331,15 +428,22 @@ export class MailGatekeeper
     try {
       const { id: messageId } = await mailer.send(stored.email);
       this.ctx.storage.kv.put<StoredAction>(`${ACTION_PREFIX}${actionId}`, { ...stored, status: "sent", messageId });
+      // Freigabe erledigt (versendet) → aus dem Board-UI-Panel entfernen.
+      await this.#unmirrorPending(actionId);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       this.ctx.storage.kv.put<StoredAction>(`${ACTION_PREFIX}${actionId}`, { ...stored, status: "failed", error: msg });
+      // Nach menschlichem Approve ist die Mail nicht mehr „offen"; der Fehlerstatus bleibt unter
+      // listProposals sichtbar, aber die Sende-Queue zeigt sie nicht mehr.
+      await this.#unmirrorPending(actionId);
       throw e; // dem Overseer signalisieren, dass die freigegebene Aktion fehlschlug
     }
   }
 
   async rejectAction(actionId: number): Promise<void> {
     this.ctx.storage.kv.delete(`${ACTION_PREFIX}${actionId}`);
+    // Abgelehnt → aus dem Board-UI-Panel entfernen.
+    await this.#unmirrorPending(actionId);
   }
 
   async revertAction(actionId: number): Promise<{ message?: string }> {
