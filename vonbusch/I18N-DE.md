@@ -98,6 +98,9 @@ Umgebende Beschreibungstexte werden aber übersetzt.
 - ✅ Start, Chat & Arbeitsbereich (`routes/index`, `ChatInterface`, `components/chat/*`,
   `GadgetUI`, `GadgetUseView`, `Activity`, `ActivityNotifications`, `FileSidebar`,
   `routes/outputs`, `routes/workspaces`, `RecentApps`) — [VON-1890]
+- ✅ Blueprints & Entdecken (`routes/blueprints`, `routes/explore`, `BlueprintsPage`,
+  `BlueprintLandingPage`, `BlueprintModal`, `components/Blueprint{Card,List,BindingCard,PreviewImage}`,
+  `VendorCard`) — [VON-1892]
 - ⏳ Restliche Oberflächen: siehe Kind-Issues unter [VON-1888].
 
 ### Anmerkungen zu [VON-1891]
@@ -110,3 +113,14 @@ Umgebende Beschreibungstexte werden aber übersetzt.
   `#listStandardFormats`); der `DiffStatus`-Wert (`Modified`/`Added`/…) in `CodeDiffEditor.tsx`
   wird per `===` verglichen — Lokalisierung erfordert ein Anzeige-Mapping (Folgeaufgabe, außerhalb
   Scope).
+
+### Anmerkungen zu [VON-1892]
+
+- `Blueprint`, `Gadget`, `Gatekeeper` und `Workshop` bleiben als Produktbegriffe stehen; die
+  Explore-Route heißt in der UI „Entdecken" (Route-Pfad `/explore` bleibt technisch).
+- `connection`/`binding` → „Verbindung"; „AI Model" → „KI-Modell", „Agent" bleibt.
+- Der `throw new Error("… is not configured.")` in `BlueprintLandingPage` wird ausnahmsweise
+  übersetzt, weil er über `setError` direkt im Fehler-Banner der UI landet (kein reines
+  Dev-Diagnose-Throw).
+- `VendorCard.tsx` enthält keine statischen englischen Strings (alle Labels datengetrieben) —
+  in Scope, aber ohne Änderung.
