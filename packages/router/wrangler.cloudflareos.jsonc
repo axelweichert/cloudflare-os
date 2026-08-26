@@ -1,0 +1,41 @@
+{
+  // Out-of-band deploy config for the live NFR instance worker `cloudflareos`.
+  // Mirrors the release-service-injected bindings exactly (captured 2026-08-26 via CF API).
+  // NOT the sanctioned release path — used to ship the VON-1852 GatekeeperModal frontend fix
+  // (assets-only; router script unchanged) since no reconciling deploy service runs on our fork.
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "cloudflareos",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-02-02",
+  "compatibility_flags": [],
+  "services": [
+    { "binding": "WORKSHOP_BACKEND", "service": "cloudflareos-backend" },
+    { "binding": "GATEKEEPER_CONTEXT", "service": "cloudflareos-gk-context" },
+    { "binding": "GATEKEEPER_SCHEDULER", "service": "cloudflareos-gk-scheduler" },
+    { "binding": "GATEKEEPER_VONBUSCH_CRM", "service": "gatekeeper-vonbusch-crm" },
+    { "binding": "GATEKEEPER_VONBUSCH_MAIL", "service": "gatekeeper-vonbusch-mail" },
+    { "binding": "GATEKEEPER_VONBUSCH_MAILBOX", "service": "gatekeeper-vonbusch-mailbox" },
+    { "binding": "GATEKEEPER_VONBUSCH_PREISERHEBUNG", "service": "gatekeeper-vonbusch-preiserhebung" },
+    { "binding": "GATEKEEPER_VONBUSCH_ROBOMON", "service": "gatekeeper-vonbusch-robomon" }
+  ],
+  "assets": {
+    "directory": "../workshop-frontend/dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": [
+      "/api",
+      "/api/*",
+      "/blueprint-screenshot",
+      "/blueprint-screenshot/*",
+      "/gatekeeper/*"
+    ]
+  },
+  "routes": [
+    { "pattern": "cloudflareos.vonbusch.app", "custom_domain": true }
+  ],
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1,
+    "logs": { "invocation_logs": false }
+  }
+}
