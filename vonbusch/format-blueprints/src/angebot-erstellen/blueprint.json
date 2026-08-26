@@ -7,7 +7,7 @@
     "description": "Firmen-Workflow: erstellt aus einer Kundenanfrage einen kalkulierten Angebotsentwurf. Der Agent liest den Kontakt/Deal aus dem CRM, kalkuliert den Preis über die Preiserhebung und legt das Angebot als CRM-Aktivität an — statt jedes Mal denselben Prompt neu zu tippen.",
     "output": { "id": "workflow", "noun": "Angebot", "plural": "Angebote", "icon": "flowArrow" },
     "author": { "type": "user", "name": "von Busch Digital", "id": "cto@vonbusch.digital" },
-    "revision": 2
+    "revision": 3
   },
   "bindings": {
     "WORKFLOW": {
@@ -32,8 +32,8 @@
       "description": "Read-only Gatekeeper auf die Preis-/Kalkulationsparameter (Druck + DMS-ROI).",
       "spawnerOnly": true,
       "type": "gatekeeper",
-      "gatekeeperName": "preiserhebung",
-      "typeUrlPattern": "https://preiserhebung-gatekeeper.vonbusch.workers.dev/*"
+      "gatekeeperName": "vonbusch_preiserhebung",
+      "typeUrlPattern": "https://preiserhebung.vonbusch.app/"
     }
   }
 }

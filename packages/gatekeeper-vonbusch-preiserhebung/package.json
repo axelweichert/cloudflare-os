@@ -5,11 +5,12 @@
   "main": "./src/index.ts",
   "scripts": {
     "dev": "echo \"run 'pnpm dev-server' in the root directory instead\" >&2 && exit 1",
-    "deploy": "wrangler deploy",
+    "deploy": "vp run --no-cache build:configurator && wrangler deploy",
     "typecheck": "tsc --noEmit",
     "test:run": "node --import tsx --test __tests__/*.test.ts"
   },
   "dependencies": {
+    "@gadgets/configurator-ui": "workspace:*",
     "@gadgets/workshop-shared": "workspace:*",
     "capnweb": "catalog:"
   },

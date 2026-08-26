@@ -44,11 +44,46 @@ import {
   buildPreiserhebungAppHtml,
   ladePreiserhebungSnapshot,
 } from "./app-ui";
+import PREISERHEBUNG_CONFIGURATOR_HTML from "./generated/preiserhebung-configurator-ui.txt";
+import type { PreiserhebungConfiguratorRpc } from "./configurator/preiserhebung-configurator-types";
 
 // Ein 1x1-transparentes GIF als Logo — kein Netzwerk-Asset nötig.
 const PREISERHEBUNG_ICON = {
   url: "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7",
 };
+
+// ---------------------------------------------------------------------------
+// Ressourcen-Modell (VON-1850)
+//
+// Die Preiserhebung wird — analog zum CRM-Gatekeeper — als *resource-based* Gatekeeper annonciert,
+// damit sie über den Blueprint-„add resource"-Pfad (BlueprintLandingPage) gebunden werden kann. Das
+// OS-Blueprint-Bindungsmodell (`type: "gatekeeper"`) verlangt zwingend eine `SupportedResource`,
+// deren `urlPattern` exakt dem `typeUrlPattern` der Bindung gleicht; ein auto-provisionierter
+// Singleton *ohne* Ressource ist über eine Blueprint-Bindung nicht adressierbar. Die Ressource ist
+// rein logisch (die read-only Preis-D1); die URL ist ein stabiler Identifier, kein HTTP-Ziel — der
+// Gatekeeper wird per Service-Binding-RPC erreicht, nie gefetcht.
+const VENDOR_HOST = "preiserhebung.vonbusch.app";
+const RESOURCE_URL = `https://${VENDOR_HOST}/`;
+
+const SUPPORTED_RESOURCES: SupportedResource[] = [{
+  urlPattern: RESOURCE_URL,
+  title: "vonBusch Preiserhebung",
+  description:
+    "Read-only Preis-/Kalkulationsparameter: printgemein-Druckpreis und DMS-ROI aus der Preis-D1. " +
+    "Reads sind auditierte Observations; Vertriebs-Anpassungen sind nicht-persistente Per-Call-Overrides.",
+}];
+
+function assertPreiserhebungUrl(url: string): void {
+  const u = new URL(url);
+  if (u.host !== VENDOR_HOST) throw new Error(`Keine vonBusch-Preiserhebungs-URL: ${url}`);
+}
+
+/** Liefert dem Konfigurator-iframe die feste Ressourcen-URL. Kein Zustand, keine Auswahl. */
+class PreiserhebungConfiguratorUi extends RpcTarget implements PreiserhebungConfiguratorRpc {
+  async resourceUrl(): Promise<string> {
+    return RESOURCE_URL;
+  }
+}
 
 // Der gesamte Typraum, den der Coding-Agent über dieses Gadget sieht. `Preiserhebung` ist die
 // Session-Oberfläche (tsType des Singletons); die referenzierten Typen sind vollständig aufgeführt.
@@ -252,8 +287,7 @@ export class GatekeeperVendor extends WorkerEntrypoint<Cloudflare.Env> {
   }
 
   async getSupportedResources(): Promise<SupportedResource[]> {
-    // Auto-provisionierter Singleton — keine URL-adressierten Ressourcen.
-    return [];
+    return SUPPORTED_RESOURCES;
   }
 
   async getTypeScriptTypes(): Promise<string> {
@@ -312,16 +346,41 @@ export class PreiserhebungAccount
     return this.ctx.exports.PreiserhebungVerifier({ props: this.ctx.props });
   }
 
-  // --- GatekeeperUser-Ressourcen-Oberfläche: keine URL-adressierten Ressourcen ---
+  // --- GatekeeperUser-Ressourcen-Oberfläche (VON-1850: resource-based, analog CRM) ---
   async getSupportedResources(): Promise<SupportedResource[]> {
-    return [];
+    return SUPPORTED_RESOURCES;
   }
-  getGatekeeperClassFor(_url: string): never {
-    throw new Error("Preiserhebung hat keine URL-adressierten Ressourcen.");
+
+  async getGatekeeperClassFor(url: string): Promise<{
+    class: DurableObjectClass<Gatekeeper<PreiserhebungReadSession>>;
+    resource: SupportedResource;
+  }> {
+    assertPreiserhebungUrl(url);
+    return {
+      class: this.ctx.exports.PreiserhebungGatekeeper({
+        props: { accountId: this.ctx.props.accountId },
+      }),
+      resource: SUPPORTED_RESOURCES[0],
+    };
   }
-  startResourceConfigurator(_resourceUrlPattern: string): Promise<ResourceConfiguratorFrame> {
-    throw new Error("Preiserhebung hat keine URL-adressierten Ressourcen.");
+
+  /**
+   * Ressourcen-Konfigurator (VON-1850): Die Preiserhebung hat genau eine Ressource, es gibt nichts
+   * auszuwählen — aber die OS-Connect-Modal-UI aktiviert „Add connection" erst, wenn ein
+   * Konfigurator-Frame geladen ist und Bereitschaft meldet. Wir liefern das sandboxed
+   * Bestätigungs-Formular; seine `ui`-Capability gibt die feste, serverseitig autoritative
+   * Ressourcen-URL zurück.
+   */
+  async startResourceConfigurator(resourceUrlPattern: string): Promise<ResourceConfiguratorFrame> {
+    if (resourceUrlPattern !== RESOURCE_URL) {
+      throw new Error(`Unbekannter Preiserhebungs-Ressourcentyp: ${resourceUrlPattern}`);
+    }
+    return {
+      iframeHtml: PREISERHEBUNG_CONFIGURATOR_HTML,
+      ui: new NativeRpcStub(new PreiserhebungConfiguratorUi()),
+    };
   }
+
   async ensureResources(_resourceUrlPatterns: string[]): Promise<{ url?: string }> {
     return {};
   }
