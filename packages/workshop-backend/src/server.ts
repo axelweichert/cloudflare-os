@@ -553,6 +553,46 @@ class AuthenticatedApiImpl extends RpcTarget implements AuthenticatedApi {
     return this.#user.deleteOwnedBlueprint(blueprintId);
   }
 
+  // Blueprint ids seeded into a brand-new account so the first visit lands on workable tiles
+  // rather than an empty Workspaces page (D1 / VON-1856). Overridable via the
+  // SEED_WORKSPACE_BLUEPRINTS var (comma separated); defaults to the bundled company-workflow
+  // blueprints (K7). Each id must be an installed blueprint (installFormatBlueprints writes these
+  // into BLUEPRINTS/BLUEPRINT_CONTENT on first request).
+  #seedBlueprintIds(): string[] {
+    let raw = (this.env as unknown as { SEED_WORKSPACE_BLUEPRINTS?: string })
+        .SEED_WORKSPACE_BLUEPRINTS;
+    if (typeof raw === "string" && raw.trim()) {
+      return raw.split(",").map(s => s.trim()).filter(Boolean);
+    }
+    return ["vonbusch.angebot", "vonbusch.lead"];
+  }
+
+  // Idempotently seed a fresh account's starter workspaces from bundled blueprints. Best-effort:
+  // an already-populated account is left alone, and a missing blueprint or any per-blueprint
+  // failure is logged and skipped -- sign-in must never fail because seeding couldn't run.
+  async seedDefaultWorkspaces(): Promise<void> {
+    let existing = await retryOnDoReset(() => this.#user.listGadgets());
+    if (existing.length > 0) return;
+    for (let blueprintId of this.#seedBlueprintIds()) {
+      try {
+        let record = await readBlueprintKvRecord(this.env, blueprintId);
+        if (!record) {
+          logger.warn("skipping seed of missing blueprint", {
+            event: "seed.blueprint.missing", blueprintId,
+          });
+          continue;
+        }
+        let overseer = await this.newGadgetFromBlueprint(blueprintId, {});
+        let dispose = (overseer as unknown as { [Symbol.dispose]?: () => void })[Symbol.dispose];
+        if (typeof dispose === "function") dispose.call(overseer);
+      } catch (err) {
+        logger.warn("failed to seed default workspace", {
+          event: "seed.blueprint.failed", blueprintId, error: err,
+        });
+      }
+    }
+  }
+
   // --- Gatekeeper management apps ---
 
   // The management apps available to the current user: their connected accounts that declare a
@@ -715,7 +755,15 @@ class PublicApiImpl extends RpcTarget implements PublicApi {
       user_id: userId.toString(),
       source: "cf_access",
     });
-    return new AuthenticatedApiImpl(this.ctx, this.env, userId, this.abortSession);
+    let api = new AuthenticatedApiImpl(this.ctx, this.env, userId, this.abortSession);
+    if (accountCreated) {
+      // Seed starter workspaces in the background so a brand-new user lands on populated tiles
+      // instead of an empty onboarding. Never block or fail sign-in on seeding (D1 / VON-1856).
+      this.ctx.waitUntil(api.seedDefaultWorkspaces().catch((err: unknown) => {
+        logger.warn("default workspace seeding failed", { event: "seed.failed", error: err });
+      }));
+    }
+    return api;
   }
 
   async login(username: string, passwordHash: Uint8Array): Promise<string | null> {
@@ -848,7 +896,18 @@ export default {
         if (!payload) return new Response("Invalid CF access JWT.", { status: 403 });
 
         if (!payload.email) {
-          return new Response("Access JWT didn't specify email address.", { status: 403 });
+          // Cloudflare Access service tokens (non_identity policies) carry no `email` claim, only a
+          // `common_name` (the token's client id). Access has already gated the request -- only a
+          // token bound to this app's Access policy produces a verifiable JWT here -- so we mint a
+          // stable, namespaced synthetic identity from the common name. This lets us drive the shell
+          // headless (self-verification / smoke tests) without weakening the human SSO path: the
+          // `@svc.cloudflareos.local` suffix cannot collide with any real SSO email address.
+          const commonName = typeof payload.common_name === "string" ? payload.common_name : "";
+          if (!commonName) {
+            return new Response("Access JWT didn't specify email address.", { status: 403 });
+          }
+          const slug = commonName.replace(/[^a-zA-Z0-9._-]/g, "-");
+          payload.email = `${slug}@svc.cloudflareos.local`;
         }
 
         accessPayload = payload;

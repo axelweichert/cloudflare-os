@@ -90,6 +90,11 @@ type ConnectionType = {
   title: string
   vendor: string
   description: string
+  // Vendor-level description (2-3 sentences from VendorDescription.description).
+  // Rendered beneath the vendor/group title so users understand what a connector
+  // does before connecting it -- distinct from `description`, which is the
+  // per-resource blurb.
+  vendorDescription?: string
   icon?: typeof Database
   iconUrl?: string
   logoUrl?: string
@@ -155,6 +160,7 @@ function connectionForResource(vendor: VendorOption, resource: SupportedResource
     title: resource.title,
     vendor: vendor.description.displayName,
     description: resource.description,
+    vendorDescription: vendor.description.description,
     icon: Database,
     iconUrl: resource.icon?.url,
     logoUrl: vendor.description.logo?.url,
@@ -1006,7 +1012,7 @@ function ConnectionTypeRow({
           {connection.title}
         </p>
         <p className="mt-0.5 line-clamp-1 text-[12px] leading-4 font-normal tracking-[-0.2px] text-kumo-subtle">
-          {connection.vendor} · {connection.description}
+          {connection.vendor} · {connection.vendorDescription ?? connection.description}
         </p>
       </div>
       <CaretRight size={14} className="shrink-0 text-kumo-inactive transition-transform group-hover:translate-x-0.5 group-hover:text-kumo-default" />
@@ -1047,12 +1053,15 @@ function ConnectionGroupRow({
   const Icon = representative.icon
   const iconUrl = representative.logoUrl
 
-  // For single-item groups the joined-titles string would just repeat the
-  // group label (e.g. "AI Model"), so fall back to the richer vendor +
-  // description subtitle used in the flat search results.
-  const subtitle = items.length === 1
-    ? `${representative.vendor} · ${representative.description}`
-    : items.map(item => item.title).join(', ')
+  // Prefer the vendor's own description as the group subtitle -- the group header
+  // represents the vendor, so its 2-3 sentence blurb tells the user what the
+  // connector does before they expand it. Fall back to the older subtitle shapes
+  // when a vendor ships no description.
+  const subtitle = representative.vendorDescription
+    ? representative.vendorDescription
+    : items.length === 1
+      ? `${representative.vendor} · ${representative.description}`
+      : items.map(item => item.title).join(', ')
 
   return (
     <div className={first ? '' : 'border-t border-kumo-line'}>
