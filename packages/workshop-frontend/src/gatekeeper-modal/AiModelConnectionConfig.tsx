@@ -18,14 +18,14 @@ export function AiModelConnectionConfig({
   return (
     <section className="grid gap-3">
       <ConnectionConfigField
-        label="Model"
-        description="Choose the model this connection can use."
+        label="Modell"
+        description="Wähle das Modell, das diese Verbindung verwenden kann."
       >
         <Select
-          aria-label="Select an AI model"
+          aria-label="KI-Modell auswählen"
           className="w-full text-sm [&_button]:!h-9"
           container={selectContainer}
-          placeholder="Select an AI model"
+          placeholder="KI-Modell auswählen"
           value={selectedModelId}
           onValueChange={(v) => onSelectedModelIdChange(v as string | undefined)}
           renderValue={(id) => availableModels.find((m) => m.id === id)?.name ?? id}

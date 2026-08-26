@@ -64,17 +64,17 @@ export function AccountChooser({
   return (
     <section className="overflow-hidden rounded-xl border border-kumo-line bg-kumo-base">
       <div className="border-b border-kumo-line px-3 py-2.5">
-        <p className="text-[12px] leading-4 font-medium tracking-[-0.2px] text-kumo-default">Account</p>
+        <p className="text-[12px] leading-4 font-medium tracking-[-0.2px] text-kumo-default">Konto</p>
         <p className="mt-0.5 text-[12px] leading-4 font-normal tracking-[-0.2px] text-kumo-subtle">
           {isEmailMailbox
-            ? 'Enable the Email receiver account, then choose the mailbox name below.'
-            : `Pick which ${vendorName} identity this ${resourceTitle ?? 'connection'} should use.`}
+            ? 'Aktiviere das E-Mail-Empfängerkonto und wähle dann unten den Postfachnamen.'
+            : `Wähle, welche ${vendorName}-Identität diese ${resourceTitle ?? 'Verbindung'} verwenden soll.`}
         </p>
       </div>
       <div className="divide-y divide-kumo-line">
         {accounts.map(account => {
           const selected = selectedAccountId === account.id
-          const name = account.description.uniqueName || account.description.displayName || 'Connected account'
+          const name = account.description.uniqueName || account.description.displayName || 'Verbundenes Konto'
           const expired = !account.credentialsValid
           const reconnecting = reconnectingAccountId === account.id
           const granted = account.description.grantedResourceUrlPatterns
@@ -108,10 +108,10 @@ export function AccountChooser({
                   <p className="truncate text-[13px] leading-[18px] font-medium tracking-[-0.25px] text-kumo-default">{name}</p>
                   <p className={`truncate text-[12px] leading-4 font-normal tracking-[-0.2px] ${needsAccess ? 'text-kumo-brand' : 'text-kumo-subtle'}`}>
                     {expired
-                      ? 'Expired credentials'
+                      ? 'Abgelaufene Anmeldedaten'
                       : needsAccess
-                      ? 'Additional permission needed'
-                      : resourceTitle ? `Connected ${vendorName} account` : 'Connected'}
+                      ? 'Zusätzliche Berechtigung erforderlich'
+                      : resourceTitle ? `Verbundenes ${vendorName}-Konto` : 'Verbunden'}
                   </p>
                 </div>
               </button>
@@ -122,7 +122,7 @@ export function AccountChooser({
                   disabled={reconnecting}
                   className="shrink-0 cursor-pointer rounded-md border border-kumo-line px-2 py-1 text-[12px] leading-4 font-medium tracking-[-0.2px] text-kumo-default transition-colors hover:bg-kumo-elevated disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {reconnecting ? 'Opening...' : 'Reconnect'}
+                  {reconnecting ? 'Wird geöffnet …' : 'Erneut verbinden'}
                 </button>
               ) : needsAccess ? (
                 <button
@@ -131,7 +131,7 @@ export function AccountChooser({
                   disabled={granting}
                   className="shrink-0 cursor-pointer rounded-md border border-kumo-line px-2 py-1 text-[12px] leading-4 font-medium tracking-[-0.2px] text-kumo-default transition-colors hover:bg-kumo-elevated disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {granting ? 'Opening...' : 'Grant access'}
+                  {granting ? 'Wird geöffnet …' : 'Zugriff erteilen'}
                 </button>
               ) : null}
               {selected && <Check size={15} weight="bold" className="shrink-0 text-kumo-brand" />}
@@ -152,8 +152,8 @@ export function AccountChooser({
               <Plus size={14} />
             )}
             {isEmailMailbox
-              ? 'Enable Email mailboxes'
-              : accounts.length === 0 ? `Connect ${vendorName}` : `Use another ${vendorName} account`}
+              ? 'E-Mail-Postfächer aktivieren'
+              : accounts.length === 0 ? `${vendorName} verbinden` : `Ein anderes ${vendorName}-Konto verwenden`}
           </button>
         )}
       </div>
