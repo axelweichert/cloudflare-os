@@ -18,13 +18,15 @@
  */
 
 import { DurableObject, WorkerEntrypoint, type RpcStub } from "cloudflare:workers";
-import { RpcTarget } from "capnweb";
+import { RpcTarget, RpcStub as NativeRpcStub } from "capnweb";
 import type {
   AccountDescription,
   ActionKind,
+  AppUiContext,
   ApprovalQueue,
   Gatekeeper,
   GatekeeperConnectCallback,
+  GatekeeperUiFrame,
   GatekeeperUser,
   GatekeeperUserVerifier,
   ResourceDescription,
@@ -35,6 +37,7 @@ import type {
 import { RobomonSession, type HealthRepo } from "./session.js";
 import type { AuthmonState } from "./health.js";
 import { RobomonObservations } from "./observations.js";
+import { RobomonManagementApi, buildRobomonAppHtml } from "./app-ui.js";
 
 // Ein 1x1-transparentes GIF als Logo — kein Netzwerk-Asset nötig.
 const ROBOMON_ICON = {
@@ -221,7 +224,25 @@ export class RobomonAccount
       // Agent-Singleton: der Overseer installiert den DO als Facet und stellt die Session
       // als unbenannte Kapsel bereit. tsType muss ein Export aus getTypeScriptTypes() sein.
       singleton: { tsType: "RobomonHealth" },
+      // Macht Robomon in der Board-UI als oeffenbare App-Kachel nutzbar (VON-1842). Ohne
+      // providesUi bleibt der Vendor nur ein gebundener Connector, nicht bedienbar.
+      providesUi: { title: "Robomon", icon: ROBOMON_ICON },
     };
+  }
+
+  /**
+   * Read-only Management-Frame (VON-1842): liest die von-authmon-KV serverseitig und backt den
+   * aktuellen Health-Snapshot in das iframe-HTML. Der Erst-Render braucht kein Browser-capnweb;
+   * die mitgelieferte `ui`-Capability (RobomonManagementApi) ermoeglicht spaeteren Live-Refresh.
+   */
+  async startAppUi(_context: AppUiContext): Promise<GatekeeperUiFrame> {
+    const session = new RobomonSession(new KvHealthRepo(this.env.AUTHMON_KV));
+    const [snapshot, activity] = await Promise.all([
+      session.getSnapshot(),
+      session.getRunActivity(),
+    ]);
+    const ui = new NativeRpcStub(new RobomonManagementApi(session));
+    return { iframeHtml: buildRobomonAppHtml(snapshot, activity), ui };
   }
 
   /** Gadget-seitiger Read-Pfad, mit den Account-Props imbued. */
