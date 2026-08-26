@@ -68,18 +68,18 @@ export function validateWebFetchUrl(input: string): URL {
   try {
     parsed = new URL(input);
   } catch {
-    throw new Error(`Invalid URL: ${input}`);
+    throw new Error(`Ungültige URL: ${input}`);
   }
 
   if (parsed.protocol !== "https:") {
     throw new Error(
-      `Only https:// URLs are allowed; got ${parsed.protocol}//. ` +
-        `Use the HTTPS version of this URL.`,
+      `Nur https://-URLs sind erlaubt; erhalten: ${parsed.protocol}//. ` +
+        `Verwende die HTTPS-Version dieser URL.`,
     );
   }
 
   if (parsed.username || parsed.password) {
-    throw new Error("URLs with embedded credentials are not allowed.");
+    throw new Error("URLs mit eingebetteten Zugangsdaten sind nicht erlaubt.");
   }
 
   return parsed;
@@ -317,8 +317,8 @@ export async function webFetch(
       // Ignore.
     }
     throw new Error(
-      `The site at ${finalUrl} sets Content-Signal: ai-input=no, indicating that ` +
-        `it does not permit its content to be used as AI input.`,
+      `Die Website ${finalUrl} sendet Content-Signal: ai-input=no und erlaubt damit ` +
+        `nicht, dass ihr Inhalt als KI-Eingabe verwendet wird.`,
     );
   }
 
