@@ -24,12 +24,12 @@ function formatRelativeTime(date: Date): string {
   const now = Date.now()
   const diff = now - date.getTime()
   const minutes = Math.floor(diff / 60000)
-  if (minutes < 1) return 'just now'
-  if (minutes < 60) return `${minutes}m ago`
+  if (minutes < 1) return 'gerade eben'
+  if (minutes < 60) return `vor ${minutes} Min.`
   const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}h ago`
+  if (hours < 24) return `vor ${hours} Std.`
   const days = Math.floor(hours / 24)
-  return `${days}d ago`
+  return `vor ${days} T.`
 }
 
 function AppRow({ gadget }: { gadget: GadgetMetadataWithTimestamps }) {
@@ -49,11 +49,11 @@ function AppRow({ gadget }: { gadget: GadgetMetadataWithTimestamps }) {
       {/* Info */}
       <div className="flex-1 min-w-0">
         <h3 className="text-sm font-medium text-kumo-default truncate">
-          {gadget.title || 'Untitled Workspace'}
+          {gadget.title || 'Unbenannter Arbeitsbereich'}
         </h3>
         {gadget.owner && (
           <p className="text-xs text-kumo-subtle truncate mt-0.5">
-            Shared by {gadget.owner.name}
+            Geteilt von {gadget.owner.name}
           </p>
         )}
       </div>
@@ -94,7 +94,7 @@ export default function RecentApps() {
     return (
       <section className="w-full max-w-2xl mx-auto">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-medium text-kumo-default">Recent workspaces</h2>
+          <h2 className="text-sm font-medium text-kumo-default">Zuletzt verwendet</h2>
         </div>
         <div className="flex flex-col gap-2">
           {[1, 2].map((i) => (
@@ -109,7 +109,7 @@ export default function RecentApps() {
     return (
       <section className="w-full max-w-2xl mx-auto">
         <div className="text-center py-8 text-sm text-kumo-danger">
-          Unable to load your workspaces. Check your connection and try refreshing.
+          Deine Arbeitsbereiche konnten nicht geladen werden. Prüf deine Verbindung und lad die Seite neu.
         </div>
       </section>
     )
@@ -119,7 +119,7 @@ export default function RecentApps() {
     return (
       <section className="w-full max-w-2xl mx-auto">
         <div className="text-center py-8 text-kumo-inactive text-sm">
-          No workspaces yet. Create your first one above!
+          Noch keine Arbeitsbereiche. Erstell oben deinen ersten!
         </div>
       </section>
     )
@@ -129,13 +129,13 @@ export default function RecentApps() {
     <section className="w-full max-w-2xl mx-auto">
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-sm font-medium text-kumo-default">
-          Recent workspaces
+          Zuletzt verwendet
         </h2>
         <Link
           to="/"
           className="flex items-center gap-1 text-xs text-kumo-subtle hover:text-kumo-brand transition-colors"
         >
-          View all
+          Alle anzeigen
           <ArrowRight size={12} />
         </Link>
       </div>

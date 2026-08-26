@@ -63,12 +63,12 @@ export default function FileSidebar({
 
   const handleCreateFile = () => {
     if (!newFileName.trim()) {
-      toasts.add({ title: 'Filename cannot be empty', variant: 'error' })
+      toasts.add({ title: 'Der Dateiname darf nicht leer sein', variant: 'error' })
       return
     }
 
     if (files.includes(newFileName.trim())) {
-      toasts.add({ title: 'A file with this name already exists', variant: 'error' })
+      toasts.add({ title: 'Eine Datei mit diesem Namen existiert bereits', variant: 'error' })
       return
     }
 
@@ -93,7 +93,7 @@ export default function FileSidebar({
     }
 
     if (files.includes(trimmed)) {
-      toasts.add({ title: 'A file with this name already exists', variant: 'error' })
+      toasts.add({ title: 'Eine Datei mit diesem Namen existiert bereits', variant: 'error' })
       return
     }
 
@@ -103,7 +103,7 @@ export default function FileSidebar({
 
   const startDelete = (filename: string) => {
     if (files.length <= 1) {
-      toasts.add({ title: 'Cannot delete the last remaining file', variant: 'error' })
+      toasts.add({ title: 'Die letzte verbleibende Datei kann nicht gelöscht werden', variant: 'error' })
       return
     }
     setDeletingFile(filename)
@@ -122,14 +122,14 @@ export default function FileSidebar({
     <div className={`flex h-full w-[244px] flex-col border-r border-kumo-line bg-kumo-base ${className}`}>
       <div className="flex h-9 shrink-0 items-center justify-between gap-2 px-3 pt-3 pb-2">
         <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-kumo-inactive">
-          Files
+          Dateien
         </span>
         <div className="flex items-center gap-1">
           <WorkshopIconButton
             onClick={() => setIsCreateModalOpen(true)}
             disabled={editLocked}
-            aria-label="New file"
-            title="New file"
+            aria-label="Neue Datei"
+            title="Neue Datei"
             className="!h-8 !w-8 text-kumo-subtle hover:bg-kumo-tint hover:text-kumo-default md:!h-6 md:!w-6"
           >
             <Plus size={14} weight="bold" />
@@ -137,7 +137,7 @@ export default function FileSidebar({
           {onRequestClose && (
             <WorkshopIconButton
               onClick={onRequestClose}
-              aria-label="Close files"
+              aria-label="Dateien schließen"
               className="!h-8 !w-8 md:!hidden"
             >
               <X size={16} />
@@ -201,10 +201,10 @@ export default function FileSidebar({
           <div className="flex items-start justify-between gap-4 border-b border-kumo-line px-5 py-4">
             <div className="min-w-0">
               <Dialog.Title className="text-[15px] leading-5 font-medium tracking-[-0.3px] text-kumo-default">
-                New file
+                Neue Datei
               </Dialog.Title>
               <Dialog.Description className="mt-1 text-[12px] leading-4 font-normal tracking-[-0.2px] text-kumo-subtle">
-                Create a new file in this gadget.
+                Erstelle eine neue Datei in diesem Gadget.
               </Dialog.Description>
             </div>
             <Dialog.Close
@@ -212,7 +212,7 @@ export default function FileSidebar({
                 <WorkshopIconButton
                   {...props}
                   className="!h-7 !w-7"
-                  aria-label="Close"
+                  aria-label="Schließen"
                 >
                   <X size={16} />
                 </WorkshopIconButton>
@@ -225,7 +225,7 @@ export default function FileSidebar({
               ref={createInputRef}
               autoFocus
               placeholder="filename.ts"
-              aria-label="Filename"
+              aria-label="Dateiname"
               value={newFileName}
               onChange={(e) => setNewFileName(e.target.value)}
               onKeyDown={(e) => {
@@ -249,7 +249,7 @@ export default function FileSidebar({
                   {...props}
                   className="!h-9"
                 >
-                  Cancel
+                  Abbrechen
                 </WorkshopButton>
               )}
             />
@@ -258,7 +258,7 @@ export default function FileSidebar({
               onClick={handleCreateFile}
               disabled={!newFileName.trim()}
             >
-              Create file
+              Datei erstellen
             </WorkshopButton>
           </div>
         </Dialog>
@@ -272,8 +272,8 @@ export default function FileSidebar({
             setDeletingFile(null)
           }
         }}
-        title="Delete file?"
-        description={<>This removes <span className="font-mono text-kumo-default">{deletingFile}</span> from the gadget. You can&apos;t undo this.</>}
+        title="Datei löschen?"
+        description={<>Dadurch wird <span className="font-mono text-kumo-default">{deletingFile}</span> aus dem Gadget entfernt. Das kannst du nicht rückgängig machen.</>}
         onConfirm={confirmDelete}
       />
     </div>
@@ -383,7 +383,7 @@ function FileRow({
           spellCheck={false}
           autoCapitalize="off"
           autoCorrect="off"
-          aria-label={`Rename ${filename}`}
+          aria-label={`${filename} umbenennen`}
           className="min-w-0 flex-1 bg-transparent text-[16px] leading-5 text-kumo-default outline-none placeholder:text-kumo-inactive md:text-[13px] md:leading-[18px]"
         />
       ) : (
@@ -400,8 +400,8 @@ function FileRow({
           {isStreamingActive && (
             <span
               className="h-1.5 w-1.5 shrink-0 rounded-full bg-kumo-success"
-              aria-label={`${filename} is being edited`}
-              title="Agent is editing this file"
+              aria-label={`${filename} wird gerade bearbeitet`}
+              title="Ein Agent bearbeitet gerade diese Datei"
             />
           )}
         </button>
@@ -412,7 +412,7 @@ function FileRow({
           <DropdownMenu.Trigger
             render={(
               <WorkshopIconButton
-                aria-label={`Actions for ${filename}`}
+                aria-label={`Aktionen für ${filename}`}
                 onClick={(event) => event.stopPropagation()}
                 className="!h-8 !w-8 text-kumo-inactive opacity-100 hover:bg-kumo-tint hover:text-kumo-default focus-visible:opacity-100 group-focus-within:opacity-100 group-hover:opacity-100 data-[popup-open]:opacity-100 md:!h-5 md:!w-5 md:opacity-0"
               >
@@ -429,7 +429,7 @@ function FileRow({
               onClick={onDownload}
               className="!h-auto rounded-md !px-2.5 !py-1.5 text-[12px] leading-4 tracking-[-0.2px] text-kumo-default transition-colors data-highlighted:bg-kumo-tint"
             >
-              Download
+              Herunterladen
             </DropdownMenu.Item>
             {!editLocked && (
               <>
@@ -438,7 +438,7 @@ function FileRow({
                   onClick={onRename}
                   className="!h-auto rounded-md !px-2.5 !py-1.5 text-[12px] leading-4 tracking-[-0.2px] text-kumo-default transition-colors data-highlighted:bg-kumo-tint"
                 >
-                  Rename
+                  Umbenennen
                 </DropdownMenu.Item>
                 <DropdownMenu.Item
                   icon={<Trash size={12} className="mr-2" />}
@@ -446,7 +446,7 @@ function FileRow({
                   onClick={onDelete}
                   className="!h-auto rounded-md !px-2.5 !py-1.5 text-[12px] leading-4 tracking-[-0.2px] transition-colors data-highlighted:bg-kumo-danger-tint"
                 >
-                  Delete
+                  Löschen
                 </DropdownMenu.Item>
               </>
             )}

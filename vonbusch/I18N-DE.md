@@ -95,6 +95,9 @@ Umgebende Beschreibungstexte werden aber übersetzt.
   `components/auth/*`, `AnnouncementBanner`, `ProtectedRoute`) — [VON-1889]
 - ✅ Gadget-Editor, Code & Formate (`GadgetEditor`, `GadgetCodeInterface`, `CodeEditor`,
   `CodeDiffEditor`, `GadgetExportMenu`, `components/format/*`) — [VON-1891]
+- ✅ Start, Chat & Arbeitsbereich (`routes/index`, `ChatInterface`, `components/chat/*`,
+  `GadgetUI`, `GadgetUseView`, `Activity`, `ActivityNotifications`, `FileSidebar`,
+  `routes/outputs`, `routes/workspaces`, `RecentApps`) — [VON-1890]
 - ⏳ Restliche Oberflächen: siehe Kind-Issues unter [VON-1888].
 
 ### Anmerkungen zu [VON-1891]
