@@ -31,6 +31,8 @@ import {
   buildCrmAppHtml, CrmManagementApi,
   type PendingApprovalSource, type PendingApprovalView,
 } from "./app-ui";
+import CRM_CONFIGURATOR_HTML from "./generated/crm-configurator-ui.txt";
+import type { CrmConfiguratorRpc } from "./configurator/crm-configurator-types";
 
 // ---------------------------------------------------------------------------
 
@@ -163,6 +165,16 @@ export class GatekeeperVendor extends WorkerEntrypoint<Cloudflare.Env> {
 }
 
 // ---------------------------------------------------------------------------
+// Ressourcen-Konfigurator-Capability (an das sandboxed iframe gereicht)
+
+/** Liefert dem Konfigurator-iframe die feste CRM-Ressourcen-URL. Kein Zustand, keine Auswahl. */
+class CrmConfiguratorUi extends RpcTarget implements CrmConfiguratorRpc {
+  async resourceUrl(): Promise<string> {
+    return RESOURCE_URL;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Account
 
 export class CrmAccount
@@ -226,8 +238,21 @@ export class CrmAccount
 
   async revoke(): Promise<void> {}
 
-  startResourceConfigurator(_resourceUrlPattern: string): Promise<ResourceConfiguratorFrame> {
-    throw new Error("Kein Ressourcen-Konfigurator; binde die CRM-URL direkt.");
+  /**
+   * Ressourcen-Konfigurator (VON-1850): Das CRM hat genau eine Ressource, es gibt nichts
+   * auszuwählen — aber die OS-Connect-Modal-UI aktiviert „Add connection" erst, wenn ein
+   * Konfigurator-Frame geladen ist und Bereitschaft meldet. Ohne diesen Frame blieb der Button
+   * ausgegraut. Wir liefern das sandboxed Bestätigungs-Formular; seine `ui`-Capability gibt die
+   * feste, serverseitig autoritative CRM-Ressourcen-URL zurück.
+   */
+  async startResourceConfigurator(resourceUrlPattern: string): Promise<ResourceConfiguratorFrame> {
+    if (resourceUrlPattern !== RESOURCE_URL) {
+      throw new Error(`Unbekannter CRM-Ressourcentyp: ${resourceUrlPattern}`);
+    }
+    return {
+      iframeHtml: CRM_CONFIGURATOR_HTML,
+      ui: new NativeRpcStub(new CrmConfiguratorUi()),
+    };
   }
 
   reconnect(): Promise<{ url: string }> {
