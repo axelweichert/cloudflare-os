@@ -27,7 +27,7 @@ export default function GatekeeperAppPage({ appId }: { appId: string }) {
       .getGatekeeperApp(appId)
       .then((frame) => {
         if (!frame) {
-          if (!cancelled) setError('This app is not available on this deployment.')
+          if (!cancelled) setError('Diese App ist in diesem Deployment nicht verfügbar.')
           return
         }
         if (cancelled) {
@@ -56,7 +56,7 @@ export default function GatekeeperAppPage({ appId }: { appId: string }) {
     )
   }
   if (!state) {
-    return <div className="px-4 py-16 text-center text-sm text-kumo-subtle">Loading…</div>
+    return <div className="px-4 py-16 text-center text-sm text-kumo-subtle">Wird geladen …</div>
   }
 
   // Fill the routed area below the header so the embedded app can manage its own internal layout.

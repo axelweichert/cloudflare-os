@@ -45,14 +45,14 @@ export default function ConnectAccountModal({
         const unavailable = vendorList.filter(v => v.unavailable)
         if (unavailable.length > 0) {
           toasts.add({
-            title: `Some services are temporarily unavailable: ${unavailable.map(v => v.id).join(', ')}`,
+            title: `Einige Dienste sind vorübergehend nicht verfügbar: ${unavailable.map(v => v.id).join(', ')}`,
             variant: 'warning',
           })
         }
         setVendors(vendorList.filter(v => !v.unavailable).map(v => ({ id: v.id, description: v.description })))
       } catch (error) {
         console.error('Failed to fetch vendors:', error)
-        toasts.add({ title: 'Failed to load available services', variant: 'error' })
+        toasts.add({ title: 'Verfügbare Dienste konnten nicht geladen werden', variant: 'error' })
       } finally {
         setVendorsLoading(false)
       }
@@ -69,7 +69,7 @@ export default function ConnectAccountModal({
       onInitiated()
     } catch (error) {
       console.error('Failed to initiate connection:', error)
-      toasts.add({ title: 'Failed to start connection flow', variant: 'error' })
+      toasts.add({ title: 'Verbindungsvorgang konnte nicht gestartet werden', variant: 'error' })
       setConnecting(null)
     }
   }
@@ -77,14 +77,14 @@ export default function ConnectAccountModal({
   return (
     <Dialog.Root open={visible} onOpenChange={(open) => { if (!open) onCancel() }}>
       <Dialog className="responsive-dialog overflow-y-auto p-6" size="base">
-        <Dialog.Title className="text-lg font-semibold mb-4">Connect Account</Dialog.Title>
+        <Dialog.Title className="text-lg font-semibold mb-4">Konto verbinden</Dialog.Title>
         {vendorsLoading ? (
           <div className="text-center py-8">
             <Loader />
           </div>
         ) : vendors.length === 0 ? (
           <div className="text-center py-8">
-            <Text variant="secondary">No services available to connect.</Text>
+            <Text variant="secondary">Keine Dienste zum Verbinden verfügbar.</Text>
           </div>
         ) : (
           <div className="flex flex-col gap-3 mt-2">

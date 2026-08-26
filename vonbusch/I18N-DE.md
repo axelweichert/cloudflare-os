@@ -101,6 +101,9 @@ Umgebende Beschreibungstexte werden aber übersetzt.
 - ✅ Blueprints & Entdecken (`routes/blueprints`, `routes/explore`, `BlueprintsPage`,
   `BlueprintLandingPage`, `BlueprintModal`, `components/Blueprint{Card,List,BindingCard,PreviewImage}`,
   `VendorCard`) — [VON-1892]
+- ✅ Verbindungen & Gatekeeper-Oberflächen (`routes/gatekeepers`, `routes/context`, `Connections`,
+  `ConnectAccountModal`, `ConnectConnectorModal`, `GatekeeperModal`, `GatekeeperAppPage`, `ResourcePicker`,
+  `ResourceConfiguratorHost`, `ObserverConfigModal`, `WorkpiecePicker`, `gatekeeper-modal/*`) — [VON-1893]
 - ⏳ Restliche Oberflächen: siehe Kind-Issues unter [VON-1888].
 
 ### Anmerkungen zu [VON-1891]
@@ -124,3 +127,22 @@ Umgebende Beschreibungstexte werden aber übersetzt.
   Dev-Diagnose-Throw).
 - `VendorCard.tsx` enthält keine statischen englischen Strings (alle Labels datengetrieben) —
   in Scope, aber ohne Änderung.
+
+### Anmerkungen zu [VON-1893]
+
+- Produktbegriffe unübersetzt: `Gatekeeper`, `Gadget`, `Blueprint`, `Agent`, `App`, `Hook(s)`,
+  `Deployment`, `Skill`, `Spawner` (Toolname). Umgebende Beschreibungstexte übersetzt.
+  `connection`/`binding` → „Verbindung"; „AI Model" → „KI-Modell"; „Resource" → „Ressource";
+  „Account" → „Konto"; „Configurator" → „Konfigurator".
+- Ausnahmsweise übersetzt, weil der Fehlertext über `err.message`/`setError` direkt in einem
+  UI-Banner bzw. Toast landet: `configuratorError`-Fallback und die `throw new Error(...)` in
+  `GatekeeperModal.tsx` (Configurator not ready / no resource URL), die Banner-Fehler in
+  `Connections.tsx` (`BlueprintAnnotationModal`) und `GatekeeperAppPage.tsx`, sowie die
+  Duplikat-Meldung in `AgentSpawnerConfigForm.tsx`.
+- Bewusst **nicht** übersetzt: alle `console.error`/`logRpcFailure`-Diagnosen; Datenwert-Vergleiche
+  (`resourceTitle === 'Email Mailbox'`, `vendorId === 'email'`), `localStorage`-Keys, `variant`/
+  `mode`/`kind`-Enum-Werte. Der `validateBindingName`-Fehler stammt aus `@gadgets/workshop-shared`
+  (außerhalb Scope) und bleibt vorerst englisch.
+- Ohne Änderung (keine statischen englischen Anzeige-Strings): `gatekeepers_.$appId.tsx`
+  (nur `'App'`-Fallback), `ConnectionChips.tsx`, `ConnectionConfigField.tsx` („Optional" ist
+  DE-identisch).
