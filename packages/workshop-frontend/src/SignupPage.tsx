@@ -20,7 +20,7 @@ export default function SignupPage({ rpcStub }: SignupPageProps) {
   const serverConfigError = useServerConfigError();
   const siteName = useSiteName();
   const connectionLost = useConnectionLost();
-  useDocumentTitle("Create account");
+  useDocumentTitle("Konto erstellen");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -29,17 +29,17 @@ export default function SignupPage({ rpcStub }: SignupPageProps) {
 
   const usernameError =
     username && !/^[a-z0-9_-]+$/i.test(username)
-      ? "Letters, numbers, underscores, and hyphens only"
+      ? "Nur Buchstaben, Zahlen, Unterstriche und Bindestriche"
       : undefined;
 
   const passwordError =
     password && password.length < 8
-      ? "Must be at least 8 characters"
+      ? "Mindestens 8 Zeichen"
       : undefined;
 
   const confirmError =
     confirmPassword && confirmPassword !== password
-      ? "Passwords do not match"
+      ? "Passwörter stimmen nicht überein"
       : undefined;
 
   const canSubmit =
@@ -68,10 +68,10 @@ export default function SignupPage({ rpcStub }: SignupPageProps) {
         localStorage.setItem("authToken", token);
         window.location.href = "/";
       } else {
-        setError("Username already exists");
+        setError("Benutzername ist bereits vergeben");
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Account creation failed");
+      setError(err instanceof Error ? err.message : "Kontoerstellung fehlgeschlagen");
     } finally {
       setLoading(false);
     }
@@ -85,9 +85,9 @@ export default function SignupPage({ rpcStub }: SignupPageProps) {
           className="flex h-full min-h-0 flex-col items-center justify-center gap-4 overflow-y-auto bg-kumo-base px-4 py-8"
         >
           <p className="text-sm text-kumo-danger text-center">
-            Couldn&apos;t load deployment settings.
+            Bereitstellungs-Einstellungen konnten nicht geladen werden.
           </p>
-          <Button variant="secondary" onClick={() => window.location.reload()}>Reload</Button>
+          <Button variant="secondary" onClick={() => window.location.reload()}>Neu laden</Button>
         </div>
       );
     }
@@ -95,7 +95,7 @@ export default function SignupPage({ rpcStub }: SignupPageProps) {
       <div className="flex h-full min-h-0 flex-col items-center justify-center gap-4 overflow-y-auto bg-kumo-base px-4 py-8">
         <Loader size="lg" />
         <p className="text-sm text-kumo-subtle text-center">
-          {connectionLost ? "Can't reach the server. Retrying…" : "Loading…"}
+          {connectionLost ? "Server nicht erreichbar. Neuer Versuch …" : "Wird geladen …"}
         </p>
       </div>
     );
@@ -133,16 +133,16 @@ export default function SignupPage({ rpcStub }: SignupPageProps) {
           <h1 className="text-xl font-semibold text-kumo-default">
             {siteName}
           </h1>
-          <p className="text-sm text-kumo-subtle mt-1">Create your account</p>
+          <p className="text-sm text-kumo-subtle mt-1">Erstelle dein Konto</p>
         </div>
 
         {!signupsEnabled && (
           <Banner
             variant="default"
-            title="Signups are closed"
+            title="Registrierung geschlossen"
             className="mb-4"
           >
-            New account registration is currently disabled on this deployment.
+            Die Registrierung neuer Konten ist auf dieser Bereitstellung derzeit deaktiviert.
           </Banner>
         )}
 
@@ -152,20 +152,20 @@ export default function SignupPage({ rpcStub }: SignupPageProps) {
             <form onSubmit={handleSubmit} className="space-y-4">
               <Input
                 className="w-full"
-                label="Username"
+                label="Benutzername"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 autoFocus
                 autoComplete="username"
                 disabled={loading}
-                placeholder="your-username"
+                placeholder="dein-benutzername"
                 error={usernameError}
               />
 
               <Input
                 className="w-full"
                 type="password"
-                label="Password"
+                label="Passwort"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 autoComplete="new-password"
@@ -177,7 +177,7 @@ export default function SignupPage({ rpcStub }: SignupPageProps) {
               <Input
                 className="w-full"
                 type="password"
-                label="Confirm Password"
+                label="Passwort bestätigen"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 autoComplete="new-password"
@@ -195,7 +195,7 @@ export default function SignupPage({ rpcStub }: SignupPageProps) {
                 loading={loading}
                 className="w-full justify-center"
               >
-                Create account
+                Konto erstellen
               </Button>
             </form>
           </>
@@ -207,7 +207,7 @@ export default function SignupPage({ rpcStub }: SignupPageProps) {
             {passwordAuthEnabled && (
               <div className="flex items-center gap-3 mb-4">
                 <div className="h-px flex-1 bg-kumo-line" />
-                <span className="text-xs text-kumo-subtle">or</span>
+                <span className="text-xs text-kumo-subtle">oder</span>
                 <div className="h-px flex-1 bg-kumo-line" />
               </div>
             )}
@@ -217,9 +217,9 @@ export default function SignupPage({ rpcStub }: SignupPageProps) {
 
         {passwordAuthEnabled && (
           <p className="text-center text-sm text-kumo-subtle mt-6">
-            Already have an account?{" "}
+            Du hast bereits ein Konto?{" "}
             <Link to="/" className="text-kumo-brand hover:underline font-medium">
-              Sign in
+              Anmelden
             </Link>
           </p>
         )}
