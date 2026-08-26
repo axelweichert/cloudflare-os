@@ -231,17 +231,17 @@ export function useSlashCommandPicker({
         maxHeight: layout.maxHeight,
       }}
     >
-      <p className={`m-0 shrink-0 px-3.5 pb-1 pt-2.5 ${PICKER_CAPTION}`}>Commands</p>
+      <p className={`m-0 shrink-0 px-3.5 pb-1 pt-2.5 ${PICKER_CAPTION}`}>Kommandos</p>
       <div
         ref={listRef}
         id={listboxId}
         role="listbox"
-        aria-label="Slash commands"
+        aria-label="Slash-Kommandos"
         aria-busy={loading}
         className="sidebar-scroll min-h-0 flex-1 overflow-y-auto"
       >
         {loading && choices.length === 0 ? (
-          <p className={PICKER_EMPTY}>Loading commands…</p>
+          <p className={PICKER_EMPTY}>Kommandos werden geladen…</p>
         ) : choices.length > 0 ? (
           choices.map((choice, optionIndex) => (
             <button
@@ -274,10 +274,10 @@ export function useSlashCommandPicker({
         ) : (
           <p className={PICKER_EMPTY}>
             {error
-              ? `Couldn’t load commands. ${error}`
+              ? `Kommandos konnten nicht geladen werden. ${error}`
               : query
-                ? "No commands match your search."
-                : "No commands are available."}
+                ? "Keine Kommandos passen zu deiner Suche."
+                : "Keine Kommandos verfügbar."}
           </p>
         )}
       </div>
@@ -301,10 +301,10 @@ export function useSlashCommandPicker({
     setIndex: selectIndex,
     status: open
       ? loading
-        ? "Loading slash commands"
+        ? "Slash-Kommandos werden geladen"
         : error
-          ? `Slash commands unavailable: ${error}`
-          : `${choices.length} slash command${choices.length === 1 ? "" : "s"} found`
+          ? `Slash-Kommandos nicht verfügbar: ${error}`
+          : `${choices.length} Slash-Kommando${choices.length === 1 ? "" : "s"} gefunden`
       : "",
   };
 }

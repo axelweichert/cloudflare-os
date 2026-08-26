@@ -15,9 +15,9 @@ export default function AppPreview() {
         {/* App header */}
         <div className="flex items-center justify-between mb-6">
           <div>
-            <Text variant="heading2" as="h1">Channel Summarizer</Text>
+            <Text variant="heading2" as="h1">Kanal-Zusammenfassung</Text>
             <p className="text-sm text-kumo-subtle mt-1">
-              Daily digest of your Slack channels, powered by Workers AI
+              Tägliche Zusammenfassung deiner Slack-Kanäle, powered by Workers AI
             </p>
           </div>
           <Badge variant="success">Live</Badge>
@@ -33,7 +33,7 @@ export default function AppPreview() {
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
                   <span className="font-mono text-sm font-semibold text-kumo-default">{row.channel}</span>
-                  <Badge variant="primary">{row.messages} msgs</Badge>
+                  <Badge variant="primary">{row.messages} Nachr.</Badge>
                 </div>
                 <span className="text-xs text-kumo-subtle">{row.lastActive}</span>
               </div>
@@ -43,20 +43,20 @@ export default function AppPreview() {
                   <Circle size={5} className="text-kumo-subtle mt-1.5 flex-shrink-0" weight="fill" />
                   <p className="text-sm text-kumo-subtle">
                     {row.channel === '#general'
-                      ? 'Team discussed Q1 planning timeline and agreed on March 15 deadline for proposals'
+                      ? 'Team hat den Zeitplan der Q1-Planung besprochen und den 15. März als Frist für Vorschläge festgelegt'
                       : row.channel === '#engineering'
-                        ? 'Deployed v2.4.1 hotfix for auth timeout. Monitoring dashboards show latency back to normal'
-                        : 'Active discussion about weekend hackathon projects and lunch plans for Friday'}
+                        ? 'Hotfix v2.4.1 für Auth-Timeout ausgerollt. Monitoring-Dashboards zeigen wieder normale Latenz'
+                        : 'Angeregte Diskussion über Hackathon-Projekte am Wochenende und Mittagspläne für Freitag'}
                   </p>
                 </div>
                 <div className="flex items-start gap-2">
                   <Circle size={5} className="text-kumo-subtle mt-1.5 flex-shrink-0" weight="fill" />
                   <p className="text-sm text-kumo-subtle">
                     {row.channel === '#general'
-                      ? '3 action items assigned, 2 decisions made'
+                      ? '3 Aufgaben zugewiesen, 2 Entscheidungen getroffen'
                       : row.channel === '#engineering'
-                        ? 'RFC for new caching layer received 5 approvals, moving to implementation'
-                        : '12 participants, trending topics: hackathon, team lunch, offsite'}
+                        ? 'RFC für neue Caching-Schicht hat 5 Freigaben erhalten, geht in die Umsetzung'
+                        : '12 Teilnehmende, angesagte Themen: Hackathon, Team-Lunch, Offsite'}
                   </p>
                 </div>
               </div>
@@ -67,7 +67,7 @@ export default function AppPreview() {
         {/* Quiet channels */}
         <div className="mt-6">
           <div className="text-xs font-semibold text-kumo-subtle uppercase tracking-wider mb-3">
-            No new activity
+            Keine neue Aktivität
           </div>
           <div className="flex flex-wrap gap-2">
             {sampleDataRows.filter(r => !r.unread).map((row) => (

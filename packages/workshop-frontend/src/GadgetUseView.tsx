@@ -64,7 +64,7 @@ export default function GadgetUseView({
         <TopBarNotice />
         {/* Left: logo / title */}
         <div className="flex items-center gap-2 min-w-0">
-          <Link to="/" aria-label="Home" className="flex-shrink-0 hover:opacity-80 transition-opacity">
+          <Link to="/" aria-label="Start" className="flex-shrink-0 hover:opacity-80 transition-opacity">
             <SiteLogo size={22}>
               <Hexagon size={22} className="text-kumo-brand" weight="bold" />
             </SiteLogo>
@@ -78,7 +78,7 @@ export default function GadgetUseView({
 
           {metadata.owner && (
             <span className="text-xs text-kumo-inactive flex-shrink-0">
-              by {metadata.owner.name}
+              von {metadata.owner.name}
             </span>
           )}
         </div>
@@ -155,7 +155,7 @@ export default function GadgetUseView({
           />
         ) : (
           <div className="flex h-full items-center justify-center px-6 text-center">
-            <p className="text-sm text-kumo-subtle">This workspace has no gadgets yet.</p>
+            <p className="text-sm text-kumo-subtle">Dieser Arbeitsbereich enthält noch keine Gadgets.</p>
           </div>
         )}
       </div>

@@ -94,7 +94,7 @@ export default function ConnectionConfigModal({
                 onClick={handleAdd}
                 disabled={!inputValue.trim()}
               >
-                Add
+                Hinzufügen
               </Button>
             </div>
           </div>
@@ -104,7 +104,7 @@ export default function ConnectionConfigModal({
         <div className="max-h-56 overflow-y-auto px-5 pb-4">
           {resources.length === 0 ? (
             <p className="text-sm text-kumo-inactive text-center py-4">
-              No resources added yet
+              Noch keine Ressourcen hinzugefügt
             </p>
           ) : (
             <div className="space-y-1">
@@ -133,7 +133,7 @@ export default function ConnectionConfigModal({
           <Dialog.Close
             render={(props) => (
               <Button {...props} variant="outline" size="sm">
-                Cancel
+                Abbrechen
               </Button>
             )}
           />
@@ -145,7 +145,7 @@ export default function ConnectionConfigModal({
               onOpenChange(false)
             }}
           >
-            Save
+            Speichern
           </Button>
         </div>
       </Dialog>
