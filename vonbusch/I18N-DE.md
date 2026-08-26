@@ -104,7 +104,32 @@ Umgebende Beschreibungstexte werden aber übersetzt.
 - ✅ Verbindungen & Gatekeeper-Oberflächen (`routes/gatekeepers`, `routes/context`, `Connections`,
   `ConnectAccountModal`, `ConnectConnectorModal`, `GatekeeperModal`, `GatekeeperAppPage`, `ResourcePicker`,
   `ResourceConfiguratorHost`, `ObserverConfigModal`, `WorkpiecePicker`, `gatekeeper-modal/*`) — [VON-1893]
+- ✅ Backend- & vonbusch-Gatekeeper-Nutzertexte (`workshop-backend/src` nutzersichtbare Strings,
+  `gatekeeper-vonbusch-*/src/app-ui.ts`, `vonbusch/*`, `format-blueprints`) — [VON-1895]
 - ⏳ Restliche Oberflächen: siehe Kind-Issues unter [VON-1888].
+
+### Anmerkungen zu [VON-1895]
+
+- **Bereits deutsch (keine Änderung):** Alle fünf `gatekeeper-vonbusch-*/src/app-ui.ts` (CRM, Mail,
+  Mailbox, Preiserhebung, Robomon) wurden von Anfang an auf Deutsch verfasst; ebenso die
+  vonbusch-Blueprint-Gadgets (`vonbusch/format-blueprints/src/{angebot-erstellen,lead-qualifizieren}`
+  client/server) und deren Sidecars `angebot-erstellen.json` / `lead-qualifizieren.json`.
+- **Übersetzt:** Die drei Cloudflare-Default-Format-Blueprints, die im Deployment mitgebündelt werden
+  (`FORMAT_BLUEPRINTS_DIR=vonbusch/format-blueprints`, ersetzt das Default-Set): `workspace-docs`,
+  `workspace-sheets`, `workspace-slides`. `title`, `description` sowie `output.noun`/`output.plural`
+  (letztere erscheinen als „Neu: {noun}" / „{noun} erstellen" / Outputs-Gruppierung) auf Deutsch:
+  Dokument(e) / Tabelle(n) / Präsentation(en). `output.id` (`document`/`spreadsheet`/`presentation`)
+  bleibt technischer Gruppierungsschlüssel.
+- Das generierte Bundle `packages/workshop-backend/src/generated/format-blueprints.ts` ist
+  gitignored und wird beim Build (`build:worker`) aus den Sidecars neu erzeugt — nur die
+  `.json`-Sidecars werden committed. Die Kopien unter `packages/workshop-backend/format-blueprints/`
+  sind das Upstream-Default-Set und werden vom Deployment NICHT genutzt; bewusst unangetastet, um die
+  Merge-Fläche bei Upstream-Syncs klein zu halten.
+- **Bewusst NICHT übersetzt:** `slash-commands.ts` (nur `console.error` + datengetriebene Labels der
+  Gatekeeper), `agent-catalog.ts` (modellseitiger System-Prompt-Text + `logger.warn`),
+  `client-errors.ts` HTTP-Status-Bodies (programmatisch, kein UI-Text). `revision`-Felder der
+  Sidecars NICHT gebumpt (Archiv-Bytes unverändert; `formatBlueprintsManifestVersion()`
+  fingerprintet bereits title/description/output und löst die Neuinstallation aus).
 
 ### Anmerkungen zu [VON-1891]
 

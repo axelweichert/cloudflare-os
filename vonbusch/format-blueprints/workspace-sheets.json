@@ -1,11 +1,11 @@
 {
   "blueprintId": "format.spreadsheet",
-  "title": "Workspace Sheets",
-  "description": "Use to write, format, and edit spreadsheets interactively or with natural language.",
+  "title": "Tabellen",
+  "description": "Zum Erstellen, Formatieren und Bearbeiten von Tabellenkalkulationen — interaktiv oder per natürlicher Sprache.",
   "output": {
     "id": "spreadsheet",
-    "noun": "Sheet",
-    "plural": "Sheets",
+    "noun": "Tabelle",
+    "plural": "Tabellen",
     "icon": "table"
   },
   "author": { "type": "user", "name": "Cloudflare", "id": "agent@cloudflare.com" },
