@@ -4,7 +4,7 @@
 import { FormatGlyph } from './FormatVisuals'
 import { useOutputFormats } from './useOutputFormats'
 
-export default function NewFormatRow({ label = 'Start with' }: { label?: string }) {
+export default function NewFormatRow({ label = 'Beginne mit' }: { label?: string }) {
   const { formats, creating, create } = useOutputFormats()
 
   if (formats.length === 0) return null
@@ -29,7 +29,7 @@ export default function NewFormatRow({ label = 'Start with' }: { label?: string 
               size="md"
               className={creating === format.blueprintId ? 'animate-pulse' : 'text-kumo-subtle'}
             />
-            {creating === format.blueprintId ? `Creating…` : `New ${format.output.noun}`}
+            {creating === format.blueprintId ? `Wird erstellt …` : `${format.output.noun} erstellen`}
           </button>
         ))}
       </div>

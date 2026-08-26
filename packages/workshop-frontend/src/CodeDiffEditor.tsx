@@ -417,7 +417,7 @@ export default function CodeDiffEditor({
         className="flex items-center justify-center bg-kumo-base text-[13px] leading-[18px] tracking-[-0.25px] text-kumo-subtle"
         style={{ height }}
       >
-        {!filename ? 'Select a file to view changes' : 'Loading diff...'}
+        {!filename ? 'Wähle eine Datei aus, um Änderungen anzuzeigen' : 'Diff wird geladen …'}
       </div>
     )
   }
@@ -433,8 +433,8 @@ export default function CodeDiffEditor({
             <button
               type="button"
               className={layoutButtonClass(diffLayoutPreference === 'stacked')}
-              title="Stacked diff"
-              aria-label="Use stacked diff layout"
+              title="Gestapeltes Diff"
+              aria-label="Gestapeltes Diff-Layout verwenden"
               aria-pressed={diffLayoutPreference === 'stacked'}
               onClick={() => setDiffLayoutPreference('stacked')}
             >
@@ -443,8 +443,8 @@ export default function CodeDiffEditor({
             <button
               type="button"
               className={layoutButtonClass(diffLayoutPreference === 'split' && canSplitDiff, !canSplitDiff)}
-              title={canSplitDiff ? 'Split diff' : 'Split diff needs more space'}
-              aria-label="Use split diff layout"
+              title={canSplitDiff ? 'Geteiltes Diff' : 'Geteiltes Diff benötigt mehr Platz'}
+              aria-label="Geteiltes Diff-Layout verwenden"
               aria-pressed={diffLayoutPreference === 'split' && canSplitDiff}
               disabled={!canSplitDiff}
               onClick={() => setDiffLayoutPreference('split')}

@@ -345,8 +345,8 @@ export default function GadgetCodeInterface({
       },
       onLocalEditsDiscarded: () => {
         toastsRef.current.add({
-          title: "Your latest code edits were discarded — this conversation's changes were " +
-            'reverted or changed by someone else at the same time.',
+          title: 'Deine neuesten Code-Änderungen wurden verworfen – die Änderungen dieser ' +
+            'Unterhaltung wurden gleichzeitig zurückgesetzt oder von jemand anderem geändert.',
           variant: 'warning',
         })
       },
@@ -948,19 +948,19 @@ export default function GadgetCodeInterface({
   const handleFileCreate = (filename: string) => {
     if (isEditingLocked || displayFiles === null) return
     if (displayFiles.has(filename)) {
-      toasts.add({ title: `File already exists: ${filename}`, variant: 'error' })
+      toasts.add({ title: `Datei existiert bereits: ${filename}`, variant: 'error' })
       return
     }
     if (applyLocalFileChanges([[filename, { set: '' }]])) {
       setActiveFile(filename)
-      toasts.add({ title: `Created file: ${filename}`, variant: 'success' })
+      toasts.add({ title: `Datei erstellt: ${filename}`, variant: 'success' })
     }
   }
 
   const handleFileDelete = (filename: string) => {
     if (isEditingLocked || displayFiles === null) return
     if (!displayFiles.has(filename)) {
-      toasts.add({ title: 'File not found', variant: 'error' })
+      toasts.add({ title: 'Datei nicht gefunden', variant: 'error' })
       return
     }
     if (applyLocalFileChanges([[filename, { remove: true }]])) {
@@ -968,7 +968,7 @@ export default function GadgetCodeInterface({
         const remaining = displayedFilesRef.current.filter(name => name !== filename)
         setActiveFile(remaining.length > 0 ? remaining[0] : null)
       }
-      toasts.add({ title: `Deleted file: ${filename}`, variant: 'success' })
+      toasts.add({ title: `Datei gelöscht: ${filename}`, variant: 'success' })
     }
   }
 
@@ -976,25 +976,25 @@ export default function GadgetCodeInterface({
     if (isEditingLocked || displayFiles === null) return
     const text = displayFiles.get(oldName)
     if (text === undefined) {
-      toasts.add({ title: 'File not found', variant: 'error' })
+      toasts.add({ title: 'Datei nicht gefunden', variant: 'error' })
       return
     }
     if (displayFiles.has(newName)) {
-      toasts.add({ title: `File already exists: ${newName}`, variant: 'error' })
+      toasts.add({ title: `Datei existiert bereits: ${newName}`, variant: 'error' })
       return
     }
     if (applyLocalFileChanges([[oldName, { remove: true }], [newName, { set: text }]])) {
       if (activeFile === oldName) {
         setActiveFile(newName)
       }
-      toasts.add({ title: `Renamed file: ${oldName} \u2192 ${newName}`, variant: 'success' })
+      toasts.add({ title: `Datei umbenannt: ${oldName} \u2192 ${newName}`, variant: 'success' })
     }
   }
 
   const handleFileDownload = useCallback((filename: string) => {
     const text = displayFiles?.get(filename)
     if (text === undefined) {
-      toasts.add({ title: `Could not download ${filename}`, variant: 'error' })
+      toasts.add({ title: `${filename} konnte nicht heruntergeladen werden`, variant: 'error' })
       return
     }
     saveTextToFile(filename, text)
@@ -1026,14 +1026,14 @@ export default function GadgetCodeInterface({
         style={{ height }}
       >
         <p className="m-0 text-sm text-kumo-danger">
-          Failed to load this gadget&apos;s code.
+          Der Code dieses Gadgets konnte nicht geladen werden.
         </p>
         <WorkshopButton
           tone="secondary"
           className="!h-8"
           onClick={() => setHeadRetryToken(token => token + 1)}
         >
-          Try again
+          Erneut versuchen
         </WorkshopButton>
       </div>
     )
@@ -1045,7 +1045,7 @@ export default function GadgetCodeInterface({
         className="flex justify-center items-center px-6 text-center text-kumo-danger text-sm"
         style={{ height }}
       >
-        Failed to load this conversation&apos;s code changes. Try reloading the page.
+        Die Code-Änderungen dieser Unterhaltung konnten nicht geladen werden. Versuche, die Seite neu zu laden.
       </div>
     )
   }
@@ -1056,7 +1056,7 @@ export default function GadgetCodeInterface({
         className="flex justify-center items-center text-kumo-subtle"
         style={{ height }}
       >
-        Loading code files...
+        Code-Dateien werden geladen …
       </div>
     )
   }
@@ -1075,24 +1075,24 @@ export default function GadgetCodeInterface({
   const activeFileDownloadable =
     activeFile !== null && displayFiles?.get(activeFile) !== undefined
   const activeFileModeLabel = !branchMode
-    ? 'Viewing'
+    ? 'Ansicht von'
     : isEditingLocked
-      ? 'Reviewing changes in'
-      : 'Editing changes in'
+      ? 'Änderungen ansehen in'
+      : 'Änderungen bearbeiten in'
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height, width: '100%' }}>
       {hasUnsavedChanges && (
         <div className="bg-kumo-tint border-b border-kumo-line px-4 py-2 flex items-center gap-2 text-sm text-kumo-warning">
           <span className="text-base">&#9888;&#65039;</span>
-          <span>Connection issue - changes will be saved when connection is restored</span>
+          <span>Verbindungsproblem – Änderungen werden gespeichert, sobald die Verbindung wiederhergestellt ist</span>
         </div>
       )}
       <div className="relative flex min-h-0 flex-1">
         {fileDrawerOpen && (
           <button
             type="button"
-            aria-label="Close files"
+            aria-label="Dateien schließen"
             onClick={() => setFileDrawerOpen(false)}
             className="absolute inset-0 z-20 bg-black/25 md:hidden"
           />
@@ -1101,7 +1101,7 @@ export default function GadgetCodeInterface({
           ref={fileDrawerRef}
           role={compactLayout ? 'dialog' : undefined}
           aria-modal={compactLayout ? true : undefined}
-          aria-label={compactLayout ? 'Files' : undefined}
+          aria-label={compactLayout ? 'Dateien' : undefined}
           aria-hidden={compactLayout && !fileDrawerOpen ? true : undefined}
           inert={compactLayout && !fileDrawerOpen ? true : undefined}
           tabIndex={compactLayout ? -1 : undefined}
@@ -1141,8 +1141,8 @@ export default function GadgetCodeInterface({
         >
           <div className={`${activeFile ? 'flex' : 'flex md:hidden'} h-11 shrink-0 items-center justify-between gap-2 border-b border-kumo-line bg-kumo-base px-2 md:h-9 md:px-3`}>
             <WorkshopIconButton
-              aria-label="Open files"
-              title="Files"
+              aria-label="Dateien öffnen"
+              title="Dateien"
               onClick={() => setFileDrawerOpen(true)}
               ref={fileDrawerTriggerRef}
               className="!h-9 !w-9 md:!hidden"
@@ -1152,12 +1152,12 @@ export default function GadgetCodeInterface({
             <div className="min-w-0 flex-1 truncate text-[13px] leading-4 text-kumo-subtle md:text-[12px]">
               {activeFile ? (
                 <>{activeFileModeLabel} <span className="font-mono font-medium text-kumo-default">{activeFile}</span></>
-              ) : 'Files'}
+              ) : 'Dateien'}
             </div>
             {activeFile && (
               <WorkshopIconButton
-                aria-label={`Download ${activeFile}`}
-                title="Download file"
+                aria-label={`${activeFile} herunterladen`}
+                title="Datei herunterladen"
                 onClick={() => handleFileDownload(activeFile)}
                 disabled={!activeFileDownloadable}
                 className="!h-9 !w-9 md:!h-6 md:!w-6"
@@ -1171,12 +1171,12 @@ export default function GadgetCodeInterface({
               <div className="flex h-full flex-col items-center justify-center bg-kumo-base px-6 text-center">
                 <div className="max-w-[360px]">
                   <p className="m-0 text-[15px] leading-[22px] font-semibold tracking-[-0.3px] text-kumo-default">
-                    No files yet
+                    Noch keine Dateien
                   </p>
                   <p className="mt-1.5 mb-0 text-[13px] leading-[19px] tracking-[-0.25px] text-kumo-subtle">
                     {branchMode
-                      ? 'Keep building with the agent in chat and files will appear here as it works, or create one yourself.'
-                      : 'Open a conversation and build with the agent, and its accepted files will appear here.'}
+                      ? 'Baue mit dem Agent im Chat weiter, dann erscheinen die Dateien hier während er arbeitet – oder erstelle selbst eine.'
+                      : 'Öffne eine Unterhaltung und baue mit dem Agent, dann erscheinen die von ihm übernommenen Dateien hier.'}
                   </p>
                   {branchMode && (
                     <div className="mt-4 flex justify-center">
@@ -1186,7 +1186,7 @@ export default function GadgetCodeInterface({
                         tone="primary"
                         className="!h-8"
                       >
-                        New file
+                        Neue Datei
                       </WorkshopButton>
                     </div>
                   )}
