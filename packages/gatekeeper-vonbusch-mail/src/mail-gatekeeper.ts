@@ -34,6 +34,8 @@ import {
   buildMailAppHtml, MailManagementApi,
   type PendingApprovalSource, type PendingApprovalView,
 } from "./app-ui";
+import MAIL_CONFIGURATOR_HTML from "./generated/mail-configurator-ui.txt";
+import type { MailConfiguratorRpc } from "./configurator/mail-configurator-types";
 
 // ---------------------------------------------------------------------------
 
@@ -49,6 +51,16 @@ const SUPPORTED_RESOURCES: SupportedResource[] = [{
 
 // Ein einziger Mail-Queue-Raum (Firmen-Singleton). Der DO wird per idFromName gepinnt.
 const MAIL_SINGLETON = "vonbusch-mail";
+
+// ---------------------------------------------------------------------------
+// Ressourcen-Konfigurator-Capability (an das sandboxed iframe gereicht)
+
+/** Liefert dem Konfigurator-iframe die feste Mail-Ressourcen-URL. Kein Zustand, keine Auswahl. */
+class MailConfiguratorUi extends RpcTarget implements MailConfiguratorRpc {
+  async resourceUrl(): Promise<string> {
+    return RESOURCE_URL;
+  }
+}
 
 // getTypeScriptTypes(): der Coding-Agent bekommt daraus die API-Oberfläche.
 const TYPES_CODE = `
@@ -223,8 +235,21 @@ export class MailAccount
 
   async revoke(): Promise<void> {}
 
-  startResourceConfigurator(_resourceUrlPattern: string): Promise<ResourceConfiguratorFrame> {
-    throw new Error("Kein Ressourcen-Konfigurator; binde die Mail-URL direkt.");
+  /**
+   * Ressourcen-Konfigurator (VON-1850): Der Mailer hat genau eine Ressource, es gibt nichts
+   * auszuwählen — aber die OS-Connect-Modal-UI aktiviert „Add connection" erst, wenn ein
+   * Konfigurator-Frame geladen ist und Bereitschaft meldet. Ohne diesen Frame blieb der Button
+   * ausgegraut. Wir liefern das sandboxed Bestätigungs-Formular; seine `ui`-Capability gibt die
+   * feste, serverseitig autoritative Mail-Ressourcen-URL zurück.
+   */
+  async startResourceConfigurator(resourceUrlPattern: string): Promise<ResourceConfiguratorFrame> {
+    if (resourceUrlPattern !== RESOURCE_URL) {
+      throw new Error(`Unbekannter Mail-Ressourcentyp: ${resourceUrlPattern}`);
+    }
+    return {
+      iframeHtml: MAIL_CONFIGURATOR_HTML,
+      ui: new NativeRpcStub(new MailConfiguratorUi()),
+    };
   }
 
   reconnect(): Promise<{ url: string }> {

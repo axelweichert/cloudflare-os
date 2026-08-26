@@ -663,6 +663,9 @@ importers:
 
   packages/gatekeeper-vonbusch-crm:
     dependencies:
+      '@gadgets/configurator-ui':
+        specifier: workspace:*
+        version: link:../configurator-ui
       '@gadgets/workshop-shared':
         specifier: workspace:*
         version: link:../workshop-shared
@@ -682,9 +685,15 @@ importers:
 
   packages/gatekeeper-vonbusch-mail:
     dependencies:
+      '@gadgets/configurator-ui':
+        specifier: workspace:*
+        version: link:../configurator-ui
       '@gadgets/workshop-shared':
         specifier: workspace:*
         version: link:../workshop-shared
+      capnweb:
+        specifier: 'catalog:'
+        version: 0.12.0
     devDependencies:
       tsx:
         specifier: ^4.23.12
