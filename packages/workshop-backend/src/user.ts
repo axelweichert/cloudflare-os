@@ -234,8 +234,8 @@ function unavailableGatekeeperVendorInfo(id: string): GatekeeperVendorInfo {
     description: {
       displayName: id,
       url: "",
-      tagline: "Temporarily unavailable",
-      description: "This gatekeeper could not be loaded.",
+      tagline: "Vorübergehend nicht verfügbar",
+      description: "Dieser Gatekeeper konnte nicht geladen werden.",
     },
     supportedResources: [],
   };
@@ -326,7 +326,7 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
   async authenticateFromCfAccess(email: string, allowCreate: boolean): Promise<boolean> {
     if (!this.storage.created.get()) {
       if (!allowCreate) {
-        throw new Error("New sign-ups are currently disabled on this deployment.");
+        throw new Error("Neuregistrierungen sind auf diesem Deployment derzeit deaktiviert.");
       }
       // Create on first use.
       this.storage.created.put(true);
@@ -434,12 +434,12 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
   async changePassword(oldHash: Uint8Array, newHash: Uint8Array): Promise<void> {
     let actualHashHash = this.storage.passwordHashHash.get();
     if (!actualHashHash) {
-      throw new Error("This account does not use password login.");
+      throw new Error("Dieses Konto verwendet keine Passwort-Anmeldung.");
     }
 
     let oldHashHash = new Uint8Array(await crypto.subtle.digest('SHA-256', oldHash));
     if (!bytesEqual(oldHashHash, actualHashHash)) {
-      throw new Error("Incorrect password.");
+      throw new Error("Falsches Passwort.");
     }
 
     let newHashHash = new Uint8Array(await crypto.subtle.digest('SHA-256', newHash));
@@ -550,7 +550,7 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
   async addModel(profile: AiChatAuthorInfo, config: AiModelConfig): Promise<void> {
     let gwConfig = getAiGatewayConfig(this.env);
     if (gwConfig && !gwConfig.providers.has(config.provider)) {
-      throw new Error(`Provider "${config.provider}" is not available in AI Gateway mode.`);
+      throw new Error(`Anbieter „${config.provider}" ist im AI-Gateway-Modus nicht verfügbar.`);
     }
 
     profile.type = "agent";
@@ -563,7 +563,7 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
     if (gwConfig) {
       for (let [provider, models] of Object.entries(SUGGESTED_MODELS)) {
         if (gwConfig.providers.has(provider) && id in models) {
-          throw new Error(`Cannot delete built-in model "${models[id].name}".`);
+          throw new Error(`Das eingebaute Modell „${models[id].name}" kann nicht gelöscht werden.`);
         }
       }
     }
@@ -994,7 +994,7 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
 
     if (kvRecord) {
       if (kvRecord.ownerId !== this.ctx.id.toString()) {
-        throw new Error("You don't own this blueprint.");
+        throw new Error("Dieser Blueprint gehört dir nicht.");
       }
 
       // Delete all R2 objects with the blueprint ID prefix.
@@ -1145,7 +1145,7 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
       throw new Error("No such service: " + vendorId);
     }
     if ((await readAdminConfig(this.env)).disabledGatekeepers.includes(vendorId.toLowerCase())) {
-      throw new Error(`The "${vendorId}" gatekeeper is disabled on this deployment.`);
+      throw new Error(`Der Gatekeeper „${vendorId}" ist auf diesem Deployment deaktiviert.`);
     }
 
     let accountId = this.storage.nextAccountId.get();
@@ -1251,12 +1251,12 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
     if (!vendor) throw new Error("No such service: " + vendorId);
 
     if (ambientGatekeeperMode(await readAdminConfig(this.env), vendorId) === "disabled") {
-      throw new Error(`The "${vendorId}" gatekeeper is disabled on this deployment.`);
+      throw new Error(`Der Gatekeeper „${vendorId}" ist auf diesem Deployment deaktiviert.`);
     }
 
     let description = await vendor.describe();
     if (!description.autoProvisionsAccount) {
-      throw new Error(`The "${vendorId}" gatekeeper can't be added this way.`);
+      throw new Error(`Der Gatekeeper „${vendorId}" kann auf diese Weise nicht hinzugefügt werden.`);
     }
 
     if (this.#hasAccountForVendor(vendorId)) return;  // already added
@@ -1503,7 +1503,7 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
       if (account.autoProvisioned) {
         // A forced ("enabled") ambient account can't be removed by the user — the admin controls it.
         if (shouldAutoProvisionAccount(await readAdminConfig(this.env), account.vendorId)) {
-          throw new Error("This account is provided automatically and can't be disconnected.");
+          throw new Error("Dieses Konto wird automatisch bereitgestellt und kann nicht getrennt werden.");
         }
         // An opt-in ("optional") ambient account: the user added it, so let them remove it. revoke()
         // gives the gatekeeper a chance to delete its own per-user storage (e.g. the account's
@@ -1709,7 +1709,7 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
       console.error(
           `getVerifier: account ${accountId} vendor "${account.vendorId}" ` +
           `!= expected "${expectedVendorId}"`);
-      throw new Error("Invalid account selection for this service.");
+      throw new Error("Ungültige Kontoauswahl für diesen Dienst.");
     }
     return await account.account.getVerifier();
   }
@@ -1766,7 +1766,7 @@ export function normalizeUsername(username: string) {
   username = username.toLowerCase();
 
   if (!username.match(/^[a-z][a-z0-9_]*$/)) {
-    throw new Error("Invalid username. Must be alphanumeric starting with a letter.")
+    throw new Error("Ungültiger Benutzername. Muss alphanumerisch sein und mit einem Buchstaben beginnen.")
   }
 
   return username;

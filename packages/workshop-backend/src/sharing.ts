@@ -299,12 +299,12 @@ export class SharingManager {
   }): CollaboratorInfo {
     // Don't add the owner as a collaborator.
     if (opts.profile.id === this.ownerProfileId) {
-      throw new Error("Cannot add the workspace owner as a collaborator.");
+      throw new Error("Der Eigentümer des Arbeitsbereichs kann nicht als Mitarbeiter hinzugefügt werden.");
     }
 
     let callerRole = this.#requireCallerRole(opts.caller);
     if (roleRank(opts.role) > roleRank(callerRole)) {
-      throw new Error("You cannot grant a role higher than your own.");
+      throw new Error("Du kannst keine höhere Rolle vergeben als deine eigene.");
     }
 
     let existing = this.storage.collaborators.get(opts.profile.id);
@@ -381,7 +381,7 @@ export class SharingManager {
       caller: SharingCaller, profileId: string, keepUsers: string[]): AffectedCollaborator[] {
     let target = this.storage.collaborators.get(profileId);
     if (!target) {
-      throw new Error("User is not a collaborator.");
+      throw new Error("Nutzer ist kein Mitarbeiter.");
     }
 
     // Permission check: owner can remove anyone; collaborators can only remove users
@@ -390,7 +390,7 @@ export class SharingManager {
       let hasEdgeFromCaller = target.addedBy.some(
           e => e.type === "user" && e.sharer === caller.profileId);
       if (!hasEdgeFromCaller) {
-        throw new Error("You can only remove users that you added.");
+        throw new Error("Du kannst nur Nutzer entfernen, die du selbst hinzugefügt hast.");
       }
     }
 
@@ -415,10 +415,11 @@ export class SharingManager {
   // Share link management
 
   // Enforce that `caller` may manage `link`: the owner can manage any link; a collaborator only
-  // the links they created. `action` is the user-facing verb (e.g. "revoke", "edit", "copy").
+  // the links they created. `action` is the user-facing verb (e.g. "widerrufen", "bearbeiten",
+  // "kopieren").
   #requireLinkManager(caller: SharingCaller, link: ShareLinkRecord, action: string): void {
     if (!caller.isOwner && link.createdBy !== caller.profileId) {
-      throw new Error(`You can only ${action} share links that you created.`);
+      throw new Error(`Du kannst nur Freigabe-Links ${action}, die du selbst erstellt hast.`);
     }
   }
 
@@ -426,7 +427,7 @@ export class SharingManager {
   #requireLink(linkId: string): ShareLinkRecord {
     let link = asLink(this.storage.shareKeys.get(linkId));
     if (!link) {
-      throw new Error("Share link not found.");
+      throw new Error("Freigabe-Link nicht gefunden.");
     }
     return link;
   }
@@ -436,7 +437,7 @@ export class SharingManager {
       : Promise<{ key: string; linkId: string }> {
     let callerRole = this.#requireCallerRole(opts.caller);
     if (roleRank(opts.role) > roleRank(callerRole)) {
-      throw new Error("You cannot grant a role higher than your own.");
+      throw new Error("Du kannst keine höhere Rolle vergeben als deine eigene.");
     }
 
     // The link is stored as its first key: the record is keyed by that key's hash.
@@ -455,15 +456,15 @@ export class SharingManager {
   async newShareLinkKey(opts: { caller: SharingCaller; linkId: string }): Promise<{ key: string }> {
     let link = this.#requireLink(opts.linkId);
     if (link.revoked) {
-      throw new Error("Share link not found.");
+      throw new Error("Freigabe-Link nicht gefunden.");
     }
-    this.#requireLinkManager(opts.caller, link, "copy");
+    this.#requireLinkManager(opts.caller, link, "kopieren");
 
     // Re-check the ceiling: the caller's role may have dropped below the link's since it was
     // created, and a fresh key must never grant more than the caller currently has.
     let callerRole = this.#requireCallerRole(opts.caller);
     if (roleRank(link.role ?? "build") > roleRank(callerRole)) {
-      throw new Error("You cannot grant a role higher than your own.");
+      throw new Error("Du kannst keine höhere Rolle vergeben als deine eigene.");
     }
 
     let { key, hash } = await this.#mintKey();
@@ -500,7 +501,7 @@ export class SharingManager {
 
   updateShareLink(caller: SharingCaller, linkId: string, note?: string): void {
     let link = this.#requireLink(linkId);
-    this.#requireLinkManager(caller, link, "edit");
+    this.#requireLinkManager(caller, link, "bearbeiten");
 
     link.note = note === undefined ? undefined : note.slice(0, 500);
     this.storage.shareKeys.put(link);
@@ -509,7 +510,7 @@ export class SharingManager {
   previewRevokeShareLink(caller: SharingCaller, linkId: string): AffectedCollaborator[] {
     let link = asLink(this.storage.shareKeys.get(linkId));
     if (!link) return [];
-    this.#requireLinkManager(caller, link, "revoke");
+    this.#requireLinkManager(caller, link, "widerrufen");
     if (link.revoked) return [];
 
     let baseline = this.computeEffectiveRoles();
@@ -531,7 +532,7 @@ export class SharingManager {
   revokeShareLink(
       caller: SharingCaller, linkId: string, keepUsers: string[]): AffectedCollaborator[] {
     let link = this.#requireLink(linkId);
-    this.#requireLinkManager(caller, link, "revoke");
+    this.#requireLinkManager(caller, link, "widerrufen");
 
     let baseline = this.computeEffectiveRoles();
 
@@ -644,7 +645,7 @@ export class SharingManager {
     if (caller.isOwner) return "build";
     let role = this.computeEffectiveRoles().get(caller.profileId);
     if (!role) {
-      throw new Error("You do not have permission to share this workspace.");
+      throw new Error("Du hast keine Berechtigung, diesen Arbeitsbereich zu teilen.");
     }
     return role;
   }

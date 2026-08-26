@@ -384,7 +384,7 @@ export class AdminSettings extends DurableObject<Cloudflare.Env> {
     // position.
     if (FORMAT_BLUEPRINTS.some(entry => entry.blueprintId === blueprintId)) {
       throw new Error(
-          "This format ships with the deployment, so it can't be removed. Turn it off instead.");
+          "Dieses Format ist Teil des Deployments und kann nicht entfernt werden. Deaktiviere es stattdessen.");
     }
     await this.#mutateFormats(formats => {
       let next = formats.filter(f => f.blueprintId !== blueprintId);
@@ -580,7 +580,7 @@ export class AdminApiImpl extends RpcTarget implements AdminApi {
 
   async setSiteName(name: string): Promise<void> {
     if (name.length > MAX_SITE_NAME_LENGTH) {
-      throw new Error(`Site name too long (max ${MAX_SITE_NAME_LENGTH} characters).`);
+      throw new Error(`Websitename zu lang (max. ${MAX_SITE_NAME_LENGTH} Zeichen).`);
     }
     await this.admin.updateAdminConfig({ siteName: name });
   }
@@ -592,7 +592,7 @@ export class AdminApiImpl extends RpcTarget implements AdminApi {
 
   async setInstanceInstructions(text: string): Promise<void> {
     if (text.length > MAX_INSTANCE_INSTRUCTIONS_LENGTH) {
-      throw new Error(`Instructions too long (max ${MAX_INSTANCE_INSTRUCTIONS_LENGTH} characters).`);
+      throw new Error(`Anweisungen zu lang (max. ${MAX_INSTANCE_INSTRUCTIONS_LENGTH} Zeichen).`);
     }
     await this.admin.updateAdminConfig({ instanceInstructions: text });
   }
@@ -610,14 +610,14 @@ export class AdminApiImpl extends RpcTarget implements AdminApi {
 
   async setAnnouncement(text: string): Promise<void> {
     if (text.length > MAX_ANNOUNCEMENT_LENGTH) {
-      throw new Error(`Announcement too long (max ${MAX_ANNOUNCEMENT_LENGTH} characters).`);
+      throw new Error(`Ankündigung zu lang (max. ${MAX_ANNOUNCEMENT_LENGTH} Zeichen).`);
     }
     await this.admin.updateAdminConfig({ announcement: text });
   }
 
   async setBanner(text: string, color: BannerColor): Promise<void> {
     if (text.length > MAX_ANNOUNCEMENT_LENGTH) {
-      throw new Error(`Banner too long (max ${MAX_ANNOUNCEMENT_LENGTH} characters).`);
+      throw new Error(`Banner zu lang (max. ${MAX_ANNOUNCEMENT_LENGTH} Zeichen).`);
     }
     if (!isBannerColor(color)) {
       throw new Error(`Invalid banner color: ${color}`);

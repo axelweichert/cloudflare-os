@@ -13,19 +13,19 @@ const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 /** Validates the bounded PNG header accepted for deployment logos. */
 export function validateSiteLogo(data: Uint8Array): void {
   if (data.byteLength > MAX_SITE_LOGO_BYTES) {
-    throw new Error(`Site logo too large (max ${MAX_SITE_LOGO_BYTES} bytes).`);
+    throw new Error(`Logo zu groß (max. ${MAX_SITE_LOGO_BYTES} Bytes).`);
   }
   if (data.byteLength < 33 || !PNG_SIGNATURE.every((byte, index) => data[index] === byte) ||
       data[8] !== 0 || data[9] !== 0 || data[10] !== 0 || data[11] !== 13 ||
       String.fromCharCode(...data.subarray(12, 16)) !== "IHDR") {
-    throw new Error("Site logo must be a PNG image.");
+    throw new Error("Logo muss ein PNG-Bild sein.");
   }
   let view = new DataView(data.buffer, data.byteOffset, data.byteLength);
   let width = view.getUint32(16);
   let height = view.getUint32(20);
   if (width === 0 || height === 0 ||
       width > MAX_SITE_LOGO_DIMENSION || height > MAX_SITE_LOGO_DIMENSION) {
-    throw new Error(`Site logo dimensions must be between 1 and ${MAX_SITE_LOGO_DIMENSION}px.`);
+    throw new Error(`Logo-Abmessungen müssen zwischen 1 und ${MAX_SITE_LOGO_DIMENSION} px liegen.`);
   }
 }
 
