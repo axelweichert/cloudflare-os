@@ -1,0 +1,83 @@
+# Deutsche Lokalisierung des Cloudflare OS (von Busch Digital)
+
+Dieses Dokument hält die verbindliche Terminologie und das Vorgehen für die
+Übersetzung der **nutzerseitigen Texte** des Cloudflare OS ins Deutsche fest
+(Board-Issue [VON-1888], Elternaufgabe [VON-1887]).
+
+## Ansatz (CTO-Entscheidung)
+
+Wir betreiben einen Fork (`axelweichert/cloudflare-os`) und wollen **Deutsch als
+Standardsprache** der Oberfläche — kein Multi-Locale-Runtime-Switching. Es gibt im
+Upstream **kein i18n-Framework**; alle Strings sind hartkodiert (React/TSX,
+`aria-label`, `title`, `placeholder`, Toasts, Dialog-Copy).
+
+**Entscheidung:** Direkte Ersetzung der englischen Strings durch deutsche Strings am
+Fundort. Kein zusätzlicher `t()`-Layer / Message-Katalog. Begründung:
+
+- Kein Multi-Locale-Bedarf → ein Message-Katalog bringt nur Indirektion ohne Nutzen.
+- Ein `t()`-Layer, den der Upstream nicht kennt, vergrößert die Merge-Konflikt-Fläche
+  bei jedem Upstream-Sync zusätzlich; die reine String-Ersetzung bleibt zeilennah.
+- Terminologie-Konsistenz wird stattdessen über dieses Glossar sichergestellt.
+
+Bei künftigen Upstream-Merges neu hinzugekommene englische Strings werden nach dem
+Glossar nachgezogen.
+
+## Was übersetzt wird
+
+- Sichtbare Labels, Buttons, Menüeinträge, Überschriften
+- `aria-label`, `title`, `alt`, `placeholder` (Barrierefreiheit ist nutzerseitig)
+- Fehlermeldungen und Toasts, die dem Nutzer angezeigt werden
+- Nutzerorientierte Onboarding-/Hilfetexte, Beispiel-Prompts
+
+## Was NICHT übersetzt wird (Firmen-Sprachregel)
+
+- Code-Identifier, Variablen-/Funktionsnamen, Typnamen, Enum-**Werte**
+  (z. B. `themeMode: 'system' | 'light' | 'dark'` bleibt als Wert englisch — nur das
+  angezeigte Label wird lokalisiert)
+- API-Endpoints, Toolnamen, CLI-Flags, Konfig-Keys
+- Technische Logs / `console.error` / `throw new Error(...)` (Entwickler-Diagnose)
+- Wörtliche Zitate / Lizenztexte aus englischsprachigen Upstream-Quellen
+
+## Glossar (verbindlich)
+
+| Englisch            | Deutsch                          | Anmerkung                                  |
+| ------------------- | -------------------------------- | ------------------------------------------ |
+| Home                | Start                            | Primär-Navigation                          |
+| Workspace(s)        | Arbeitsbereich(e)                |                                            |
+| Recent workspaces   | Zuletzt verwendet                |                                            |
+| Untitled workspace  | Unbenannter Arbeitsbereich       |                                            |
+| Outputs             | Ergebnisse                       |                                            |
+| Explore             | Entdecken                        |                                            |
+| Search              | Suche / durchsuchen              |                                            |
+| Favorite (Verb)     | favorisieren / zu Favoriten …    | Substantiv: Favoriten                      |
+| Share               | Teilen                           |                                            |
+| Rename              | Umbenennen                       |                                            |
+| Delete / Remove     | Löschen / Entfernen              | „Remove" = aus eigener Liste nehmen        |
+| Sign out            | Abmelden                         |                                            |
+| Profile             | Profil                           |                                            |
+| Providers           | Anbieter                         | Modell-/LLM-Anbieter                       |
+| Settings            | Einstellungen                    |                                            |
+| Theme               | Erscheinungsbild                 | Modi: System / Hell / Dunkel               |
+| Command palette     | Befehlspalette                   |                                            |
+| Actions             | Aktionen                         |                                            |
+| Get started         | Erste Schritte                   |                                            |
+| Collapse / Expand   | Einklappen / Ausklappen          |                                            |
+| Show all            | Alle anzeigen                    |                                            |
+| No results / matches| Keine Ergebnisse / Keine Treffer |                                            |
+
+### Als Produktbegriffe unübersetzt (Eigennamen)
+
+`Blueprint`, `Gadget`, `Gatekeeper`, `Workflow`, `Admin`, `Dashboard`, `App`.
+Umgebende Beschreibungstexte werden aber übersetzt.
+
+### Stil
+
+- Ansprache: **Du** (informell, konsistent mit dem internen Produktcharakter).
+- Auslassungspunkte als echtes Ellipsis-Zeichen `…`.
+- Deutsche Anführungszeichen `„…"` in Fließtexten.
+
+## Fortschritt
+
+- ✅ App-Shell & Navigation (`components/AppShell/*`, `UserMenu`, Befehlspalette,
+  Start-Beispielaufgaben) — [VON-1888]
+- ⏳ Restliche Oberflächen: siehe Kind-Issues unter [VON-1888].
