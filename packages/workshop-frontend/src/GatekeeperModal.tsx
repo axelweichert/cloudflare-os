@@ -586,6 +586,20 @@ export default function GatekeeperModal({
   const handleConnectAccount = async (vendorId: string, resourceUrlPatterns?: string[]) => {
     setConnectingVendor(vendorId)
     try {
+      // Ambient gatekeepers (VendorDescription.autoProvisionsAccount) mint their account directly
+      // with no OAuth redirect -- they implement createAccount(), not the connectAccount() handshake.
+      // Calling connectAccount() on them would error / open a dead tab (nothing happens), so route
+      // them through provisionAmbientAccount(). The new account arrives via subscribeConnectedAccounts()
+      // and becomes selectable under "Account" -- same branch as routes/gatekeepers.tsx and
+      // ObserverConfigModal.tsx. OAuth vendors keep the redirect flow.
+      const vendor = vendors.find(v => v.id === vendorId)
+      if (vendor?.description.autoProvisionsAccount) {
+        await authenticatedApi.provisionAmbientAccount(vendorId)
+        // The minted account arrives via subscribeConnectedAccounts() and is auto-selected by the
+        // "first valid account" effect, so the flow continues to resource selection.
+        toasts.add({ title: 'Account connected.', variant: 'success' })
+        return
+      }
       const result = await authenticatedApi.connectAccount(vendorId, resourceUrlPatterns)
       window.open(result.url, '_blank', 'noopener,noreferrer')
       toasts.add({ title: 'Complete the account connection in the new tab.', variant: 'success' })
