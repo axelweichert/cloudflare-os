@@ -16,16 +16,21 @@
 // Nur Klassen und der Default-Handler dürfen aus einem Worker-Entry-Modul exportiert werden.
 
 import { DurableObject, WorkerEntrypoint, type RpcStub, RpcTarget } from "cloudflare:workers";
+import { RpcStub as NativeRpcStub } from "capnweb";
 import type {
-  AccountDescription, ActionKind, ApprovalQueue, Gatekeeper, GatekeeperConnectCallback,
-  GatekeeperUser, GatekeeperUserVerifier, ResourceConfiguratorFrame, ResourceDescription,
-  SupportedResource, VendorDescription,
+  AccountDescription, ActionKind, AppUiContext, ApprovalQueue, Gatekeeper,
+  GatekeeperConnectCallback, GatekeeperUiFrame, GatekeeperUser, GatekeeperUserVerifier,
+  ResourceConfiguratorFrame, ResourceDescription, SupportedResource, VendorDescription,
 } from "@gadgets/workshop-shared/gatekeeper";
 import { D1CrmStore, type CrmStore, type ReadOptions, type CrmRow } from "./crm-store";
 import {
   CrmSessionCore, applyCrmAction, CRM_WRITE_KIND,
   type ActionDescription, type PendingCrmAction, type ProposeInput, type SubmittedAction,
 } from "./session-core";
+import {
+  buildCrmAppHtml, CrmManagementApi,
+  type PendingApprovalSource, type PendingApprovalView,
+} from "./app-ui";
 
 // ---------------------------------------------------------------------------
 
@@ -101,6 +106,20 @@ function makeStore(env: Cloudflare.Env): CrmStore {
   return new D1CrmStore(env.CRM_DB);
 }
 
+/**
+ * Stub auf den CRM-Approval-Index — eine deterministisch benannte `CrmGatekeeper`-Instanz
+ * (getByName(CRM_SINGLETON)), die die offenen Freigaben aller Verbindungen bündelt. Sie ist von
+ * jeder Facet (zum Spiegeln des Lebenszyklus) UND vom Account (startAppUi/ui) erreichbar; die
+ * per-Verbindungs-Facets selbst sind vom Account NICHT adressierbar (Overseer-verwaltete IDs),
+ * daher dieser gemeinsame, benennbare Index als einzige account-lesbare Sicht auf die Queue.
+ */
+function crmApprovalIndex(
+  exports: Cloudflare.Exports,
+): DurableObjectStub<CrmGatekeeper> {
+  const ns = exports.CrmGatekeeper as unknown as DurableObjectNamespace<CrmGatekeeper>;
+  return ns.getByName(CRM_SINGLETON);
+}
+
 /** Prüft, dass eine gebundene URL wirklich das CRM adressiert. */
 function assertCrmUrl(url: string): void {
   const u = new URL(url);
@@ -153,7 +172,27 @@ export class CrmAccount
       displayName: "vonBusch CRM",
       uniqueName: this.ctx.props.accountId,
       avatar: AVATAR,
+      // Macht das CRM in der Board-UI als öffenbare App-Kachel nutzbar (VON-1844). Ohne
+      // providesUi bleibt der Vendor nur ein gebundener Connector, nicht bedienbar.
+      providesUi: { title: "vonBusch CRM — Freigaben", icon: AVATAR },
     };
+  }
+
+  /**
+   * Approval-Queue-Panel (VON-1844): liest die offenen CRM-Schreibfreigaben serverseitig aus dem
+   * Approval-Index (deterministische CrmGatekeeper-Singleton-Instanz) und backt den Snapshot ins
+   * iframe-HTML. Der Erst-Render braucht kein Browser-capnweb; die mitgelieferte `ui`-Capability
+   * (CrmManagementApi) ermöglicht späteren Live-Refresh der Queue. Reine Anzeige — Freigeben/
+   * Ablehnen bleibt allein beim OS-Approve-Pfad (menschliche ApprovalQueue → applyAction).
+   */
+  async startAppUi(_context: AppUiContext): Promise<GatekeeperUiFrame> {
+    const index = crmApprovalIndex(this.ctx.exports);
+    const pending = await index.listPendingApprovals();
+    const source: PendingApprovalSource = {
+      listPendingApprovals: () => crmApprovalIndex(this.ctx.exports).listPendingApprovals(),
+    };
+    const ui = new NativeRpcStub(new CrmManagementApi(source));
+    return { iframeHtml: buildCrmAppHtml(pending, new Date().toISOString()), ui };
   }
 
   async getSupportedResources(): Promise<SupportedResource[]> {
@@ -268,6 +307,10 @@ export class CrmGatekeeper
           awaitDecision: description.awaitDecision,
           actionKind: description.actionKind,
         });
+        // In den account-lesbaren Approval-Index spiegeln, damit das Board-UI-Panel (startAppUi)
+        // die offene Freigabe zeigt. Best-effort: ein Index-Fehler darf den (bereits eingereihten)
+        // Approval-Fluss nicht brechen.
+        await this.#mirrorPending(id, action, description);
         return id;
       },
     };
@@ -279,6 +322,63 @@ export class CrmGatekeeper
     const next = (this.ctx.storage.kv.get<number>("action:counter") ?? 0) + 1;
     this.ctx.storage.kv.put("action:counter", next);
     return next;
+  }
+
+  /** Verbindungs-/Facet-Kennung für den Index (dieselbe Facet ⇒ derselbe Token). */
+  #connToken(): string {
+    return this.ctx.props.accountId;
+  }
+
+  /** Spiegelt eine frisch eingereihte Aktion in den gemeinsamen Approval-Index (best-effort). */
+  async #mirrorPending(
+    id: number, action: PendingCrmAction, description: ActionDescription,
+  ): Promise<void> {
+    const view: PendingApprovalView = {
+      connToken: this.#connToken(),
+      actionId: id,
+      entity: action.entity,
+      op: action.op,
+      targetId: action.targetId,
+      title: description.title,
+      description: description.description,
+      proposedBy: action.proposedBy,
+      proposedAt: Date.now(),
+    };
+    try {
+      await crmApprovalIndex(this.ctx.exports).recordPendingApproval(view);
+    } catch {
+      // Index nicht erreichbar → Panel zeigt diese Aktion evtl. nicht; Approval bleibt intakt.
+    }
+  }
+
+  /** Entfernt eine abgeschlossene/abgelehnte Aktion aus dem Index (best-effort). */
+  async #unmirrorPending(id: number): Promise<void> {
+    try {
+      await crmApprovalIndex(this.ctx.exports).resolvePendingApproval(this.#connToken(), id);
+    } catch {
+      // Index nicht erreichbar → verwaister Eintrag; nächster startAppUi-Refresh gleicht ab.
+    }
+  }
+
+  // --- Approval-Index (deterministische Singleton-Instanz, getByName(CRM_SINGLETON)) ---------
+  // Diese drei Methoden laufen auf der INDEX-Instanz; die per-Verbindungs-Facets rufen sie
+  // cross-DO auf, der Account (startAppUi/ui) liest sie. Rein Sichtbarkeit — keine Schreibgewalt.
+
+  async recordPendingApproval(view: PendingApprovalView): Promise<void> {
+    this.ctx.storage.kv.put<PendingApprovalView>(`pending:${view.connToken}:${view.actionId}`, view);
+  }
+
+  async resolvePendingApproval(connToken: string, actionId: number): Promise<void> {
+    this.ctx.storage.kv.delete(`pending:${connToken}:${actionId}`);
+  }
+
+  async listPendingApprovals(): Promise<PendingApprovalView[]> {
+    const out: PendingApprovalView[] = [];
+    for (const [, v] of this.ctx.storage.kv.list<PendingApprovalView>({ prefix: "pending:" })) {
+      out.push(v);
+    }
+    out.sort((a, b) => a.proposedAt - b.proposedAt);
+    return out;
   }
 
   /**
@@ -303,10 +403,14 @@ export class CrmGatekeeper
     this.ctx.storage.kv.put<StoredAction>(`action:${actionId}`, { ...stored, status: "applied" });
     // Ergebnis-ID unter der Aktion vermerken (Audit / Debug).
     this.ctx.storage.kv.put(`result:${actionId}`, id);
+    // Aus dem Board-UI-Panel entfernen: Freigabe ist erledigt.
+    await this.#unmirrorPending(actionId);
   }
 
   async rejectAction(actionId: number): Promise<void> {
     this.ctx.storage.kv.delete(`action:${actionId}`);
+    // Aus dem Board-UI-Panel entfernen: Freigabe wurde abgelehnt.
+    await this.#unmirrorPending(actionId);
   }
 
   async revertAction(actionId: number): Promise<{ message?: string }> {
