@@ -77,7 +77,7 @@ export default function OutOfCreditsModal({ open, onClose }: OutOfCreditsModalPr
       setAccounts(null)
       refresh()
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to select account'
+      const msg = err instanceof Error ? err.message : 'Konto konnte nicht ausgewählt werden'
       toasts.add({ title: msg, variant: 'error' })
     } finally {
       setSelecting(null)
@@ -92,7 +92,7 @@ export default function OutOfCreditsModal({ open, onClose }: OutOfCreditsModalPr
       <Dialog className="responsive-dialog overflow-y-auto p-6 sm:w-[560px]" size="base">
         <Dialog.Title className="text-lg font-semibold mb-2 flex items-center gap-2">
           <CloudWarning size={22} weight="bold" className="text-kumo-warning" />
-          You've reached your free usage limit
+          Du hast dein kostenloses Nutzungslimit erreicht
         </Dialog.Title>
 
         {usage === null ? (
@@ -101,33 +101,34 @@ export default function OutOfCreditsModal({ open, onClose }: OutOfCreditsModalPr
           <div className="space-y-4">
             {!connected ? (
               <p className="text-sm text-kumo-subtle">
-                You've used all {usage.dailyLimit} of your free {usage.dailyLimit === 1 ? 'request' : 'requests'} for
-                today. Connect your Cloudflare account to keep building now — usage beyond the free
-                tier is billed to your own Cloudflare AI Gateway credits
+                Du hast heute alle {usage.dailyLimit} deiner kostenlosen {usage.dailyLimit === 1 ? 'Anfrage' : 'Anfragen'}
+                {' '}verbraucht. Verbinde jetzt dein Cloudflare-Konto, um weiterzubauen — Nutzung über das
+                kostenlose Kontingent hinaus wird über dein eigenes Cloudflare-AI-Gateway-Guthaben abgerechnet
                 {usage.resetAt ? (
                   <>
-                    {' '}— or wait: your free {usage.dailyLimit === 1 ? 'request resets' : 'requests reset'} at
-                    00:00 UTC, in <ResetCountdown resetAt={usage.resetAt} onElapsed={refresh} />.
+                    {' '}— oder warte: deine kostenlosen {usage.dailyLimit === 1 ? 'Anfrage wird' : 'Anfragen werden'} um
+                    00:00 UTC zurückgesetzt, in <ResetCountdown resetAt={usage.resetAt} onElapsed={refresh} />.
                   </>
                 ) : '.'}
               </p>
             ) : needsSelection ? (
               <p className="text-sm text-kumo-subtle">
-                Your Cloudflare connection has access to multiple accounts. Choose which one's AI
-                Gateway credits should be billed for usage beyond the free tier.
+                Deine Cloudflare-Verbindung hat Zugriff auf mehrere Konten. Wähle aus, dessen
+                AI-Gateway-Guthaben für die Nutzung über das kostenlose Kontingent hinaus
+                abgerechnet werden soll.
               </p>
             ) : (
               <p className="text-sm text-kumo-subtle">
-                Your Cloudflare account is connected
+                Dein Cloudflare-Konto ist verbunden
                 {usage.balance !== null && (
-                  <> with a balance of <strong>${usage.balance.toFixed(2)}</strong></>
+                  <> mit einem Guthaben von <strong>${usage.balance.toFixed(2)}</strong></>
                 )}
-                , but it's below the minimum needed to continue. Add credits to your AI Gateway to
-                keep building now
+                , liegt aber unter dem für die Fortsetzung nötigen Mindestbetrag. Lade Guthaben in
+                deinem AI Gateway auf, um jetzt weiterzubauen
                 {usage.resetAt ? (
                   <>
-                    {' '}or wait — your free {usage.dailyLimit === 1 ? 'request resets' : 'requests reset'} at
-                    00:00 UTC, in <ResetCountdown resetAt={usage.resetAt} onElapsed={refresh} />.
+                    {' '}oder warte — deine kostenlosen {usage.dailyLimit === 1 ? 'Anfrage wird' : 'Anfragen werden'} um
+                    00:00 UTC zurückgesetzt, in <ResetCountdown resetAt={usage.resetAt} onElapsed={refresh} />.
                   </>
                 ) : '.'}
               </p>
@@ -136,9 +137,9 @@ export default function OutOfCreditsModal({ open, onClose }: OutOfCreditsModalPr
             {needsSelection && (
               <div className="flex flex-col gap-2">
                 {accounts === null ? (
-                  <p className="text-sm text-kumo-subtle">Loading accounts…</p>
+                  <p className="text-sm text-kumo-subtle">Konten werden geladen …</p>
                 ) : accounts.length === 0 ? (
-                  <p className="text-sm text-kumo-subtle">No accounts available on this connection.</p>
+                  <p className="text-sm text-kumo-subtle">Für diese Verbindung sind keine Konten verfügbar.</p>
                 ) : (
                   accounts.map((a) => (
                     <Button
@@ -157,37 +158,37 @@ export default function OutOfCreditsModal({ open, onClose }: OutOfCreditsModalPr
             )}
 
             <p className="text-sm text-kumo-subtle">
-              Learn more about{' '}
+              Mehr über{' '}
               <a
                 href="https://developers.cloudflare.com/ai-gateway/features/unified-billing/"
                 target="_blank"
                 rel="noreferrer"
                 className="underline"
               >
-                AI Gateway unified billing
-              </a>
-              .
+                die einheitliche AI-Gateway-Abrechnung
+              </a>{' '}
+              erfahren.
             </p>
 
             <div className="flex items-center justify-end gap-2 pt-2">
               {!connected ? (
                 <>
-                  <Button variant="secondary" onClick={onClose}>Maybe later</Button>
+                  <Button variant="secondary" onClick={onClose}>Vielleicht später</Button>
                   <Button variant="primary" onClick={connect} loading={connecting}>
                     <Lightning size={16} weight="bold" />
-                    Connect Cloudflare
+                    Cloudflare verbinden
                   </Button>
                 </>
               ) : needsSelection ? (
-                <Button variant="secondary" onClick={onClose}>Close</Button>
+                <Button variant="secondary" onClick={onClose}>Schließen</Button>
               ) : (
                 <>
-                  <Button variant="secondary" onClick={onClose}>Close</Button>
+                  <Button variant="secondary" onClick={onClose}>Schließen</Button>
                   <Button
                     variant="primary"
                     onClick={() => window.open(buildAddCreditsUrl(usage.accountId), '_blank')}
                   >
-                    Add credits in Cloudflare
+                    Guthaben in Cloudflare aufladen
                   </Button>
                 </>
               )}
