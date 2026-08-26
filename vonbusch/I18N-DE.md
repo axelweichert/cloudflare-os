@@ -64,6 +64,17 @@ Glossar nachgezogen.
 | Collapse / Expand   | Einklappen / Ausklappen          |                                            |
 | Show all            | Alle anzeigen                    |                                            |
 | No results / matches| Keine Ergebnisse / Keine Treffer |                                            |
+| Sign in             | Anmelden                         | Auch Dokumenttitel/Button                  |
+| Create account      | Konto erstellen                  |                                            |
+| Username            | Benutzername                     |                                            |
+| Password            | Passwort                         | Confirm Password → Passwort bestätigen     |
+| Continue with       | Weiter mit                       | OAuth-/Gatekeeper-Button                    |
+| Display name        | Anzeigename                      |                                            |
+| Model               | Modell                           | KI-/AI-Modell                              |
+| Connect / Connected | Verbinden / Verbunden            | Connecting… → Wird verbunden …             |
+| Back / Next         | Zurück / Weiter                  | Onboarding-Navigation                      |
+| Loading…            | Wird geladen …                   |                                            |
+| Retry               | Erneut versuchen                 |                                            |
 
 ### Als Produktbegriffe unübersetzt (Eigennamen)
 
@@ -80,4 +91,6 @@ Umgebende Beschreibungstexte werden aber übersetzt.
 
 - ✅ App-Shell & Navigation (`components/AppShell/*`, `UserMenu`, Befehlspalette,
   Start-Beispielaufgaben) — [VON-1888]
+- ✅ Authentifizierung & Onboarding (`LoginPage`, `SignupPage`, `OnboardingWizard`,
+  `components/auth/*`, `AnnouncementBanner`, `ProtectedRoute`) — [VON-1889]
 - ⏳ Restliche Oberflächen: siehe Kind-Issues unter [VON-1888].

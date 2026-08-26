@@ -76,8 +76,8 @@ export default function AnnouncementBanner() {
       <button
         onClick={handleDismiss}
         className="flex-shrink-0 rounded-md p-0.5 hover:bg-black/10 transition-colors"
-        aria-label="Dismiss banner"
-        title="Dismiss"
+        aria-label="Banner ausblenden"
+        title="Ausblenden"
         style={{ color: 'inherit' }}
       >
         <X size={16} />
