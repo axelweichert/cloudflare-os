@@ -16,11 +16,17 @@
 export type CrmEntity = "contact" | "deal" | "activity";
 export type WriteOp = "create" | "update";
 
-/** Erlaubte Spalten pro Entity. Alles außerhalb wird abgelehnt. */
+/**
+ * Erlaubte Spalten pro Entity. Alles außerhalb wird abgelehnt. Exakt am realen
+ * `vonbusch-crm-eu`-Schema ausgerichtet (VON-1850): `name`→`first_name`/`last_name`,
+ * `company`→`company_id`, `owner`→`account_manager_id` (Kontakt) bzw. `owner_id` (Deal/Aktivität),
+ * `close_date`→`expected_close`. Frühere Namen existierten in der Prod-DB nicht → Writes hätten
+ * mit `no such column` fehlschlagen können.
+ */
 export const COLUMN_ALLOWLIST: Record<CrmEntity, readonly string[]> = {
-  contact: ["name", "email", "phone", "company", "status", "owner", "notes"],
-  deal: ["title", "contact_id", "value", "stage", "status", "owner", "close_date", "notes"],
-  activity: ["contact_id", "deal_id", "type", "subject", "body", "status", "owner", "due_at"],
+  contact: ["first_name", "last_name", "email", "phone", "mobile", "position", "department", "company_id", "account_manager_id", "status", "notes"],
+  deal: ["title", "company_id", "contact_id", "owner_id", "value", "stage", "status", "expected_close", "notes"],
+  activity: ["contact_id", "deal_id", "company_id", "owner_id", "type", "subject", "body", "status", "due_at"],
 };
 
 export type CrmValue = string | number | boolean | null;

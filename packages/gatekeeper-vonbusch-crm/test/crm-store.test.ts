@@ -20,8 +20,8 @@ import type { WriteAction } from "../src/crm-actions.ts";
 function seeded(): MemoryCrmStore {
   const s = new MemoryCrmStore();
   s.seed("contact", [
-    { id: "c1", name: "Erika Mustermann", email: "erika@acme.de", company: "ACME" },
-    { id: "c2", name: "Max Beispiel", email: "max@globex.de", company: "Globex" },
+    { id: "c1", first_name: "Erika", last_name: "Mustermann", email: "erika@acme.de", company_id: "co-acme" },
+    { id: "c2", first_name: "Max", last_name: "Beispiel", email: "max@globex.de", company_id: "co-globex" },
   ]);
   s.seed("deal", [
     { id: "d1", title: "ACME Rahmenvertrag", contact_id: "c1", stage: "open", value: 10000 },
@@ -46,7 +46,7 @@ test("read: Filter auf contactId (deals)", async () => {
 
 test("read: LIMIT wird auf MAX_READ_LIMIT gedeckelt", async () => {
   const s = new MemoryCrmStore();
-  const many: CrmRow[] = Array.from({ length: 500 }, (_, i) => ({ id: `x${i}`, name: `N${i}` }));
+  const many: CrmRow[] = Array.from({ length: 500 }, (_, i) => ({ id: `x${i}`, first_name: `N${i}` }));
   s.seed("contact", many);
   const rows = await s.read("contact", { limit: 9999 });
   assert.equal(rows.length, MAX_READ_LIMIT);
@@ -54,7 +54,7 @@ test("read: LIMIT wird auf MAX_READ_LIMIT gedeckelt", async () => {
 
 test("getById liefert Datensatz oder undefined", async () => {
   const s = seeded();
-  assert.equal((await s.getById("contact", "c1"))?.name, "Erika Mustermann");
+  assert.equal((await s.getById("contact", "c1"))?.first_name, "Erika");
   assert.equal(await s.getById("contact", "nope"), undefined);
 });
 
@@ -62,11 +62,11 @@ test("applyWrite create legt Datensatz an", async () => {
   const s = seeded();
   const action: WriteAction = {
     entity: "contact", op: "create",
-    data: { name: "Neu", email: "neu@x.de" }, proposedBy: "agent",
+    data: { first_name: "Neu", email: "neu@x.de" }, proposedBy: "agent",
   };
   const { id } = await s.applyWrite(action, () => "c-new");
   assert.equal(id, "c-new");
-  assert.equal((await s.getById("contact", "c-new"))?.name, "Neu");
+  assert.equal((await s.getById("contact", "c-new"))?.first_name, "Neu");
 });
 
 test("applyWrite update ändert nur gegebene Felder", async () => {
@@ -96,7 +96,7 @@ type Call = { sql: string; params: unknown[] };
 
 function fakeD1(): { db: D1Like; calls: Call[]; rows: CrmRow[] } {
   const calls: Call[] = [];
-  const rows: CrmRow[] = [{ id: "c1", name: "Erika" }];
+  const rows: CrmRow[] = [{ id: "c1", first_name: "Erika" }];
   const db: D1Like = {
     prepare(sql: string) {
       return {
@@ -119,9 +119,9 @@ test("D1 read: parametrisiert mit LIMIT/OFFSET und Suche", async () => {
   const store = new D1CrmStore(db);
   await store.read("contact", { search: "acme", limit: 10, offset: 5 });
   const c = calls[0];
-  assert.match(c.sql, /SELECT \* FROM contacts WHERE \(name LIKE \? OR email LIKE \? OR company LIKE \?\) LIMIT \? OFFSET \?/);
-  // 3 LIKE-Params + limit + offset
-  assert.deepEqual(c.params, ["%acme%", "%acme%", "%acme%", 10, 5]);
+  assert.match(c.sql, /SELECT \* FROM contacts WHERE \(first_name LIKE \? OR last_name LIKE \? OR email LIKE \? OR phone LIKE \?\) LIMIT \? OFFSET \?/);
+  // 4 LIKE-Params + limit + offset
+  assert.deepEqual(c.params, ["%acme%", "%acme%", "%acme%", "%acme%", 10, 5]);
 });
 
 test("D1 create: INSERT nur mit allowlisteten Spalten, Werte gebunden", async () => {
@@ -129,12 +129,12 @@ test("D1 create: INSERT nur mit allowlisteten Spalten, Werte gebunden", async ()
   const store = new D1CrmStore(db);
   const action: WriteAction = {
     entity: "contact", op: "create",
-    data: { name: "Neu", email: "n@x.de" }, proposedBy: "agent",
+    data: { first_name: "Neu", email: "n@x.de" }, proposedBy: "agent",
   };
   const { id } = await store.applyWrite(action, () => "gen-id");
   assert.equal(id, "gen-id");
   const c = calls[0];
-  assert.equal(c.sql, "INSERT INTO contacts (id, name, email) VALUES (?, ?, ?)");
+  assert.equal(c.sql, "INSERT INTO contacts (id, first_name, email) VALUES (?, ?, ?)");
   assert.deepEqual(c.params, ["gen-id", "Neu", "n@x.de"]);
 });
 

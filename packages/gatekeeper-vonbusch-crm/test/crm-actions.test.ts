@@ -12,7 +12,7 @@ import { validateAction, COLUMN_ALLOWLIST } from "../src/crm-actions.ts";
 const GOOD_CREATE = {
   entity: "contact",
   op: "create",
-  data: { name: "Erika Mustermann", email: "erika@example.com", company: "ACME" },
+  data: { first_name: "Erika", last_name: "Mustermann", email: "erika@example.com", company_id: "co-acme" },
   proposedBy: "agent-vertrieb",
   reason: "Neuer Lead von der Messe",
 };
@@ -51,13 +51,13 @@ test("validateAction lehnt unbekannte Operation ab", () => {
 });
 
 test("validateAction erzwingt Spalten-Allowlist (keine willkürlichen Felder)", () => {
-  const r = validateAction({ ...GOOD_CREATE, data: { name: "X", evil_sql: "1;DROP" } });
+  const r = validateAction({ ...GOOD_CREATE, data: { first_name: "X", evil_sql: "1;DROP" } });
   assert.ok(!r.ok);
   assert.match(r.message, /nicht erlaubt/);
 });
 
 test("validateAction lehnt Nicht-Primitive Werte ab", () => {
-  const r = validateAction({ ...GOOD_CREATE, data: { name: { nested: true } } });
+  const r = validateAction({ ...GOOD_CREATE, data: { first_name: { nested: true } } });
   assert.ok(!r.ok);
   assert.match(r.message, /Primitive/);
 });
@@ -87,7 +87,7 @@ test("validateAction verlangt proposedBy", () => {
 });
 
 test("validateAction lehnt zu lange String-Werte ab", () => {
-  const r = validateAction({ ...GOOD_CREATE, data: { name: "x".repeat(30_000) } });
+  const r = validateAction({ ...GOOD_CREATE, data: { first_name: "x".repeat(30_000) } });
   assert.ok(!r.ok);
   assert.match(r.message, /zu lang/);
 });

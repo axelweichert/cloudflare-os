@@ -18,8 +18,8 @@ import {
 function seeded(): MemoryCrmStore {
   const s = new MemoryCrmStore();
   s.seed("contact", [
-    { id: "c1", name: "Erika Mustermann", email: "erika@acme.de", company: "ACME" },
-    { id: "c2", name: "Max Beispiel", email: "max@globex.de", company: "Globex" },
+    { id: "c1", first_name: "Erika", last_name: "Mustermann", email: "erika@acme.de", company_id: "co-acme" },
+    { id: "c2", first_name: "Max", last_name: "Beispiel", email: "max@globex.de", company_id: "co-globex" },
   ]);
   s.seed("deal", [{ id: "d1", title: "ACME Rahmenvertrag", contact_id: "c1", stage: "open" }]);
   return s;
@@ -77,7 +77,7 @@ test("Read wird bei verweigerter Beobachtung NICHT zurückgegeben (fail-closed)"
 
 test("proposeContact: reiht ein, schreibt NICHT, liefert pending_approval", async () => {
   const h = harness();
-  const res = await h.core.proposeContact({ op: "create", fields: { name: "Neu", email: "n@x.de" } });
+  const res = await h.core.proposeContact({ op: "create", fields: { first_name: "Neu", email: "n@x.de" } });
   assert.equal(res.status, "pending_approval");
   assert.equal(res.actionId, 1);
   // Genau eine eingereihte Aktion, mit stabilem Action-Kind, kein Auto-Approve.
@@ -120,11 +120,11 @@ test("proposeActivity create verbietet targetId", async () => {
 
 test("applyCrmAction führt eine freigegebene create-Aktion auf dem Store aus", async () => {
   const h = harness();
-  await h.core.proposeContact({ op: "create", fields: { name: "Neu", email: "n@x.de" } });
+  await h.core.proposeContact({ op: "create", fields: { first_name: "Neu", email: "n@x.de" } });
   const action = h.enqueued[0].action;
   const { id } = await applyCrmAction(h.store, action, () => "c-new");
   assert.equal(id, "c-new");
-  assert.equal((await h.store.getById("contact", "c-new"))?.name, "Neu");
+  assert.equal((await h.store.getById("contact", "c-new"))?.first_name, "Neu");
 });
 
 test("applyCrmAction führt eine freigegebene update-Aktion aus", async () => {

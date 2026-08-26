@@ -53,9 +53,14 @@ function clampOffset(offset?: number): number {
   return Math.floor(offset);
 }
 
-/** Textspalten je Entity, über die die Freitextsuche läuft. */
+/**
+ * Textspalten je Entity, über die die Freitextsuche läuft. Exakt an das reale
+ * `vonbusch-crm-eu`-Schema angelehnt (VON-1850): Kontakte haben keine `name`-/`company`-Spalte,
+ * sondern `first_name`/`last_name` (Firma ist die FK `company_id`, kein Freitext). Deals/
+ * Aktivitäten stimmten bereits (`title` bzw. `subject`/`body`).
+ */
 const SEARCH_COLUMNS: Record<CrmEntity, readonly string[]> = {
-  contact: ["name", "email", "company"],
+  contact: ["first_name", "last_name", "email", "phone"],
   deal: ["title"],
   activity: ["subject", "body"],
 };
