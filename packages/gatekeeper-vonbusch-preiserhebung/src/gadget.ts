@@ -20,13 +20,15 @@
  */
 
 import { DurableObject, WorkerEntrypoint, type RpcStub } from "cloudflare:workers";
-import { RpcTarget } from "capnweb";
+import { RpcTarget, RpcStub as NativeRpcStub } from "capnweb";
 import type {
   AccountDescription,
   ActionKind,
+  AppUiContext,
   ApprovalQueue,
   Gatekeeper,
   GatekeeperConnectCallback,
+  GatekeeperUiFrame,
   GatekeeperUser,
   GatekeeperUserVerifier,
   ResourceConfiguratorFrame,
@@ -37,6 +39,11 @@ import type {
 import { PreiserhebungSession, type PreisRepo } from "./session";
 import type { PreisparameterRow } from "./preis-parameter";
 import { PreiserhebungObservations } from "./observations";
+import {
+  PreiserhebungManagementApi,
+  buildPreiserhebungAppHtml,
+  ladePreiserhebungSnapshot,
+} from "./app-ui";
 
 // Ein 1x1-transparentes GIF als Logo — kein Netzwerk-Asset nötig.
 const PREISERHEBUNG_ICON = {
@@ -272,7 +279,23 @@ export class PreiserhebungAccount
       // Agent-Singleton: der Overseer installiert den DO als Facet und stellt die Session als
       // unbenannte Kapsel bereit. tsType muss ein Export aus getTypeScriptTypes() sein.
       singleton: { tsType: "Preiserhebung" },
+      // Macht Preiserhebung in der Board-UI als oeffenbare App-Kachel nutzbar (VON-1846). Ohne
+      // providesUi bleibt der Vendor nur ein gebundener Connector, nicht bedienbar.
+      providesUi: { title: "Preiserhebung", icon: PREISERHEBUNG_ICON },
     };
+  }
+
+  /**
+   * Read-only Management-Frame (VON-1846): liest die Preis-D1 serverseitig und backt den
+   * aktuellen Parametersatz-/Preis-/ROI-Snapshot in das iframe-HTML. Der Erst-Render braucht kein
+   * Browser-capnweb; die mitgelieferte `ui`-Capability (PreiserhebungManagementApi) ermoeglicht
+   * spaeteren Live-Refresh / What-if-Overrides. Read-only: keine Schreibzugriffe.
+   */
+  async startAppUi(_context: AppUiContext): Promise<GatekeeperUiFrame> {
+    const session = new PreiserhebungSession(new D1PreisRepo(this.env.PREIS_DB));
+    const snapshot = await ladePreiserhebungSnapshot(session);
+    const ui = new NativeRpcStub(new PreiserhebungManagementApi(session));
+    return { iframeHtml: buildPreiserhebungAppHtml(snapshot), ui };
   }
 
   /** Gadget-seitiger Read-Pfad, mit den Account-Props imbued. */
