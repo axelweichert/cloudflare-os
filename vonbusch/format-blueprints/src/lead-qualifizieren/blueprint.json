@@ -23,8 +23,8 @@
       "description": "Gatekeeper auf das von-Busch-CRM. Reads direkt, Writes (Aktivität/Qualifizierung) approval-pflichtig.",
       "spawnerOnly": true,
       "type": "gatekeeper",
-      "gatekeeperName": "vonbusch-crm",
-      "typeUrlPattern": "https://gatekeeper-vonbusch-crm.vonbusch.workers.dev/*"
+      "gatekeeperName": "vonbusch_crm",
+      "typeUrlPattern": "https://crm.vonbusch.app/"
     }
   }
 }

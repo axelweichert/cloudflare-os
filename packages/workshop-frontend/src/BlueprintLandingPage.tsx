@@ -193,6 +193,19 @@ export default function BlueprintLandingPage({ rpcStub }: Props) {
     if (!authenticatedApi) return
     setConnectingVendor(vendorId)
     try {
+      // Ambient gatekeepers (VendorDescription.autoProvisionsAccount) mint their account directly
+      // with no OAuth redirect -- they implement createAccount(), not the connectAccount() handshake.
+      // Calling connectAccount() on them errors / opens a dead tab (nothing happens), which is exactly
+      // why the blueprint CRM-Verbindung flow appeared broken to end users. Route them through
+      // provisionAmbientAccount() instead (same fix as GatekeeperModal.tsx). The minted account arrives
+      // via subscribeConnectedAccounts() and is auto-selected by the "first valid account" effect, so
+      // the flow continues to resource selection. OAuth vendors keep the redirect flow.
+      const vendor = vendors.find(v => v.id === vendorId)
+      if (vendor?.description.autoProvisionsAccount) {
+        await authenticatedApi.provisionAmbientAccount(vendorId)
+        toasts.add({ title: 'Konto verbunden.', variant: 'success' })
+        return
+      }
       const result = await authenticatedApi.connectAccount(vendorId)
       window.open(result.url, '_blank', 'noopener,noreferrer')
       toasts.add({ title: 'Schließe die Kontoverbindung im neuen Tab ab.', variant: 'success' })
@@ -202,7 +215,7 @@ export default function BlueprintLandingPage({ rpcStub }: Props) {
     } finally {
       setConnectingVendor(null)
     }
-  }, [authenticatedApi, toasts])
+  }, [authenticatedApi, toasts, vendors])
 
   const handleReconnectAccount = useCallback(async (accountId: number) => {
     if (!authenticatedApi) return

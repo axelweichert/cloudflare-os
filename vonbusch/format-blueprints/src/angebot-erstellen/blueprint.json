@@ -24,16 +24,16 @@
       "description": "Gatekeeper auf das von-Busch-CRM. Reads direkt, Writes (Aktivität/Angebot anlegen) approval-pflichtig.",
       "spawnerOnly": true,
       "type": "gatekeeper",
-      "gatekeeperName": "vonbusch-crm",
-      "typeUrlPattern": "https://gatekeeper-vonbusch-crm.vonbusch.workers.dev/*"
+      "gatekeeperName": "vonbusch_crm",
+      "typeUrlPattern": "https://crm.vonbusch.app/"
     },
     "preise": {
       "title": "Preiserhebung",
       "description": "Read-only Gatekeeper auf die Preis-/Kalkulationsparameter (Druck + DMS-ROI).",
       "spawnerOnly": true,
       "type": "gatekeeper",
-      "gatekeeperName": "preiserhebung",
-      "typeUrlPattern": "https://preiserhebung-gatekeeper.vonbusch.workers.dev/*"
+      "gatekeeperName": "vonbusch_preiserhebung",
+      "typeUrlPattern": "https://preiserhebung.vonbusch.app/"
     }
   }
 }
