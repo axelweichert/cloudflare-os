@@ -29,8 +29,10 @@ import {
   MailboxSessionCore, applyMailAction,
   type ActionDescription, type PendingMailAction,
 } from "./session-core";
-import { parseAcl, canObserveMailbox, allowedMailboxesFor } from "./mailbox-authz";
+import { parseAcl, canObserveMailbox, canBindAnyMailbox } from "./mailbox-authz";
 import type { Mailbox } from "./mailbox-api";
+import MAILBOX_CONFIGURATOR_HTML from "./generated/mailbox-configurator-ui.txt";
+import type { MailboxConfiguratorRpc } from "./configurator/mailbox-configurator-types";
 
 // ---------------------------------------------------------------------------
 
@@ -70,6 +72,28 @@ export interface Mailbox {
   reply(threadId: string, text: string): Promise<SubmittedAction>;
 }
 `;
+
+// ---------------------------------------------------------------------------
+// Ressourcen-Konfigurator-Capability (an das sandboxed iframe gereicht).
+//
+// Baut die konkrete `.../inbox/<id>`-URL aus der eingegebenen Inbox-ID — serverseitig autoritativ:
+// Host/Prefix/Encoding leben nur hier (`buildResourceUrl`), das iframe kennt sie nicht.
+
+/** Baut die Mailbox-Ressourcen-URL aus einer Inbox-ID (validiert). Eine Quelle der Wahrheit. */
+function buildResourceUrl(inboxId: string): string {
+  const id = inboxId.trim();
+  if (!id) throw new Error("Inbox-ID darf nicht leer sein.");
+  const url = `${RESOURCE_PREFIX}${encodeURIComponent(id)}`;
+  // Fail-fast: die gebaute URL muss vom Bind-Pfad (`mailboxFromUrl`) wieder akzeptiert werden.
+  mailboxFromUrl(url);
+  return url;
+}
+
+class MailboxConfiguratorUi extends RpcTarget implements MailboxConfiguratorRpc {
+  async resourceUrl(inboxId: string): Promise<string> {
+    return buildResourceUrl(inboxId);
+  }
+}
 
 const AVATAR = {
   // 1x1 transparentes GIF, damit hier nichts nach einem Netz-Asset greift.
@@ -138,7 +162,10 @@ export class GatekeeperVendor extends WorkerEntrypoint<Cloudflare.Env> {
   async getSupportedResources(options?: { userId?: string }): Promise<SupportedResource[]> {
     if (options?.userId !== undefined) {
       const acl = parseAcl(this.env.MAILBOX_ACL);
-      if (allowedMailboxesFor(acl, options.userId).length === 0) return [];
+      // Sichtbar, wenn der Nutzer mind. eine Mailbox binden darf — oder Admin ist. Admins dürfen JEDE
+      // (auch noch nicht gelistete) Inbox-ID per Konfigurator binden; ohne diese Ausnahme wäre der
+      // Vendor bei leerem `mailboxes` selbst für den Admin unsichtbar (VON-1864).
+      if (!canBindAnyMailbox(acl, options.userId)) return [];
     }
     return SUPPORTED_RESOURCES;
   }
@@ -218,8 +245,21 @@ export class MailboxAccount
 
   async revoke(): Promise<void> {}
 
-  startResourceConfigurator(_resourceUrlPattern: string): Promise<ResourceConfiguratorFrame> {
-    throw new Error("Kein Ressourcen-Konfigurator; binde eine `.../inbox/<id>`-URL direkt.");
+  /**
+   * Ressourcen-Konfigurator (VON-1864): Anders als CRM/Mail (feste Einzelressource) verlangt die
+   * Mailbox eine konkrete Inbox-ID in der URL (`.../inbox/<id>`). Wir liefern das sandboxed Formular
+   * mit EINEM Eingabefeld; seine `ui`-Capability baut die serverseitig autoritative Ressourcen-URL.
+   * Ohne diesen Frame (bzw. wenn hier geworfen wird) bleibt „Add connection" in der OS-Connect-Modal
+   * ausgegraut.
+   */
+  async startResourceConfigurator(resourceUrlPattern: string): Promise<ResourceConfiguratorFrame> {
+    if (resourceUrlPattern !== RESOURCE_PATTERN) {
+      throw new Error(`Unbekannter Mailbox-Ressourcentyp: ${resourceUrlPattern}`);
+    }
+    return {
+      iframeHtml: MAILBOX_CONFIGURATOR_HTML,
+      ui: new NativeRpcStub(new MailboxConfiguratorUi()),
+    };
   }
 
   reconnect(): Promise<{ url: string }> {

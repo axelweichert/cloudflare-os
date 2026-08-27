@@ -35,10 +35,28 @@ function norm(id: string): string {
 export function canObserveMailbox(acl: MailboxAcl, mailbox: string, identity: string | null): boolean {
   if (!identity) return false;
   const id = norm(identity);
-  if ((acl.admins ?? []).some(a => norm(a) === id)) return true;
+  if (isAclAdmin(acl, identity)) return true;
   const allowed = acl.mailboxes[mailbox] ?? acl.mailboxes[norm(mailbox)];
   if (!allowed) return false;
   return allowed.some(a => norm(a) === id);
+}
+
+/** Ist `identity` globaler ACL-Admin (darf jede Mailbox beobachten)? Case-insensitiv. */
+export function isAclAdmin(acl: MailboxAcl, identity: string | null): boolean {
+  if (!identity) return false;
+  const id = norm(identity);
+  return (acl.admins ?? []).some(a => norm(a) === id);
+}
+
+/**
+ * Darf `identity` überhaupt Mailboxen einbinden/sehen? Für die Sichtbarkeit im add-resource-Pfad
+ * (`getSupportedResources({userId})`). Admins dürfen JEDE (auch noch nicht in `mailboxes` gelistete)
+ * Mailbox binden — daher sichtbar, selbst wenn `mailboxes` leer ist (aktuelle Deploy-Config:
+ * `{"mailboxes":{},"admins":["axel…"]}`). Ohne diese Ausnahme blieb der Vendor für den Admin im
+ * Ressourcenpfad unsichtbar, obwohl er per Konfigurator jede Inbox-ID binden können soll (VON-1864).
+ */
+export function canBindAnyMailbox(acl: MailboxAcl, identity: string | null): boolean {
+  return isAclAdmin(acl, identity) || allowedMailboxesFor(acl, identity).length > 0;
 }
 
 /**

@@ -707,6 +707,9 @@ importers:
 
   packages/gatekeeper-vonbusch-mailbox:
     dependencies:
+      '@gadgets/configurator-ui':
+        specifier: workspace:*
+        version: link:../configurator-ui
       '@gadgets/workshop-shared':
         specifier: workspace:*
         version: link:../workshop-shared
@@ -726,6 +729,9 @@ importers:
 
   packages/gatekeeper-vonbusch-preiserhebung:
     dependencies:
+      '@gadgets/configurator-ui':
+        specifier: workspace:*
+        version: link:../configurator-ui
       '@gadgets/workshop-shared':
         specifier: workspace:*
         version: link:../workshop-shared

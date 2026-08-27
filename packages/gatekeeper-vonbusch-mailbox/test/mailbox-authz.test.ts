@@ -3,7 +3,9 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseAcl, canObserveMailbox, allowedMailboxesFor } from "../src/mailbox-authz.ts";
+import {
+  parseAcl, canObserveMailbox, allowedMailboxesFor, isAclAdmin, canBindAnyMailbox,
+} from "../src/mailbox-authz.ts";
 
 const ACL_JSON = JSON.stringify({
   mailboxes: {
@@ -49,4 +51,29 @@ test("allowedMailboxesFor steuert Sichtbarkeit: Nicht-Berechtigte sehen nichts",
   assert.deepEqual(allowedMailboxesFor(acl, "fremd@example.com"), []);
   // Admin sieht alle
   assert.equal(allowedMailboxesFor(acl, "cto@vonbusch.digital").length, 2);
+});
+
+test("isAclAdmin: nur gelistete Admins, case-insensitiv, fail-closed", () => {
+  const acl = parseAcl(ACL_JSON);
+  assert.equal(isAclAdmin(acl, "cto@vonbusch.digital"), true);
+  assert.equal(isAclAdmin(acl, "CTO@VONBUSCH.DIGITAL"), true);
+  assert.equal(isAclAdmin(acl, "axel@vonbusch.digital"), false); // gelistet, aber kein Admin
+  assert.equal(isAclAdmin(acl, null), false);
+});
+
+test("canBindAnyMailbox: Admin sichtbar auch bei leerem mailboxes (VON-1864-Regression)", () => {
+  // Aktuelle Deploy-Config: nur admins, keine gelisteten Mailboxen. Der Admin muss den Vendor im
+  // add-resource-Pfad trotzdem SEHEN, sonst kann er per Konfigurator keine Inbox-ID binden.
+  const adminOnly = parseAcl(JSON.stringify({ mailboxes: {}, admins: ["axel.weichert@vonbusch.digital"] }));
+  assert.equal(allowedMailboxesFor(adminOnly, "axel.weichert@vonbusch.digital").length, 0);
+  assert.equal(canBindAnyMailbox(adminOnly, "axel.weichert@vonbusch.digital"), true);
+  // Nicht-Admin ohne gelistete Mailbox bleibt unsichtbar (fail-closed).
+  assert.equal(canBindAnyMailbox(adminOnly, "fremd@example.com"), false);
+  assert.equal(canBindAnyMailbox(adminOnly, null), false);
+});
+
+test("canBindAnyMailbox: gelisteter Nicht-Admin ist sichtbar", () => {
+  const acl = parseAcl(ACL_JSON);
+  assert.equal(canBindAnyMailbox(acl, "sales@vonbusch.digital"), true);
+  assert.equal(canBindAnyMailbox(acl, "fremd@example.com"), false);
 });
