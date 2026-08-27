@@ -354,5 +354,15 @@ pnpm guard:fork                       # oder: vonbusch/scripts/fork-guard.sh --v
 läuft bei jedem `push` auf `main` und jedem `pull_request` → ein Sync-PR, der Fork-Marker
 zerstört, wird **rot** und kann bei aktiver Branch Protection nicht gemergt werden.
 
+> **⚠ Einmalige Owner-Aktion nötig (CEO):** Dies ist ein **Fork**. GitHub führt auf
+> geforkten Repos **keine** Actions aus, bis der Owner sie einmalig im Web-UI freigibt
+> (Reiter **Actions** → „I understand my workflows, go ahead and enable them"). Diese
+> Freigabe ist **nicht** über die API setzbar. Solange sie aussteht, laufen CI und
+> Fork-Guard **nicht** automatisch; die als Pflicht gesetzten Status-Checks bleiben
+> „pending" (Admins können per `enforce_admins:false` dennoch mergen). **Bis dahin gilt
+> der Guard als lokales Pre-Merge-Gate verbindlich:** `pnpm guard:fork` **muss** vor
+> jedem Sync-PR grün sein. Sobald der CEO Actions freigibt, greift der Guard zusätzlich
+> serverseitig — ohne weitere Konfiguration.
+
 Marker (DE-Keys, Schwellwert) bei künftiger DE-Arbeit im Skript nachziehen, damit die
 Stichprobe repräsentativ bleibt.
