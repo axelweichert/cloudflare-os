@@ -13,6 +13,21 @@ env:
   NODE_VERSION: "24.19.0"
 
 jobs:
+  # von-Busch-Fork: Null-Verlust-Wächter (VON-1905). Bricht CI/Merge ab, wenn unsere
+  # Fork-Marker (vonbusch/-Verzeichnis, DE-Kataloge, reale DE-UI-Strings) nach einer
+  # Integration fehlen. Reines Bash, kein Node-Setup nötig → schnellster Job im Lauf.
+  fork-guard:
+    name: Fork-Guard (Null-Verlust)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Verify von-Busch fork markers survive
+        run: bash vonbusch/scripts/fork-guard.sh --verbose
+
   # Parallel to `test` so lint and test failures surface on the same run. Package type checking
   # lives in Build; `scripts/` is checked here instead, because it is deliberately kept off
   # `pnpm build`'s hot path (see AGENTS.md) and this is the cheap job.

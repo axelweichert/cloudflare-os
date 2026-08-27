@@ -6,6 +6,54 @@
 
 ---
 
+## ⛔ Null-Verlust-Garantie (VON-1905) — HART, TECHNISCH ERZWUNGEN
+
+> **Board-Vorgabe (VON-1902): „Es darf nichts von unseren Änderungen verloren gehen."**
+> Diese Garantie steht bewusst ganz oben. Sie ist keine Empfehlung, sondern die
+> oberste Regel des Sync-Prozesses.
+
+**Sync ist EINSEITIG.** Erlaubt ist ausschließlich das selektive Übernehmen
+**einzelner** Upstream-Commits per `git cherry-pick -x <sha>` von `upstream` in einen
+**Sync-Branch** (nie direkt auf `main`).
+
+**Auf `main` strikt VERBOTEN** (würde Fork-Arbeit überschreiben/verlieren):
+
+| Verbotener Befehl | Warum tödlich |
+|---|---|
+| `git merge upstream/main` | Massenkonflikte auf allen DE-Dateien; verleitet zu „ihre Version nehmen" → DE-Verlust. |
+| `git reset --hard upstream/*` | Wirft **alle** Fork-Commits weg. Totalverlust. |
+| `git rebase --onto upstream/*` | Schreibt Fork-Historie um, kann Commits still fallen lassen. |
+| `git push --force` / `--force-with-lease` auf `main` | Überschreibt die Remote-Fork-Historie unwiderruflich. |
+| `git branch -D main` / Löschen von `main` | Entfernt den Fork-Stand. |
+
+Erlaubt bleibt: `git fetch upstream`, `git cherry-pick -x` **auf einem Sync-Branch**,
+lesende Diffs/Reports. Deploy/Upstream-PR nur mit Board-Gate (siehe Abschnitt 3).
+
+### Drei technische Sicherungen (alle umgesetzt, VON-1905)
+
+1. **Pre-Sync-Sicherungspunkt (Pflichtschritt, siehe Abschnitt 2a).**
+   Vor **jeder** Integration ein unveränderlicher Tag `vonbusch/pre-sync-YYYYMMDD`.
+   Damit ist der Vor-Sync-Stand jederzeit exakt wiederherstellbar.
+
+2. **Branch Protection auf `main` (GitHub, siehe Abschnitt 8).**
+   Kein Force-Push, kein Löschen, PR-Review-Pflicht. Verhindert die tödlichen
+   Befehle oben serverseitig — auch bei menschlichem/Automations-Fehler.
+
+3. **Fork-Guard in CI (`vonbusch/scripts/fork-guard.sh`, siehe Abschnitt 9).**
+   Verifiziert nach jeder Integration, dass unsere Fork-Marker (Verzeichnis
+   `vonbusch/`, DE-Kataloge, Stichprobe realer DE-UI-Strings) weiterhin existieren.
+   Fehlt ein Marker → CI **rot** → Merge blockiert.
+
+**Wenn der Guard rot ist:** Integration **nicht** übernehmen. Sync-Branch aus dem
+Sicherungspunkt wiederherstellen:
+
+```bash
+git tag --list 'vonbusch/pre-sync-*'                 # Sicherungspunkt finden
+git reset --hard vonbusch/pre-sync-<DATUM>           # NUR auf dem Sync-Branch!
+```
+
+---
+
 ## 0. Grundhaltung (CEO-Entscheidung, VON-1902)
 
 Unser Fork ist ein **Produkt-Fork, kein temporärer Branch**. Upstream ist
@@ -63,6 +111,20 @@ Feature-Arbeit im Fork startet, damit wir nicht auf veraltetem Stand bauen.
 ---
 
 ## 3. Cherry-pick-Prozess
+
+### (0) Pflichtschritt VOR jeder Integration: Pre-Sync-Sicherungspunkt
+
+```bash
+# Unveränderlicher Sicherungspunkt des aktuellen main-Stands.
+# Ohne diesen Tag KEINE Integration beginnen.
+git checkout main && git pull --ff-only origin main
+git tag "vonbusch/pre-sync-$(date +%Y%m%d)" main
+git push origin "vonbusch/pre-sync-$(date +%Y%m%d)"   # Sicherungspunkt auch remote
+```
+
+Damit ist der Zustand **vor** dem Sync jederzeit exakt wiederherstellbar
+(`git reset --hard vonbusch/pre-sync-YYYYMMDD` — nur auf dem Sync-Branch). Tags
+werden **nie** gelöscht; sie sind das Sicherheitsnetz der Null-Verlust-Garantie.
 
 ### (a) Security / kritische Fixes — zeitnah, Board nur informieren
 
@@ -219,10 +281,78 @@ durch Frontend-String-Konflikte · Übersetzungs-Konsistenz reißt trotz Glossar
 
 ## 7. Checkliste je Sync-Zyklus
 
+- [ ] **Pre-Sync-Sicherungspunkt setzen** (`vonbusch/pre-sync-YYYYMMDD`, Abschnitt 3.0) — Pflicht.
 - [ ] `vonbusch/scripts/drift-report.sh` laufen lassen
+- [ ] Sync **nur** auf eigenem `sync/*`-Branch — nie `merge`/`reset`/`rebase` auf `main` (Null-Verlust-Garantie).
 - [ ] (a)-Fixes prüfen → cherry-pick, Board informieren, Register-Zeile ✅
 - [ ] (b)-Features → Board-Issue anlegen (⏳), bei Übernahme Glossar pflegen
 - [ ] (c)-Rest → im Register als ⛔ vermerken
 - [ ] DE-Konflikte nach Regel (Upstream-Logik + DE-String) auflösen
 - [ ] Neue englische Upstream-Strings nach Glossar ([I18N-DE.md](./I18N-DE.md)) übersetzen
+- [ ] **`vonbusch/scripts/fork-guard.sh` grün** (auch lokal vor dem PR: `pnpm guard:fork`).
+- [ ] PR gegen `origin/main` (Branch Protection erzwingt Review, Abschnitt 8).
 - [ ] Kein Prod-Deploy / Upstream-PR ohne Board-Gate
+
+---
+
+## 8. Branch Protection auf `main` (GitHub)
+
+Serverseitige, technisch erzwungene Absicherung der Null-Verlust-Garantie. Über die
+GitHub-REST-API (`PUT /repos/axelweichert/cloudflare-os/branches/main/protection`)
+gesetzt. **Aktiver Stand** (mit `GET …/protection` verifizierbar):
+
+- `allow_force_pushes: false` → **kein** Force-Push auf `main` (blockt `reset --hard` + Push).
+- `allow_deletions: false` → `main` kann **nicht** gelöscht werden.
+- `required_pull_request_reviews`: **1 Review Pflicht** → jede Upstream-Integration läuft
+  über einen PR, keine Blind-Merges direkt auf `main`.
+- `required_status_checks`: **Fork-Guard (Null-Verlust)** + **Build and test** müssen grün sein.
+- `enforce_admins: false` → die Admin-/Automations-Identität (Deploy-/Bot-Token) behält für
+  den regulären Direkt-Commit-Fluss und Notfälle einen Weg auf `main`; Force-Push und
+  Löschen bleiben **für alle** gesperrt.
+
+> **Empfehlung an CEO:** Sollen auch Admins zwingend über PRs gehen, `enforce_admins`
+> auf `true` setzen (Einzeiler via API). Aktuell bewusst `false`, damit der bestehende
+> Automations-/Deploy-Fluss nicht bricht.
+
+Neu setzen/aktualisieren (Token mit `repo`-Scope nötig):
+
+```bash
+TOKEN=<pat>   # repo-Scope; NICHT committen
+curl -sS -X PUT -H "Authorization: token $TOKEN" -H "Accept: application/vnd.github+json" \
+  https://api.github.com/repos/axelweichert/cloudflare-os/branches/main/protection \
+  -d '{
+    "required_status_checks": {"strict": false, "contexts": ["Fork-Guard (Null-Verlust)", "Build and test"]},
+    "enforce_admins": false,
+    "required_pull_request_reviews": {"required_approving_review_count": 1},
+    "restrictions": null,
+    "allow_force_pushes": false,
+    "allow_deletions": false
+  }'
+```
+
+---
+
+## 9. Fork-Guard (Null-Verlust-Test, CI)
+
+`vonbusch/scripts/fork-guard.sh` — rein lesend, kein Netz. Prüft drei Marker-Klassen und
+bricht mit Exit-Code 1 ab, wenn etwas fehlt:
+
+1. **Struktur** — `vonbusch/` + Kern-Docs/Skripte (`FORK-SYNC.md`, `I18N-DE.md`,
+   `drift-report.sh`, `fork-guard.sh`).
+2. **DE-Key-Stichprobe** — reale deutsche UI-Strings direkt im Quelltext
+   (z. B. „Torwächter", „Baupläne", „Entdecken", „Woran arbeiten wir").
+3. **Flächen-Check** — Anzahl DE-übersetzter Quelldateien ≥ Schwellwert (fängt breiten
+   Verlust ab, falls die Stichprobe zufällig überlebt).
+
+Aufruf:
+
+```bash
+pnpm guard:fork                       # oder: vonbusch/scripts/fork-guard.sh --verbose
+```
+
+**Eingehängt in CI** als Job `Fork-Guard (Null-Verlust)` (`.github/workflows/ci.yml`),
+läuft bei jedem `push` auf `main` und jedem `pull_request` → ein Sync-PR, der Fork-Marker
+zerstört, wird **rot** und kann bei aktiver Branch Protection nicht gemergt werden.
+
+Marker (DE-Keys, Schwellwert) bei künftiger DE-Arbeit im Skript nachziehen, damit die
+Stichprobe repräsentativ bleibt.

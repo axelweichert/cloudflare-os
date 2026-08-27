@@ -20,7 +20,8 @@
     "types:check": "pnpm run build",
     "types:scripts": "tsc -p scripts/tsconfig.json",
     "lint": "pnpm run lint:check && pnpm run types:scripts && pnpm run types:check",
-    "types:generate": "node scripts/generate-worker-types.ts"
+    "types:generate": "node scripts/generate-worker-types.ts",
+    "guard:fork": "bash vonbusch/scripts/fork-guard.sh"
   },
   "devDependencies": {
     "@types/node": "26.1.0",
