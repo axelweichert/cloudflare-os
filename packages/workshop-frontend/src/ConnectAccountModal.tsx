@@ -64,6 +64,18 @@ export default function ConnectAccountModal({
   const handleConnect = async (vendorId: string) => {
     setConnecting(vendorId)
     try {
+      // Ambient gatekeepers (VendorDescription.autoProvisionsAccount) mint their account directly with
+      // no OAuth redirect -- they implement createAccount(), not the connectAccount() handshake. Calling
+      // connectAccount() on them errors / opens a dead tab (nothing happens). Route them through
+      // provisionAmbientAccount() instead (same fix as GatekeeperModal.tsx / BlueprintLandingPage.tsx),
+      // then close the modal. OAuth vendors keep the redirect flow.
+      const vendor = vendors.find(v => v.id === vendorId)
+      if (vendor?.description.autoProvisionsAccount) {
+        await authenticatedApi.provisionAmbientAccount(vendorId)
+        toasts.add({ title: 'Konto verbunden.', variant: 'success' })
+        onInitiated()
+        return
+      }
       const result = await authenticatedApi.connectAccount(vendorId)
       window.open(result.url, '_blank', 'noopener,noreferrer')
       onInitiated()

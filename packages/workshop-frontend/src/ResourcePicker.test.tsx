@@ -57,4 +57,53 @@ describe('ResourcePicker', () => {
 
     expect(pendingSubscription.dispose).toHaveBeenCalledOnce()
   })
+
+  // Regression (VON-1919): the "connect new account" row for an ambient gatekeeper (the vonBusch
+  // CRM / Preiserhebung, autoProvisionsAccount) must route through provisionAmbientAccount(), NOT the
+  // OAuth connectAccount() handshake -- which errors / opens a dead tab and is why "Entdecken ->
+  // Ressource hinzufuegen -> Verbindung" appeared broken. Mirrors GatekeeperModal / BlueprintLandingPage.
+  it('provisions an ambient vendor from the connect-new row instead of opening an OAuth tab', async () => {
+    const provisionAmbientAccount = vi.fn(async (_vendorId: string) => {})
+    const connectAccount = vi.fn(async () => ({ url: 'https://oauth.example/authorize' }))
+
+    const AMBIENT_VENDOR = {
+      id: 'vonbusch_crm',
+      description: { displayName: 'vonBusch CRM', autoProvisionsAccount: true },
+      supportedResources: [
+        { urlPattern: 'https://crm.vonbusch.app/', title: 'CRM', description: 'Das vonBusch-CRM' },
+      ],
+    }
+
+    const authenticatedApi = {
+      listGatekeeperVendors: async () => [AMBIENT_VENDOR],
+      subscribeConnectedAccounts: (subscriber: { ready: () => void }) => {
+        subscriber.ready()
+        return Object.assign(Promise.resolve({ [Symbol.dispose]() {} }), { [Symbol.dispose]() {} })
+      },
+      provisionAmbientAccount,
+      connectAccount,
+    } as unknown as RpcStub<AuthenticatedApi>
+
+    const activateRef = { current: null as ((index: number) => void) | null }
+
+    container = document.createElement('div')
+    document.body.append(container)
+    root = createRoot(container)
+    await act(async () => root!.render(
+      <ResourcePicker
+        authenticatedApi={authenticatedApi}
+        searchText="https://crm.vonbusch.app/"
+        onSelectAccount={() => {}}
+        activateRef={activateRef}
+      />,
+    ))
+    await act(async () => { await Promise.resolve() })
+
+    // With no connected accounts, the single selectable row is the "connect new account" row.
+    await act(async () => activateRef.current?.(0))
+    await act(async () => { await Promise.resolve() })
+
+    expect(provisionAmbientAccount).toHaveBeenCalledWith('vonbusch_crm')
+    expect(connectAccount).not.toHaveBeenCalled()
+  })
 })

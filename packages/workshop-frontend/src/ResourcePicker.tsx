@@ -398,6 +398,19 @@ export default function ResourcePicker({
   const handleConnectNew = async (vendorId: string, resourceUrlPatterns?: string[]) => {
     setConnectingVendor(vendorId)
     try {
+      // Ambient gatekeepers (VendorDescription.autoProvisionsAccount) mint their account directly
+      // with no OAuth redirect -- they implement createAccount(), not the connectAccount() handshake.
+      // Calling connectAccount() on them errors / opens a dead tab, which is why "connect new account"
+      // for the vonBusch gatekeepers (CRM, Preiserhebung) appeared broken. Route them through
+      // provisionAmbientAccount() instead (same fix as GatekeeperModal.tsx / BlueprintLandingPage.tsx).
+      // The minted account arrives via the accounts subscription and becomes selectable. OAuth vendors
+      // keep the redirect flow.
+      const vendor = allVendors.find(v => v.id === vendorId)
+      if (vendor?.description.autoProvisionsAccount) {
+        await authenticatedApi.provisionAmbientAccount(vendorId)
+        toasts.add({ title: 'Konto verbunden.', variant: 'success' })
+        return
+      }
       const result = await authenticatedApi.connectAccount(vendorId, resourceUrlPatterns)
       window.open(result.url, '_blank', 'noopener,noreferrer')
     } catch (error) {
