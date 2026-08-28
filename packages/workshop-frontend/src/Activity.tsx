@@ -9,6 +9,8 @@ import { HookToggle } from './components/HookToggle'
 import { AlwaysApproveButton, ResolveButton } from './components/ResolveButton'
 import { WorkshopButton } from './components/WorkshopControls'
 import { useActions } from './useActions'
+import { useActionHistory } from './useActionHistory'
+import type { HistoryViewFilter } from './useActionHistory'
 import { useAutoApproval, autoApprovalKey, type AutoApprovalEntry } from './useAutoApproval'
 import { useAlwaysApproveTag } from './useAlwaysApproveTag'
 import { useAuthenticatedApi } from './AuthContext'
@@ -19,8 +21,6 @@ import { safeExternalUrl } from './utils/safeExternalUrl'
 import AutoApproveConfirmDialog from './components/AutoApproveConfirmDialog'
 
 export type ActivityView = 'review' | 'history' | 'auto'
-
-type HistoryFilter = 'all' | ActionLogEntry['type']
 
 const PANE_BAR = 'flex h-9 flex-shrink-0 items-center border-b border-kumo-line'
 
@@ -34,16 +34,17 @@ interface ActivityProps {
   autoApproveReloadTrigger?: number
 }
 
-const HISTORY_FILTERS: { value: HistoryFilter; label: string }[] = [
+/** Pending-status copy while the pending set is still being gathered (also in the popover). */
+export const PENDING_CHECKING_COPY = 'Suche nach Anfragen…'
+/** Pending-status copy when gathering the pending set failed (also in the popover). */
+export const PENDING_ERROR_COPY = 'Anfragen konnten nicht geprüft werden — lade die Seite neu, um es erneut zu versuchen.'
+
+const HISTORY_FILTERS: { value: HistoryViewFilter; label: string }[] = [
   { value: 'all', label: 'Alle' },
   { value: 'action', label: 'Aktionen' },
   { value: 'observation', label: 'Beobachtungen' },
   { value: 'bindHook', label: 'Hooks' },
 ]
-
-function timeValue(date: Date | undefined): number {
-  return date ? new Date(date).getTime() : 0
-}
 
 function formatClockTime(date: Date): string {
   return new Date(date).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
@@ -61,10 +62,10 @@ function formatFullDate(date: Date): string {
 export function formatRelativeTime(date: Date): string {
   const minutes = Math.floor(Math.max(0, Date.now() - new Date(date).getTime()) / 60_000)
   if (minutes < 1) return 'gerade eben'
-  if (minutes < 60) return `vor ${minutes} Min.`
+  if (minutes < 60) return `${minutes}m ago`
   const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `vor ${hours} Std.`
-  return `vor ${Math.floor(hours / 24)} Tg.`
+  if (hours < 24) return `${hours}h ago`
+  return `${Math.floor(hours / 24)}d ago`
 }
 
 function startOfDay(date: Date): number {
@@ -109,6 +110,46 @@ function TypeIcon({ record, className }: { record: ActionLogEntry; className?: s
   return <ShieldCheck {...props} />
 }
 
+function LoadOlderButton({ history, className, label = 'Ältere laden' }: {
+  history: { loadMore: () => void; isLoadingMore: boolean }
+  className?: string
+  label?: string
+}) {
+  return (
+    <WorkshopButton className={className} onClick={history.loadMore}
+        disabled={history.isLoadingMore}>
+      {history.isLoadingMore ? 'Wird geladen…' : label}
+    </WorkshopButton>
+  )
+}
+
+/** Centered full-pane notice: an empty, error, or call-to-action state. */
+function ActivityNotice({ icon, title, description, children }: {
+  icon?: ReactNode
+  title: string
+  description?: string
+  children?: ReactNode
+}) {
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
+      {icon && (
+        <span className="mb-3 grid h-9 w-9 place-items-center rounded-full bg-kumo-tint text-kumo-subtle">
+          {icon}
+        </span>
+      )}
+      <p className="m-0 text-[13px] font-medium leading-[18px] tracking-[-0.25px] text-kumo-default">
+        {title}
+      </p>
+      {description && (
+        <p className="mt-1 max-w-xs text-[13px] leading-[18px] tracking-[-0.25px] text-kumo-subtle">
+          {description}
+        </p>
+      )}
+      {children}
+    </div>
+  )
+}
+
 export default function Activity({
   overseer,
   view,
@@ -116,8 +157,8 @@ export default function Activity({
   onAutoApproveChange,
   autoApproveReloadTrigger,
 }: ActivityProps) {
-  const { actionsById, isReady } = useActions(overseer)
-  const [historyFilter, setHistoryFilter] = useState<HistoryFilter>('all')
+  const { status: pendingStatus, pending: pendingActions } = useActions(overseer)
+  const [historyFilter, setHistoryFilter] = useState<HistoryViewFilter>('all')
   const [processingActions, setProcessingActions] = useState<Set<number>>(new Set())
   const [togglingHooks, setTogglingHooks] = useState<Set<number>>(new Set())
   const [expandedActionId, setExpandedActionId] = useState<number | null>(null)
@@ -130,30 +171,20 @@ export default function Activity({
   } | null>(null)
   const toasts = useKumoToastManager()
 
-  const { pendingActions, historyGroups, historyTotal, historyShown } = useMemo(() => {
-    const records = [...actionsById.values()]
-    const pending = records
-      .filter(record => record.state === 'pending')
-      .toSorted((a, b) => timeValue(a.createdAt) - timeValue(b.createdAt) || a.id - b.id)
-    const resolved = records.filter(record => record.state !== 'pending')
-    const filtered = resolved
-      .filter(record => historyFilter === 'all' || record.type === historyFilter)
-      .toSorted((a, b) =>
-        timeValue(b.appliedAt ?? b.createdAt) - timeValue(a.appliedAt ?? a.createdAt) || b.id - a.id)
+  const history = useActionHistory(overseer, historyFilter, view === 'history')
+
+  // Grouped by day in id order (newest first). A day label can repeat when resolution order
+  // differs from creation order — accepted for a paged, creation-ordered log.
+  const historyGroups = useMemo(() => {
     const groups: { label: string; records: ActionLogEntry[] }[] = []
-    for (const record of filtered) {
+    for (const record of history.entries) {
       const label = dayLabel(record.appliedAt ?? record.createdAt)
       const last = groups.at(-1)
       if (last?.label === label) last.records.push(record)
       else groups.push({ label, records: [record] })
     }
-    return {
-      pendingActions: pending,
-      historyGroups: groups,
-      historyTotal: resolved.length,
-      historyShown: filtered.length,
-    }
-  }, [actionsById, historyFilter])
+    return groups
+  }, [history.entries])
 
   const resolveAction = useResolveAction(overseer, setProcessingActions)
 
@@ -181,151 +212,224 @@ export default function Activity({
     setExpandedActionId(previous => (previous === id ? null : id))
   }
 
-  if (!isReady) {
+  function renderReviewContent(): ReactNode {
+    if (pendingActions.length > 0) {
+      return (
+        <>
+          <div className={`${PANE_BAR} gap-2 px-5`}>
+            <span className="text-[12.5px] font-medium leading-[17px] tracking-[-0.15px] text-kumo-default">
+              {pendingActions.length} {pendingActions.length === 1 ? 'Anfrage wartet' : 'Anfragen warten'}
+            </span>
+            <span className="ml-auto text-[11.5px] leading-[17px] text-kumo-inactive">Älteste zuerst</span>
+          </div>
+          <div className="min-h-0 flex-1 overflow-auto">
+            {pendingActions.map(record => {
+              const autoApproveTarget =
+                record.type === 'action' && record.gatekeeperId !== undefined &&
+                record.description.actionKind !== undefined &&
+                record.description.autoApprovable === true
+                  ? {
+                      actionId: record.id,
+                      gatekeeperId: record.gatekeeperId,
+                      resourceTitle: record.resourceTitle,
+                      actionKind: record.description.actionKind,
+                      actionLabel: record.description.title,
+                    }
+                  : undefined
+              return (
+                <ReviewRequest
+                  key={record.id}
+                  record={record}
+                  expanded={expandedActionId === record.id}
+                  processing={processingActions.has(record.id)}
+                  onToggle={() => toggleExpanded(record.id)}
+                  onApprove={() => void resolveAction(record.id, 'approve')}
+                  onReject={() => void resolveAction(record.id, 'deny')}
+                  onAlwaysApprove={
+                    autoApproveTarget &&
+                    !isTagAutoApproved(autoApproveTarget.gatekeeperId, autoApproveTarget.actionKind.tag)
+                      ? () => setConfirmAutoApprove(autoApproveTarget)
+                      : undefined
+                  }
+                />
+              )
+            })}
+            {pendingStatus === 'checking' && (
+              <p className="m-0 px-5 py-3 text-center text-[12px] leading-4 text-kumo-inactive">
+                Ältere Aktivität wird noch geprüft…
+              </p>
+            )}
+            {pendingStatus === 'error' && (
+              <p className="m-0 px-5 py-3 text-center text-[12px] leading-4 text-kumo-inactive">
+                Prüfung der Anfragen konnte nicht abgeschlossen werden — lade die Seite neu, um es erneut zu versuchen.
+              </p>
+            )}
+          </div>
+        </>
+      )
+    }
+
+    if (pendingStatus === 'checking') {
+      return (
+        <div className="flex flex-1 items-center justify-center text-[13px] text-kumo-subtle">
+          {PENDING_CHECKING_COPY}
+        </div>
+      )
+    }
+
+    if (pendingStatus === 'error') {
+      return (
+        <ActivityNotice
+          title="Anfragen konnten nicht geprüft werden"
+          description="Lade die Seite neu, um es erneut zu versuchen."
+        />
+      )
+    }
+
     return (
-      <div className="flex h-full items-center justify-center text-[13px] text-kumo-subtle">
-        Aktivität wird geladen…
-      </div>
+      <ActivityNotice
+        icon={<Check size={17} weight="bold" />}
+        title="Nichts zu prüfen"
+        description="Anfragen, die deine Genehmigung brauchen, erscheinen hier und in der Kopfzeile des Arbeitsbereichs."
+      >
+        <WorkshopButton className="mt-4" onClick={() => onViewChange('history')}>
+          Verlauf anzeigen
+        </WorkshopButton>
+      </ActivityNotice>
     )
+  }
+
+  function renderHistoryBody(): ReactNode {
+    if (history.entries.length > 0) {
+      return (
+        <div className="min-h-0 flex-1 overflow-auto">
+          <div className="grid grid-cols-[54px_minmax(0,1fr)_auto_16px] items-center gap-3 border-b border-kumo-line bg-kumo-elevated/50 px-5 py-1.5 text-[11px] font-medium uppercase tracking-[0.06em] text-kumo-inactive">
+            <span>Zeit</span>
+            <span>Ereignis</span>
+            <span>Status</span>
+            <span />
+          </div>
+          {historyGroups.map(group => (
+            // Keyed by the group's oldest record: live inserts land at the front of a group, so
+            // keying by the first would remount the section (dropping focus) on every insert.
+            // Day labels can repeat (see historyGroups), so the label alone can't be the key.
+            <section key={group.records.at(-1)!.id}>
+              <h3 className="sticky top-0 m-0 border-b border-kumo-line bg-kumo-base/90 px-5 py-1 text-[11px] font-medium uppercase tracking-[0.06em] text-kumo-inactive backdrop-blur-sm">
+                {group.label}
+              </h3>
+              {group.records.map(record => (
+                <HistoryRow
+                  key={record.id}
+                  record={record}
+                  expanded={expandedActionId === record.id}
+                  onToggle={() => toggleExpanded(record.id)}
+                  togglingHook={record.type === 'bindHook' && record.hookId !== undefined
+                    ? togglingHooks.has(record.hookId)
+                    : false}
+                  onToggleHook={handleToggleHook}
+                />
+              ))}
+            </section>
+          ))}
+          {history.loadMoreFailed ? (
+            <div className="flex items-center justify-center gap-3 py-3">
+              <span className="text-[12px] leading-4 text-kumo-inactive">
+                Ältere Aktivität konnte nicht geladen werden
+              </span>
+              <LoadOlderButton history={history} label="Erneut versuchen" />
+            </div>
+          ) : history.hasMore && (
+            <div className="flex justify-center py-3">
+              <LoadOlderButton history={history} />
+            </div>
+          )}
+        </div>
+      )
+    }
+
+    if (history.status === 'error') {
+      return (
+        <ActivityNotice title="Aktivität konnte nicht geladen werden">
+          <LoadOlderButton className="mt-4" history={history} label="Erneut versuchen" />
+        </ActivityNotice>
+      )
+    }
+
+    if (history.status === 'loading') {
+      return (
+        <div className="flex flex-1 items-center justify-center text-[13px] text-kumo-subtle">
+          Aktivität wird geladen…
+        </div>
+      )
+    }
+
+    if (history.hasMore) {
+      return (
+        <ActivityNotice title="Nichts in der jüngsten Aktivität">
+          <LoadOlderButton className="mt-4" history={history} />
+        </ActivityNotice>
+      )
+    }
+
+    if (historyFilter === 'all') {
+      return (
+        <ActivityNotice
+          title="Noch keine Aktivität"
+          description="Jede Ressource, die ein Agent liest oder ändert, wird hier festgehalten."
+        />
+      )
+    }
+
+    return (
+      <ActivityNotice title="Keine passenden Ereignisse">
+        <button
+          type="button"
+          onClick={() => setHistoryFilter('all')}
+          className="mt-1.5 cursor-pointer text-[12px] font-medium text-kumo-subtle hover:text-kumo-default"
+        >
+          Alle Aktivitäten anzeigen
+        </button>
+      </ActivityNotice>
+    )
+  }
+
+  function renderActivityContent(): ReactNode {
+    switch (view) {
+      case 'review':
+        return renderReviewContent()
+      case 'history':
+        return (
+          <>
+            <div className={`${PANE_BAR} gap-1 px-3`}>
+              {HISTORY_FILTERS.map(filter => (
+                <button
+                  key={filter.value}
+                  type="button"
+                  onClick={() => setHistoryFilter(filter.value)}
+                  className={`flex h-6 cursor-pointer items-center rounded-md px-2 text-[12.5px] font-medium tracking-[-0.15px] transition-colors ${
+                    historyFilter === filter.value
+                      ? 'bg-kumo-tint text-kumo-default'
+                      : 'text-kumo-subtle hover:text-kumo-default'
+                  }`}
+                >
+                  {filter.label}
+                </button>
+              ))}
+              <span className="ml-auto pr-2 text-[11.5px] leading-[17px] tabular-nums text-kumo-inactive">
+                {history.entries.length} geladen
+              </span>
+            </div>
+            {renderHistoryBody()}
+          </>
+        )
+      case 'auto':
+        return <AutoApprovalPanel overseer={overseer} reloadTrigger={autoApproveReloadTrigger} />
+    }
   }
 
   return (
     <div className="flex h-full flex-col bg-kumo-base">
-      {view === 'review' ? (
-        pendingActions.length === 0 ? (
-          <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
-            <span className="grid h-9 w-9 place-items-center rounded-full bg-kumo-tint text-kumo-subtle">
-              <Check size={17} weight="bold" />
-            </span>
-            <p className="mt-3 text-[13px] font-medium leading-[18px] tracking-[-0.25px] text-kumo-default">
-              Nichts zu prüfen
-            </p>
-            <p className="mt-1 max-w-xs text-[13px] leading-[18px] tracking-[-0.25px] text-kumo-subtle">
-              Anfragen, die deine Genehmigung brauchen, erscheinen hier und in der Kopfzeile des Arbeitsbereichs.
-            </p>
-            <WorkshopButton className="mt-4" onClick={() => onViewChange('history')}>
-              Verlauf anzeigen
-            </WorkshopButton>
-          </div>
-        ) : (
-          <>
-            <div className={`${PANE_BAR} gap-2 px-5`}>
-              <span className="text-[12.5px] font-medium leading-[17px] tracking-[-0.15px] text-kumo-default">
-                {pendingActions.length} {pendingActions.length === 1 ? 'Anfrage wartet' : 'Anfragen warten'}
-              </span>
-              <span className="ml-auto text-[11.5px] leading-[17px] text-kumo-inactive">Älteste zuerst</span>
-            </div>
-            <div className="min-h-0 flex-1 overflow-auto">
-              {pendingActions.map(record => {
-                const autoApproveTarget =
-                  record.type === 'action' && record.gatekeeperId !== undefined &&
-                  record.description.actionKind !== undefined &&
-                  record.description.autoApprovable === true
-                    ? {
-                        actionId: record.id,
-                        gatekeeperId: record.gatekeeperId,
-                        resourceTitle: record.resourceTitle,
-                        actionKind: record.description.actionKind,
-                        actionLabel: record.description.title,
-                      }
-                    : undefined
-                return (
-                  <ReviewRequest
-                    key={record.id}
-                    record={record}
-                    expanded={expandedActionId === record.id}
-                    processing={processingActions.has(record.id)}
-                    onToggle={() => toggleExpanded(record.id)}
-                    onApprove={() => void resolveAction(record.id, 'approve')}
-                    onReject={() => void resolveAction(record.id, 'deny')}
-                    onAlwaysApprove={
-                      autoApproveTarget &&
-                      !isTagAutoApproved(autoApproveTarget.gatekeeperId, autoApproveTarget.actionKind.tag)
-                        ? () => setConfirmAutoApprove(autoApproveTarget)
-                        : undefined
-                    }
-                  />
-                )
-              })}
-            </div>
-          </>
-        )
-      ) : view === 'history' ? (
-        <>
-          <div className={`${PANE_BAR} gap-1 px-3`}>
-            {HISTORY_FILTERS.map(filter => (
-              <button
-                key={filter.value}
-                type="button"
-                onClick={() => setHistoryFilter(filter.value)}
-                className={`flex h-6 cursor-pointer items-center rounded-md px-2 text-[12.5px] font-medium tracking-[-0.15px] transition-colors ${
-                  historyFilter === filter.value
-                    ? 'bg-kumo-tint text-kumo-default'
-                    : 'text-kumo-subtle hover:text-kumo-default'
-                }`}
-              >
-                {filter.label}
-              </button>
-            ))}
-            <span className="ml-auto pr-2 text-[11.5px] leading-[17px] tabular-nums text-kumo-inactive">
-              {historyShown} {historyShown === 1 ? 'Ereignis' : 'Ereignisse'}
-            </span>
-
-          </div>
-
-          {historyTotal === 0 ? (
-            <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
-              <p className="m-0 text-[13px] font-medium leading-[18px] tracking-[-0.25px] text-kumo-default">
-                Noch keine Aktivität
-              </p>
-              <p className="mt-1 max-w-xs text-[13px] leading-[18px] tracking-[-0.25px] text-kumo-subtle">
-                Jede Ressource, die ein Agent liest oder ändert, wird hier festgehalten.
-              </p>
-            </div>
-          ) : historyShown === 0 ? (
-            <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
-              <p className="m-0 text-[13px] font-medium text-kumo-default">Keine passenden Ereignisse</p>
-              <button
-                type="button"
-                onClick={() => setHistoryFilter('all')}
-                className="mt-1.5 cursor-pointer text-[12px] font-medium text-kumo-subtle hover:text-kumo-default"
-              >
-                Alle Aktivitäten anzeigen
-              </button>
-            </div>
-          ) : (
-            <div className="min-h-0 flex-1 overflow-auto">
-              <div className="grid grid-cols-[54px_minmax(0,1fr)_auto_16px] items-center gap-3 border-b border-kumo-line bg-kumo-elevated/50 px-5 py-1.5 text-[11px] font-medium uppercase tracking-[0.06em] text-kumo-inactive">
-                <span>Zeit</span>
-                <span>Ereignis</span>
-                <span>Status</span>
-                <span />
-              </div>
-              {historyGroups.map(group => (
-                <section key={group.label}>
-                  <h3 className="sticky top-0 m-0 border-b border-kumo-line bg-kumo-base/90 px-5 py-1 text-[11px] font-medium uppercase tracking-[0.06em] text-kumo-inactive backdrop-blur-sm">
-                    {group.label}
-                  </h3>
-                  {group.records.map(record => (
-                    <HistoryRow
-                      key={record.id}
-                      record={record}
-                      expanded={expandedActionId === record.id}
-                      onToggle={() => toggleExpanded(record.id)}
-                      togglingHook={record.type === 'bindHook' && record.hookId !== undefined
-                        ? togglingHooks.has(record.hookId)
-                        : false}
-                      onToggleHook={handleToggleHook}
-                    />
-                  ))}
-                </section>
-              ))}
-            </div>
-          )}
-        </>
-      ) : (
-        <AutoApprovalPanel overseer={overseer} reloadTrigger={autoApproveReloadTrigger} />
-      )}
+      {renderActivityContent()}
 
       {confirmAutoApprove && (
         <AutoApproveConfirmDialog
@@ -466,7 +570,7 @@ function AutoApprovalPanel({
                       {entry.orphaned
                         ? 'Diese Verbindung bietet diese Aktion nicht mehr an; die Regel gilt weiterhin.'
                         : entry.enabled
-                          ? 'Ohne Nachfrage angewendet'
+                          ? 'Wird ohne Nachfrage angewendet'
                           : 'Wartet auf deine Genehmigung'}
                     </span>
                   </span>
@@ -474,7 +578,7 @@ function AutoApprovalPanel({
                     size="sm"
                     checked={entry.enabled}
                     disabled={busy}
-                    aria-label={`Automatische Genehmigung für ${entry.actionKind.label} ${entry.enabled ? 'deaktivieren' : 'aktivieren'}`}
+                    aria-label={`${entry.enabled ? 'Deaktivieren' : 'Aktivieren'}: automatische Genehmigung für ${entry.actionKind.label}`}
                     onCheckedChange={enabled => void setEnabled(entry, enabled)}
                   />
                 </div>
@@ -617,7 +721,7 @@ function HistoryRow({
             <span className="text-kumo-subtle">{record.resourceTitle}</span>
             {resolvedBy && (
               <ResolverBadge profileId={resolvedBy.id}>
-                {autoApproved ? `Automatisch genehmigt (Regel von ${resolvedBy.name})` : `Von ${resolvedBy.name}`}
+                {autoApproved ? `Auto-approved (${resolvedBy.name}'s rule)` : `By ${resolvedBy.name}`}
               </ResolverBadge>
             )}
             {resourceUrl && (
@@ -627,7 +731,7 @@ function HistoryRow({
                 rel="noopener noreferrer"
                 className="text-kumo-subtle hover:text-kumo-default hover:underline"
               >
-                Ressource öffnen
+                Open resource
               </a>
             )}
             {record.type === 'bindHook' && record.hookId !== undefined && (
