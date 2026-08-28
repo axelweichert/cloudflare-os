@@ -204,7 +204,7 @@ Drift ist derzeit **gut beherrschbar** per selektivem Cherry-pick.
 
 | Upstream | Betreff | Kat. | Kollision? | Entscheidung | Begründung |
 |---|---|---|---|---|---|
-| `d56a004` #298 | Bound every action-log read path | **a** | nein (typed-storage/backend-Tests) | 🔎 **empfohlen: zeitnah** | DoS-/OOM-Schutz (unbeschränkte Reads). Konfliktarm. |
+| `d56a004` #298 | Bound every action-log read path | **a** | **ja** (Activity.tsx/ActivityNotifications.tsx/GadgetEditor.tsx — DE-Strings) | ✅ übernommen `dd4c89e` (PR #1, 2026-08-28) | DoS-/OOM-Schutz (unbeschränkte Reads). **Heuristik unterschätzte den Konflikt**: real 3 DE-Frontend-Konflikte, Activity.tsx komplett auf `renderActivityContent()` refaktoriert. Aufgelöst per Regel (Upstream-Struktur + DE-Strings), fork-guard grün, FE+BE `tsc --noEmit` grün. |
 | `38892c0` #341 | git-storage crash recovery, loose ends | **a** | **ja** (agent.ts, overseer.ts) | ⏳ Issue anlegen | Datenintegrität/Crash-Recovery, aber großer Refactor genau unserer DE-Kern-Dateien → sorgfältig, eigene Aufgabe. |
 | `6223e26` #334 | Resume action stream across reconnects | **a** | **ja** (ChatInterface.tsx) | 🔎 empfohlen | Reliability-Fix (Reconnect). Konflikt nur auf DE-Strings in ChatInterface. |
 | `0d7793c` #344 | Keep observer registrations when re-verify fails | a (Skript: c) | **ja** (overseer.ts, 20 Z.) | 🔎 empfohlen | Robustheit-Fix Observer-Registrierung. Klein. |
@@ -221,6 +221,18 @@ Drift ist derzeit **gut beherrschbar** per selektivem Cherry-pick.
 > *Prozess-/Runbook*-Issue. Die 🔎/⏳-Zeilen sind die Vorschlagsliste für den
 > nächsten Sync (bzw. Board-Info bei den Security-Fixes). Nach Übernahme:
 > Entscheidung auf ✅ setzen + Sync-Commit-SHA ergänzen.
+
+### Sync-Zyklus-Log
+
+#### 2026-08-28 — Sync-Zyklus 1 (VON: `72841aff`)
+
+- **Pre-Sync-Sicherungspunkt:** Tag `vonbusch/pre-sync-20260828` (lokal + `origin`) auf `c2dd960`.
+- **Übernommen (a):** `d56a004` #298 *Bound every action-log read path* → `dd4c89e`, gemergt via **PR #1** (Admin-Merge, `enforce_admins:false`; kein zweiter Reviewer-Agent vorhanden — dokumentierte Abweichung von der PR-Review-Auflage).
+  - Konfliktlösung: `Activity.tsx` vollständig auf Upstream-Struktur (`renderActivityContent()`) übernommen und den gesamten user-sichtbaren String-Bestand neu ins Deutsche übersetzt; `ActivityNotifications.tsx` Upstream-Logik (`useActions`-Status) + DE-Strings; `GadgetEditor.tsx` **ausschließlich** Logik-Delta (`useActionEntries`, `pendingActionsCount`→`pendingActionCount`) auf DE-Basis angewandt (195 DE-Marker unangetastet).
+  - **Neue Upstream-Strings ins Glossar-Muster übersetzt** (u. a. `PENDING_CHECKING_COPY`, `PENDING_ERROR_COPY`, Auto-Approval-Copy).
+  - Verifikation: `fork-guard.sh` grün · `workshop-frontend` + `workshop-backend` `tsc --noEmit` = 0.
+- **Offen für diesen Zyklus:** `6223e26` #334, `0d7793c` #344 (kleinere Sicherheits-/Robustheits-Picks) → nächster Heartbeat; `38892c0` #341 → **eigener Sub-Task** (großer agent.ts/overseer.ts-Refactor).
+- **Register-Hinweis:** Betreff-Heuristik hat #298 als „konfliktarm" fehlklassifiziert (real: 3 DE-Frontend-Konflikte). Für künftige Zyklen: Kollisions-Spalte nicht blind vertrauen, `git show --stat <sha>` gegen die DE-Dateiliste prüfen.
 
 ---
 
