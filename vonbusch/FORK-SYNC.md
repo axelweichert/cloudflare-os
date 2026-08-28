@@ -205,9 +205,9 @@ Drift ist derzeit **gut beherrschbar** per selektivem Cherry-pick.
 | Upstream | Betreff | Kat. | Kollision? | Entscheidung | Begründung |
 |---|---|---|---|---|---|
 | `d56a004` #298 | Bound every action-log read path | **a** | **ja** (Activity.tsx/ActivityNotifications.tsx/GadgetEditor.tsx — DE-Strings) | ✅ übernommen `dd4c89e` (PR #1, 2026-08-28) | DoS-/OOM-Schutz (unbeschränkte Reads). **Heuristik unterschätzte den Konflikt**: real 3 DE-Frontend-Konflikte, Activity.tsx komplett auf `renderActivityContent()` refaktoriert. Aufgelöst per Regel (Upstream-Struktur + DE-Strings), fork-guard grün, FE+BE `tsc --noEmit` grün. |
-| `38892c0` #341 | git-storage crash recovery, loose ends | **a** | **ja** (agent.ts, overseer.ts) | ⏳ Issue anlegen | Datenintegrität/Crash-Recovery, aber großer Refactor genau unserer DE-Kern-Dateien → sorgfältig, eigene Aufgabe. |
-| `6223e26` #334 | Resume action stream across reconnects | **a** | **ja** (ChatInterface.tsx) | 🔎 empfohlen | Reliability-Fix (Reconnect). Konflikt nur auf DE-Strings in ChatInterface. |
-| `0d7793c` #344 | Keep observer registrations when re-verify fails | a (Skript: c) | **ja** (overseer.ts, 20 Z.) | 🔎 empfohlen | Robustheit-Fix Observer-Registrierung. Klein. |
+| `38892c0` #341 | git-storage crash recovery, loose ends | **a** | **ja** (agent.ts, overseer.ts) | ⏳ Sub-Task angelegt (`c3ad3074`, 2026-08-28) | Datenintegrität/Crash-Recovery, aber großer Refactor genau unserer DE-Kern-Dateien → eigener Sub-Task (Kind von `72841aff`). |
+| `6223e26` #334 | Resume action stream across reconnects | **a** | nein (auf main nach #298 konfliktfrei) | ✅ übernommen `26c05a8` (PR #3, 2026-08-28) | Reliability (Reconnect). Nach #298 **konfliktfrei** auto-merged (kein DE-String berührt). FE+BE `tsc`=0. |
+| `0d7793c` #344 | Keep observer registrations when re-verify fails | a (Skript: c) | nein (auto-merge, keine DE-Fläche) | ✅ übernommen `6c7af1f` (PR #2, 2026-08-28) | Robustheit Observer-Registrierung. overseer.ts auto-merged, keine DE-Berührung. BE `tsc`=0. |
 | `18ff477` #330 | Fix app sidebar height | a→kosmetisch | **ja** (AppShell.tsx, 1 Z. CSS) | 🔎 nice-to-have | Trivialer UI-Fix. Günstig, gering-riskant. |
 | `42269e8` #292 | Add Google Drive metadata search | **b** | nein (gatekeeper-google, unübersetzt) | ⏳ Issue: Feature-Bedarf? | 37 Dateien, aber sauberer Cherry-pick (keine DE-Fläche). Nur wenn wir Drive-Suche wollen. |
 | `6692c3c` #331 | Preview support in google oauth flow | **b** | nein (gatekeeper-google) | ⏳ Issue: Feature-Bedarf? | Sauber. Nur bei Bedarf. |
@@ -231,7 +231,9 @@ Drift ist derzeit **gut beherrschbar** per selektivem Cherry-pick.
   - Konfliktlösung: `Activity.tsx` vollständig auf Upstream-Struktur (`renderActivityContent()`) übernommen und den gesamten user-sichtbaren String-Bestand neu ins Deutsche übersetzt; `ActivityNotifications.tsx` Upstream-Logik (`useActions`-Status) + DE-Strings; `GadgetEditor.tsx` **ausschließlich** Logik-Delta (`useActionEntries`, `pendingActionsCount`→`pendingActionCount`) auf DE-Basis angewandt (195 DE-Marker unangetastet).
   - **Neue Upstream-Strings ins Glossar-Muster übersetzt** (u. a. `PENDING_CHECKING_COPY`, `PENDING_ERROR_COPY`, Auto-Approval-Copy).
   - Verifikation: `fork-guard.sh` grün · `workshop-frontend` + `workshop-backend` `tsc --noEmit` = 0.
-- **Offen für diesen Zyklus:** `6223e26` #334, `0d7793c` #344 (kleinere Sicherheits-/Robustheits-Picks) → nächster Heartbeat; `38892c0` #341 → **eigener Sub-Task** (großer agent.ts/overseer.ts-Refactor).
+- **Übernommen (a):** `0d7793c` #344 *Keep observer registrations when re-verify fails* → `6c7af1f` (PR #2). overseer.ts auto-merged, keine DE-Berührung; BE `tsc`=0.
+- **Übernommen (a):** `6223e26` #334 *Resume action stream across reconnects* → `26c05a8` (PR #3). Auf main nach #298 **konfliktfrei** auto-merged (kein DE-String berührt); FE+BE `tsc`=0. (Runbook hatte einen ChatInterface-DE-Konflikt erwartet — durch #298 entfiel er.)
+- **Offen:** `38892c0` #341 → **eigener Sub-Task** `c3ad3074` (großer agent.ts/overseer.ts-Refactor).
 - **Register-Hinweis:** Betreff-Heuristik hat #298 als „konfliktarm" fehlklassifiziert (real: 3 DE-Frontend-Konflikte). Für künftige Zyklen: Kollisions-Spalte nicht blind vertrauen, `git show --stat <sha>` gegen die DE-Dateiliste prüfen.
 
 ---
