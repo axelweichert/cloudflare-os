@@ -3,6 +3,8 @@ import { Desktop, Moon, Plug, Sun } from '@phosphor-icons/react'
 import { Tooltip } from '@cloudflare/kumo'
 import UserMenu from '../UserMenu'
 import { useTheme } from '../../ThemeContext'
+import { useT } from '../../i18n/useT'
+import type { TKey } from '../../i18n/catalogs/en'
 import type { ThemeMode } from '../../theme'
 
 const THEME_SEQUENCE: ThemeMode[] = ['system', 'light', 'dark']
@@ -11,28 +13,30 @@ function nextThemeMode(mode: ThemeMode): ThemeMode {
   return THEME_SEQUENCE[(THEME_SEQUENCE.indexOf(mode) + 1) % THEME_SEQUENCE.length]
 }
 
-// German display names for the theme modes. The mode values themselves ('system' | 'light' | 'dark')
-// are code identifiers and stay in English; only the user-facing label is localized.
-const THEME_MODE_LABELS_DE: Record<ThemeMode, string> = {
-  system: 'System',
-  light: 'Hell',
-  dark: 'Dunkel',
+// Catalog keys for each theme-mode display name. Mode *values* stay in English (code
+// identifiers); only the user-facing label is localized via t().
+const THEME_MODE_KEYS: Record<ThemeMode, TKey> = {
+  system: 'theme.system',
+  light: 'theme.light',
+  dark: 'theme.dark',
 }
 
 function ThemeModeButton() {
   const { themeMode, resolvedThemeMode, setThemeMode } = useTheme()
+  const t = useT()
   const label = themeMode === 'system'
-    ? `Erscheinungsbild: System (${THEME_MODE_LABELS_DE[resolvedThemeMode]})`
-    : `Erscheinungsbild: ${THEME_MODE_LABELS_DE[themeMode]}`
+    ? t('theme.currentSystem', { resolved: t(THEME_MODE_KEYS[resolvedThemeMode]) })
+    : t('theme.current', { mode: t(THEME_MODE_KEYS[themeMode]) })
   const nextMode = nextThemeMode(themeMode)
+  const fullLabel = `${label} ${t('theme.switchAction', { mode: t(THEME_MODE_KEYS[nextMode]) })}`
 
   return (
     <Tooltip
-      content={`${label}. Zu ${THEME_MODE_LABELS_DE[nextMode]} wechseln.`}
+      content={fullLabel}
       render={(
         <button
           type="button"
-          aria-label={`${label}. Zu ${THEME_MODE_LABELS_DE[nextMode]} wechseln.`}
+          aria-label={fullLabel}
           onClick={() => setThemeMode(nextMode)}
           className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-kumo-inactive transition-colors hover:bg-kumo-tint hover:text-kumo-default focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-kumo-ring focus-visible:ring-offset-2 focus-visible:ring-offset-kumo-elevated"
         >
@@ -82,6 +86,7 @@ function StripLink({
 }
 
 export default function SidebarUtilityStrip({ collapsed = false }: { collapsed?: boolean }) {
+  const t = useT()
   return (
     <div
       className={[
@@ -91,7 +96,7 @@ export default function SidebarUtilityStrip({ collapsed = false }: { collapsed?:
         collapsed ? 'flex-col justify-center gap-2 px-1.5' : '',
       ].join(' ')}
     >
-      <StripLink to="/gatekeepers" label="Torwächter">
+      <StripLink to="/gatekeepers" label={t('sidebar.gatekeepers')}>
         <Plug size={15} />
       </StripLink>
       <div className={collapsed ? 'flex flex-col items-center gap-2' : 'ml-auto flex items-center gap-1'}>

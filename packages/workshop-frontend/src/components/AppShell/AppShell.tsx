@@ -4,6 +4,8 @@ import { List, X } from '@phosphor-icons/react'
 import TopBarNotice from '../../TopBarNotice'
 import ReconnectingChip from '../ReconnectingChip'
 import { useConnectionLost } from '../../RpcContext'
+import { useT } from '../../i18n/useT'
+import LanguageSwitcher from '../../i18n/LanguageSwitcher'
 import Sidebar from './Sidebar'
 import CommandPalette from './CommandPalette'
 import { OPEN_COMMAND_PALETTE_EVENT } from './commandPaletteBus'
@@ -35,6 +37,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const drawerRef = useRef<HTMLDivElement>(null)
   const menuButtonRef = useRef<HTMLButtonElement>(null)
   const connectionLost = useConnectionLost()
+  const t = useT()
 
   const toggleCollapsed = useCallback(() => {
     setCollapsed((prev) => {
@@ -125,7 +128,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             ref={drawerRef}
             role="dialog"
             aria-modal="true"
-            aria-label="Hauptnavigation"
+            aria-label={t('appshell.mainNav')}
             tabIndex={-1}
             className="fixed inset-y-0 left-0 z-50 outline-none md:hidden"
           >
@@ -148,7 +151,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             type="button"
             ref={menuButtonRef}
             onClick={() => setMobileOpen((o) => !o)}
-            aria-label={mobileOpen ? 'Menü schließen' : 'Menü öffnen'}
+            aria-label={mobileOpen ? t('appshell.closeMenu') : t('appshell.openMenu')}
             className="flex h-11 w-11 items-center justify-center rounded-md text-kumo-default transition-colors hover:bg-kumo-tint md:hidden"
           >
             {mobileOpen ? <X size={16} /> : <List size={16} />}
@@ -159,6 +162,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               left. */}
           <div className="ml-auto flex items-center gap-2">
             {connectionLost && <ReconnectingChip />}
+            <LanguageSwitcher />
             <span aria-hidden="true" className="h-11 w-11 md:hidden" />
           </div>
         </div>
