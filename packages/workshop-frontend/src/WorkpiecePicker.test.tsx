@@ -36,7 +36,7 @@ describe('WorkpiecePicker', () => {
   }
 
   // `role="img"` is what makes the label reachable; a bare span would be named nothing.
-  const HOOK_BADGE = '[role="img"][aria-label="Hooks enabled"]'
+  const HOOK_BADGE = '[role="img"][aria-label="Hooks aktiviert"]'
 
   it('names the badge only on gadgets with an enabled hook', async () => {
     const container = await render(true)

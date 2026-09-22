@@ -170,7 +170,7 @@ describe('GatekeeperModal ambient "+ Connect" flow (VON-1852)', () => {
     // Precondition: no account yet -> the "+ Connect vonBusch CRM" button is shown and the resource
     // step is disabled ("Choose an account before selecting a resource").
     const connect = [...rendered.querySelectorAll('button')]
-      .find(button => button.textContent?.includes('Connect vonBusch CRM'))
+      .find(button => button.textContent?.includes('vonBusch CRM verbinden'))
     expect(connect, 'the "+ Connect vonBusch CRM" button should render').toBeDefined()
     expect(rendered.querySelector('[data-testid="configurator"]')?.getAttribute('data-disabled'))
       .toBe('true')
