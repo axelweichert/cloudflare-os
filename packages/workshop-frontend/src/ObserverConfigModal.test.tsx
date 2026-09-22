@@ -197,7 +197,7 @@ describe('ObserverConfigModal account selection', () => {
     })
 
     const connect = [...rendered.querySelectorAll('button')]
-      .find(button => button.textContent === 'Connect')
+      .find(button => button.textContent === 'Verbinden')
     expect(connect).toBeDefined()
     await act(async () => connect!.click())
 
@@ -219,12 +219,12 @@ describe('ObserverConfigModal account selection', () => {
     })
 
     const verify = [...rendered.querySelectorAll('button')]
-      .find(button => button.textContent === 'Verify and open')
+      .find(button => button.textContent === 'Überprüfen und öffnen')
     const grant = [...rendered.querySelectorAll('button')]
-      .find(button => button.textContent === 'Grant the access needed to verify this resource')
+      .find(button => button.textContent === 'Erteile den Zugriff, der zum Überprüfen dieser Ressource nötig ist')
     expect(verify?.disabled).toBe(true)
     expect(grant).toBeDefined()
-    expect(rendered.textContent).not.toContain('Ready')
+    expect(rendered.textContent).not.toContain('Bereit')
 
     await act(async () => grant!.click())
 
@@ -232,7 +232,7 @@ describe('ObserverConfigModal account selection', () => {
     expect(window.open).toHaveBeenCalledWith(
       'https://accounts.google.test/oauth', '_blank', 'noopener,noreferrer',
     )
-    expect(rendered.textContent).not.toContain('Ready')
+    expect(rendered.textContent).not.toContain('Bereit')
     expect(verify?.disabled).toBe(true)
   })
 
@@ -247,9 +247,9 @@ describe('ObserverConfigModal account selection', () => {
     })
 
     const verify = [...rendered.querySelectorAll('button')]
-      .find(button => button.textContent === 'Verify and open')
+      .find(button => button.textContent === 'Überprüfen und öffnen')
     const grant = [...rendered.querySelectorAll('button')]
-      .find(button => button.textContent === 'Grant the access needed to verify this resource')
+      .find(button => button.textContent === 'Erteile den Zugriff, der zum Überprüfen dieser Ressource nötig ist')
     expect(verify?.disabled).toBe(true)
     expect(grant).toBeDefined()
 
@@ -271,13 +271,13 @@ describe('ObserverConfigModal account selection', () => {
     })
 
     const grant = [...rendered.querySelectorAll('button')]
-      .find(button => button.textContent === 'Grant the access needed to verify this resource')
+      .find(button => button.textContent === 'Erteile den Zugriff, der zum Überprüfen dieser Ressource nötig ist')
     await act(async () => grant!.click())
 
     const verify = [...rendered.querySelectorAll('button')]
-      .find(button => button.textContent === 'Verify and open')
+      .find(button => button.textContent === 'Überprüfen und öffnen')
     expect(ensureAccountResources).toHaveBeenCalledWith(1, [DOC_RESOURCE.urlPattern])
-    expect(rendered.textContent).toContain('Ready')
+    expect(rendered.textContent).toContain('Bereit')
     expect(verify?.disabled).toBe(false)
   })
 
@@ -287,9 +287,9 @@ describe('ObserverConfigModal account selection', () => {
     const rendered = await render([granted], { onConfirm })
 
     const verify = [...rendered.querySelectorAll('button')]
-      .find(button => button.textContent === 'Verify and open')
+      .find(button => button.textContent === 'Überprüfen und öffnen')
     expect(verify?.disabled).toBe(false)
-    expect(rendered.textContent).toContain('Ready')
+    expect(rendered.textContent).toContain('Bereit')
 
     await act(async () => verify!.click())
     expect(onConfirm).toHaveBeenCalledWith([{ gatekeeperId: 12, accountId: 1 }])

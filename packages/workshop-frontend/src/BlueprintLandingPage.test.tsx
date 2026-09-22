@@ -113,10 +113,10 @@ describe('BlueprintLandingPage model configuration', () => {
     await act(async () => { await Promise.resolve() })
 
     const configure = Array.from(document.body.querySelectorAll('button'))
-      .find(button => button.textContent === 'Configure')!
+      .find(button => button.textContent === 'Konfigurieren')!
     await act(async () => configure.click())
 
-    const trigger = document.body.querySelector<HTMLButtonElement>('[aria-label="Choose an AI model"]')!
+    const trigger = document.body.querySelector<HTMLButtonElement>('[aria-label="KI-Modell auswählen"]')!
     await act(async () => trigger.click())
 
     const option = document.body.querySelector<HTMLElement>('[role="option"]')!
@@ -129,7 +129,7 @@ describe('BlueprintLandingPage model configuration', () => {
     expect(trigger.textContent).toContain('Model one')
 
     const save = Array.from(document.body.querySelectorAll<HTMLButtonElement>('button'))
-      .find(button => button.textContent === 'Save connection')!
+      .find(button => button.textContent === 'Verbindung speichern')!
     expect(save.disabled).toBe(false)
   })
 })

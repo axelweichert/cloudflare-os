@@ -189,6 +189,6 @@ describe('CodeDiffEditor', () => {
         </ThemeProvider>,
       )
     })
-    expect(container.textContent).toContain('Select a file to view changes')
+    expect(container.textContent).toContain('Wähle eine Datei aus, um Änderungen anzuzeigen')
   })
 })
