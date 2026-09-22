@@ -14,6 +14,7 @@ import {
   Clock,
 } from '@phosphor-icons/react'
 import type { ToolCall } from '../../data/chat'
+import { useT } from '../../i18n/useT'
 
 const iconMap: Record<string, React.ElementType> = {
   code: CodeIcon,
@@ -43,6 +44,7 @@ function StatusIndicator({ status }: { status: string }) {
 
 export default function ToolCallCard({ tool }: { tool: ToolCall }) {
   const [open, setOpen] = useState(false)
+  const t = useT()
   const Icon = iconMap[tool.icon] || Lightning
 
   return (
@@ -78,7 +80,7 @@ export default function ToolCallCard({ tool }: { tool: ToolCall }) {
         <div className="px-3 pb-3 pt-1 border-t border-kumo-line space-y-2">
           {tool.input && (
             <div>
-              <span className="font-mono text-[10px] text-kumo-subtle uppercase tracking-wider">Eingabe</span>
+              <span className="font-mono text-[10px] text-kumo-subtle uppercase tracking-wider">{t('chat.tool.input')}</span>
               <pre className="text-xs font-mono text-kumo-subtle whitespace-pre-wrap leading-relaxed mt-1 bg-kumo-tint rounded-md px-2 py-1.5">
                 {JSON.stringify(tool.input, null, 2)}
               </pre>
@@ -86,7 +88,7 @@ export default function ToolCallCard({ tool }: { tool: ToolCall }) {
           )}
           {tool.output && (
             <div>
-              <span className="font-mono text-[10px] text-kumo-subtle uppercase tracking-wider">Ausgabe</span>
+              <span className="font-mono text-[10px] text-kumo-subtle uppercase tracking-wider">{t('chat.tool.output')}</span>
               <p className="text-xs text-kumo-subtle mt-1">{tool.output}</p>
             </div>
           )}

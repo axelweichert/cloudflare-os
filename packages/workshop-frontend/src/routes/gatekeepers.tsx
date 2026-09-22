@@ -23,6 +23,7 @@ import {
 } from '@gadgets/workshop-shared/gatekeeper'
 import { GatekeeperVendorInfo } from '@gadgets/workshop-shared/api'
 import { useDocumentTitle } from '../useDocumentTitle'
+import { useT } from '../i18n/useT'
 import { useSiteName } from '../ServerConfigContext'
 import { AccountsSubscriberAdapter } from '../accountsSubscriber'
 
@@ -103,6 +104,7 @@ function ConnectorCard({
   reconnectBusy = false,
   view = 'grid',
 }: ConnectorCardProps) {
+  const t = useT()
   const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.currentTarget !== event.target) return
     if (event.key === 'Enter' || event.key === ' ') {
@@ -148,7 +150,7 @@ function ConnectorCard({
         className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-full border border-kumo-line bg-kumo-base px-3 text-[12px] leading-4 font-medium tracking-[-0.2px] text-kumo-default transition-[background-color,border-color,opacity,transform] duration-150 ease-out hover:border-kumo-fill hover:bg-kumo-tint active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100"
       >
         <ArrowsClockwise size={12} weight="bold" />
-        {reconnectBusy ? 'Wird geöffnet …' : 'Erneut verbinden'}
+        {reconnectBusy ? t('routes.gatekeepers.opening') : t('routes.gatekeepers.reconnect')}
       </button>
     ) : (
       <div className="grid h-7 w-7 place-items-center text-kumo-inactive transition-colors group-hover:text-kumo-default">
@@ -442,7 +444,8 @@ type ModalTarget =
   | null
 
 function ConnectorsPage() {
-  useDocumentTitle('Torwächter')
+  const t = useT()
+  useDocumentTitle(t('routes.gatekeepers.title'))
   const siteName = useSiteName()
 
   const { authenticatedApi } = useAuthenticatedApi()
@@ -720,11 +723,10 @@ function ConnectorsPage() {
         <header className="mb-8 grid gap-8 lg:grid-cols-[minmax(0,540px)_444px] lg:items-center lg:justify-between">
           <div>
             <h1 className="m-0 text-3xl font-semibold leading-tight tracking-tight text-kumo-default sm:text-[34px]">
-              Torwächter
+              {t('routes.gatekeepers.title')}
             </h1>
             <p className="mt-2 text-[14px] leading-[20px] font-normal tracking-[-0.25px] text-kumo-subtle">
-              Füge die Apps und Konten hinzu, die Deine Arbeitsbereiche nutzen können. Einmal
-              verbinden und dann in alles einbinden, was Du baust.
+              {t('routes.gatekeepers.subtitle')}
             </p>
           </div>
           <ConnectorsHeroDiagram accounts={accounts} vendors={vendors} siteName={siteName} />
@@ -740,7 +742,7 @@ function ConnectorsPage() {
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Torwächter durchsuchen …"
+              placeholder={t('routes.gatekeepers.search')}
               className="h-10 w-full rounded-lg border border-kumo-line bg-kumo-base pl-9 pr-4 text-[14px] leading-5 tracking-[-0.25px] text-kumo-default placeholder:text-kumo-inactive transition-[border-color,box-shadow] focus:border-kumo-ring focus:outline-none focus:ring-[3px] focus:ring-kumo-ring/15"
             />
           </div>
@@ -760,13 +762,13 @@ function ConnectorsPage() {
 
         {initialLoading && (
           <div className="rounded-2xl border border-kumo-line bg-kumo-base px-4 py-8 text-center text-[13px] leading-[18px] font-normal tracking-[-0.25px] text-kumo-subtle">
-            Gatekeeper werden geladen …
+            {t('routes.gatekeepers.loading')}
           </div>
         )}
 
         {filteredAccounts.length > 0 && (
           <section className="mb-10">
-            <SectionEyebrow label="Verbunden" count={filteredAccounts.length} />
+            <SectionEyebrow label={t('routes.gatekeepers.connected')} count={filteredAccounts.length} />
             <div className={sectionGridClass}>
               {filteredAccounts.map((account) => {
                 const displayName =
@@ -807,7 +809,7 @@ function ConnectorsPage() {
 
         {filteredAvailable.length > 0 && (
           <section className="mb-10">
-            <SectionEyebrow label="Verfügbar" />
+            <SectionEyebrow label={t('routes.gatekeepers.available')} />
             <div className={sectionGridClass}>
 
               {filteredAvailable.map((vendor) => (
@@ -834,13 +836,13 @@ function ConnectorsPage() {
             <EmptyState
               title={
                 search
-                  ? 'Keine passenden Torwächter'
-                  : 'Noch keine Torwächter'
+                  ? t('routes.gatekeepers.emptyMatchTitle')
+                  : t('routes.gatekeepers.emptyTitle')
               }
               description={
                 search
-                  ? 'Wir konnten nichts finden, das zu Deiner Suche passt.'
-                  : 'Torwächter erscheinen hier, sobald sie in Deinem Arbeitsbereich verfügbar sind.'
+                  ? t('routes.gatekeepers.emptyMatchBody')
+                  : t('routes.gatekeepers.emptyBody')
               }
               icon={Plugs}
             />

@@ -2,6 +2,7 @@ import { Checkbox, Select, type PortalContainer } from '@cloudflare/kumo'
 import { AiChatAuthorInfo, WorkpieceId, validateBindingName } from '@gadgets/workshop-shared/api'
 import { WorkshopInput } from '../components/WorkshopControls'
 import { ConnectionConfigField } from './ConnectionConfigField'
+import { useT } from '../i18n/useT'
 
 /**
  * One prospective entry of AgentSpawnerConfig.env: a workpiece the spawned agents may use, and
@@ -37,6 +38,7 @@ export function validateSpawnerEnv(rows: SpawnerEnvRow[]): string | null {
       return err instanceof Error ? err.message : String(err)
     }
     if (seen.has(row.name)) {
+      // TODO i18n: module-level validator, cannot use the useT() hook here. Key gk.spawner.duplicateName exists.
       return `Zwei Verbindungen haben beide den Namen „${row.name}".`
     }
     seen.add(row.name)
@@ -76,6 +78,7 @@ export function AgentSpawnerConfigForm({
   onEnvChange,
   selectContainer,
 }: AgentSpawnerConfigFormProps) {
+  const t = useT()
   const updateRow = (index: number, updates: Partial<SpawnerEnvRow>) => {
     onEnvChange(env.map((row, i) => (i === index ? { ...row, ...updates } : row)))
   }
@@ -83,12 +86,12 @@ export function AgentSpawnerConfigForm({
   return (
     <section className="grid gap-4">
       <ConnectionConfigField
-        label="Anzeigename"
-        description="Benenne diese Agent-Fähigkeit für diese Verbindung."
+        label={t('gk.spawner.displayName')}
+        description={t('gk.spawner.displayNameDesc')}
       >
         <WorkshopInput
-          aria-label="Agent-Anzeigename"
-          placeholder="z. B. E-Mail-Responder"
+          aria-label={t('gk.spawner.displayNameAria')}
+          placeholder={t('gk.spawner.displayNamePlaceholder')}
           value={displayName}
           onChange={(e) => onDisplayNameChange(e.target.value)}
           className="w-full"
@@ -96,23 +99,23 @@ export function AgentSpawnerConfigForm({
       </ConnectionConfigField>
 
       <ConnectionConfigField
-        label="Modell"
-        description="Wähle das Modell, das erzeugte Agenten verwenden."
+        label={t('gk.spawner.model')}
+        description={t('gk.spawner.modelDesc')}
       >
         <Select
           aria-label="Agent-Modell"
           className="w-full text-sm [&_button]:!h-9"
           container={selectContainer}
-          placeholder="Modell auswählen"
+          placeholder={t('gk.spawner.selectModel')}
           value={modelId}
           onValueChange={(v) => onModelIdChange(v as string | null)}
           renderValue={(id) => {
-            if (id === null) return 'Keines (kein Agent)'
+            if (id === null) return t('gk.spawner.none')
             return availableModels.find((m) => m.id === id)?.name ?? String(id)
           }}
         >
           <Select.Option value={null as any}>
-            Keines (kein Agent)
+            {t('gk.spawner.none')}
           </Select.Option>
           {availableModels.map(model => (
             <Select.Option key={model.id} value={model.id}>
@@ -121,31 +124,29 @@ export function AgentSpawnerConfigForm({
           ))}
         </Select>
         <p className="mt-1 text-[12px] leading-4 font-normal tracking-[-0.2px] text-kumo-subtle">
-          Wähle „Keines", um Konversationen ohne Agent zu erstellen.
+          {t('gk.spawner.noneHint')}
         </p>
       </ConnectionConfigField>
 
       <ConnectionConfigField
-        label="Agent-Verbindungen"
-        description="Was erzeugte Agenten verwenden dürfen und unter welchen Namen sie es sehen."
+        label={t('gk.spawner.connections')}
+        description={t('gk.spawner.connectionsDesc')}
       >
         {env.length === 0 ? (
           <p className="text-[12px] leading-4 font-normal tracking-[-0.2px] text-kumo-subtle">
-            Hier steht nichts zur Verfügung, das erzeugten Agenten angeboten werden könnte. Erstelle
-            den Agenten über den Verbindungen-Tab eines Gadgets, um ihm Zugriff auf dieses Gadget und
-            seine Ressourcen zu geben.
+            {t('gk.spawner.empty')}
           </p>
         ) : (
           <div className="grid gap-2">
             {env.map((row, index) => (
               <div key={`${row.target}:${index}`} className="flex items-center gap-2">
                 <Checkbox
-                  aria-label={`Erzeugten Agenten Zugriff auf ${row.targetTitle} geben`}
+                  aria-label={t('gk.spawner.giveAccessAria', { target: row.targetTitle })}
                   checked={row.enabled}
                   onCheckedChange={(checked) => updateRow(index, { enabled: checked === true })}
                 />
                 <WorkshopInput
-                  aria-label={`Verbindungsname für ${row.targetTitle}`}
+                  aria-label={t('gk.spawner.connNameAria', { target: row.targetTitle })}
                   value={row.name}
                   disabled={!row.enabled}
                   onChange={(e) => updateRow(index, { name: e.target.value })}

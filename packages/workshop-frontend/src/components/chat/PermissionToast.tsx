@@ -5,6 +5,7 @@ import { Text } from '@cloudflare/kumo'
 import { Shield, X, Check } from '@phosphor-icons/react'
 import { samplePermissions, type PermissionRequest } from '../../data/chat'
 import { logoComponents } from '../ConnectionLogos'
+import { useT } from '../../i18n/useT'
 
 function PermissionCard({
   perm,
@@ -16,6 +17,7 @@ function PermissionCard({
   onDeny: () => void
 }) {
   const [showScopes, setShowScopes] = useState(false)
+  const t = useT()
   const Logo = logoComponents[perm.connectionLogo]
 
   if (perm.status !== 'pending') return null
@@ -28,10 +30,10 @@ function PermissionCard({
           <Shield size={14} className="text-kumo-brand" />
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-semibold text-kumo-default">Berechtigung angefragt</div>
+          <div className="text-sm font-semibold text-kumo-default">{t('chat.perm.requested')}</div>
           <div className="mt-0.5">
             <Text variant="secondary" size="xs" as="span">
-              Workshop möchte auf <strong>{perm.connectionName}</strong> zugreifen
+              {t('chat.perm.wantsAccess', { connection: perm.connectionName })}
             </Text>
           </div>
         </div>
@@ -52,7 +54,7 @@ function PermissionCard({
         <Text variant="body" size="sm" bold as="span">{perm.connectionName}</Text>
         <div className="ml-auto flex items-center gap-1.5">
           <Badge variant="secondary">
-            {perm.scopes.length} {perm.scopes.length === 1 ? 'Scope' : 'Scopes'}
+            {perm.scopes.length} {perm.scopes.length === 1 ? t('chat.perm.scopeOne') : t('chat.perm.scopeOther')}
           </Badge>
           <svg
             className={`w-3.5 h-3.5 text-kumo-subtle transition-transform ${showScopes ? 'rotate-180' : ''}`}
@@ -73,7 +75,7 @@ function PermissionCard({
           {perm.resources && perm.resources.length > 0 && (
             <div className="px-3 py-2 rounded-md bg-kumo-tint/50">
               <span className="font-mono text-[10px] text-kumo-subtle uppercase tracking-wider block mb-1">
-                Ressourcen
+                {t('chat.perm.resources')}
               </span>
               {perm.resources.map((res) => (
                 <div key={res} className="flex items-center gap-1.5 mt-0.5">
@@ -86,7 +88,7 @@ function PermissionCard({
           {/* API scopes */}
           <div className="px-3 py-2 rounded-md bg-kumo-tint/50">
             <span className="font-mono text-[10px] text-kumo-subtle uppercase tracking-wider block mb-1">
-              API-Scopes
+              {t('chat.perm.apiScopes')}
             </span>
             {perm.scopes.map((scope) => (
               <div key={scope} className="font-mono text-xs text-kumo-subtle">{scope}</div>
@@ -98,10 +100,10 @@ function PermissionCard({
       {/* Actions */}
       <div className="grid grid-cols-2 gap-2 p-3 pt-2">
         <Button variant="outline" size="sm" onClick={onDeny} className="w-full justify-center">
-          Ablehnen
+          {t('chat.perm.deny')}
         </Button>
         <Button variant="primary" size="sm" onClick={onGrant} className="w-full justify-center">
-          Zugriff erlauben
+          {t('chat.perm.allow')}
         </Button>
       </div>
     </div>
@@ -111,6 +113,7 @@ function PermissionCard({
 export default function PermissionToasts() {
   const [permissions, setPermissions] = useState<PermissionRequest[]>([])
   const [grantedToast, setGrantedToast] = useState<string | null>(null)
+  const t = useT()
 
   useEffect(() => {
     const t1 = setTimeout(() => {
@@ -151,7 +154,7 @@ export default function PermissionToasts() {
             <Check size={11} className="text-kumo-success" />
           </div>
           <span className="text-xs text-kumo-default">
-            Zugriff auf <strong>{grantedToast}</strong> gewährt
+            {t('chat.perm.granted', { connection: grantedToast })}
           </span>
         </div>
       )}

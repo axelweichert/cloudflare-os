@@ -1,4 +1,5 @@
 import { isTransientRpcError, logRpcFailure } from "./rpcErrors";
+import { useT } from "./i18n/useT";
 import {
   Fragment,
   isValidElement,
@@ -321,11 +322,11 @@ type ChatChangeRowBuffer = {
 
 type ChatListScope = "direct" | "agents" | "all";
 
-const CHAT_LIST_SCOPE_LABELS: Record<ChatListScope, string> = {
-  all: "Alle",
-  direct: "Von Personen gestartet",
-  agents: "Von Agenten gestartet",
-};
+const CHAT_LIST_SCOPE_KEYS = {
+  all: "chat.list.scopeAll",
+  direct: "chat.list.scopePeople",
+  agents: "chat.list.scopeAgents",
+} as const satisfies Record<ChatListScope, string>;
 
 const SHOW_THINKING_TRACES_KEY = "showThinkingTraces";
 
@@ -1386,6 +1387,7 @@ const AttachmentPreviewModal = memo(function AttachmentPreviewModal(
     onDownload,
   }: AttachmentPreviewModalProps,
 ) {
+  const t = useT();
   const containerRef = useRef<HTMLDivElement>(null);
   const isImage = (attachment?.mimeType ?? "").startsWith("image/");
   const objectUrl = useAttachmentObjectUrl(
@@ -1474,7 +1476,7 @@ const AttachmentPreviewModal = memo(function AttachmentPreviewModal(
                 <div className="text-[12px] leading-5 text-kumo-subtle">
                   {attachment.mimeType || "Unbekannter Dateityp"}{sizeLabel ? ` · ${sizeLabel}` : ""}
                 </div>
-                <div className="text-[12px] leading-5 text-kumo-inactive">Diese Datei kann hier nicht vorab angezeigt werden.</div>
+                <div className="text-[12px] leading-5 text-kumo-inactive">{t('chat.attach.noPreview')}</div>
                 {onDownload && (
                   <button
                     type="button"
@@ -1504,6 +1506,7 @@ const ChatAttachmentThumbnail = memo(function ChatAttachmentThumbnail(
     onPreview,
   }: ChatAttachmentThumbnailProps,
 ) {
+  const t = useT();
   const isImage = attachment.mimeType.startsWith("image/");
   const objectUrl = useAttachmentObjectUrl(isImage ? attachment.content : undefined, attachment.mimeType);
   const [imageState, setImageState] = useState<"loading" | "loaded" | "error">("loading");
@@ -1527,7 +1530,7 @@ const ChatAttachmentThumbnail = memo(function ChatAttachmentThumbnail(
             onError={() => setImageState("error")}
           />
           {imageState !== "loaded" && (
-            <div className="absolute inset-0 grid place-items-center bg-kumo-elevated text-[11px] text-kumo-inactive">Loading image…</div>
+            <div className="absolute inset-0 grid place-items-center bg-kumo-elevated text-[11px] text-kumo-inactive">{t('chat.attach.loadingImage')}</div>
           )}
         </>
       ) : (
@@ -1971,6 +1974,7 @@ export const ChatInput = ({
   /** Called after a gatekeeper is connected via the attach flow, so the parent can refresh the
    * pre-approval catalog and proactively offer to pre-approve its actions. */
 }) => {
+  const t = useT();
   const toasts = useKumoToastManager();
   const [initialDraft] = useState(() => readComposerDraft(draftStorageKey));
   const [inputValue, setInputValue] = useState(() => initialDraft?.text ?? "");
@@ -3266,7 +3270,7 @@ export const ChatInput = ({
       ? "warning"
       : "log";
   const selectedModelLabel = selectedModel == null
-    ? "No agent"
+    ? t('chat.composer.noAgent')
     : models.find((model) => model.id === selectedModel)?.name ?? selectedModel;
 
   const hasReadyAttachment = pendingAttachments.some(
@@ -3447,10 +3451,10 @@ export const ChatInput = ({
                 isBlocked
                   ? blockedReason
                   : isAgentActive
-                    ? "Warte auf Agenten…"
+                    ? t('chat.composer.waitingAgent')
                     : newChat
-                      ? "Neue Unterhaltung starten…"
-                      : "Stelle eine Anschlussfrage…"
+                      ? t('chat.composer.newConversation')
+                      : t('chat.composer.followUp')
               }
               autoFocus={autoFocus}
               rows={minRows}
@@ -3565,10 +3569,10 @@ export const ChatInput = ({
                   <FileIcon size={22} className="text-kumo-inactive" />
                 )}
                 {attachment.uploadState === "uploading" && (
-                  <div className="absolute inset-0 grid place-items-center rounded-lg bg-black/35 text-[10px] text-white">Uploading</div>
+                  <div className="absolute inset-0 grid place-items-center rounded-lg bg-black/35 text-[10px] text-white">{t('chat.attach.uploading')}</div>
                 )}
                 {attachment.uploadState === "error" && (
-                  <div className="absolute inset-0 grid place-items-center rounded-lg bg-kumo-danger/80 px-1 text-center text-[9px] leading-3 text-white">Failed</div>
+                  <div className="absolute inset-0 grid place-items-center rounded-lg bg-kumo-danger/80 px-1 text-center text-[9px] leading-3 text-white">{t('chat.attach.failed')}</div>
                 )}
                 <button
                   type="button"
@@ -3613,7 +3617,7 @@ export const ChatInput = ({
                       <Brain size={14} />
                     </span>
                     <span className="flex-1">
-                      {showThinkingTraces ? "Hide thinking" : "Show thinking"}
+                      {showThinkingTraces ? t('chat.composer.hideThinking') : t('chat.composer.showThinking')}
                     </span>
                   </DropdownMenu.Item>
                 )}
@@ -3624,7 +3628,7 @@ export const ChatInput = ({
                   <span className="mr-2 inline-flex h-4 w-4 items-center justify-center text-kumo-inactive">
                     <FileIcon size={14} />
                   </span>
-                  <span className="flex-1">Upload file</span>
+                  <span className="flex-1">{t('chat.composer.uploadFile')}</span>
                 </DropdownMenu.Item>
               </DropdownMenu.Content>
             </DropdownMenu>
@@ -3634,7 +3638,7 @@ export const ChatInput = ({
               className="inline-flex h-10 flex-shrink-0 cursor-pointer items-center gap-1.5 rounded-lg px-2 text-[14px] leading-none text-kumo-inactive transition-[background-color,color,transform] duration-150 ease-out hover:bg-kumo-tint hover:text-kumo-subtle focus-visible:bg-kumo-tint focus-visible:text-kumo-subtle focus-visible:outline-none active:scale-[0.97] sm:h-8 sm:text-[13px]"
             >
               <Plug size={15} className="flex-shrink-0" />
-              <span className={`leading-none ${styles.attachLabelText}`}>{attachLabel ?? "Add resource"}</span>
+              <span className={`leading-none ${styles.attachLabelText}`}>{attachLabel ?? t('chat.composer.addResource')}</span>
             </button>
           </div>
 
@@ -3678,7 +3682,7 @@ export const ChatInput = ({
                     onClick={() => onModelChange(null)}
                     className="!h-auto rounded-xl !px-2 !py-1.5 text-[12px] leading-4 font-normal tracking-[-0.15px] text-kumo-subtle transition-colors data-highlighted:bg-kumo-tint/70 data-highlighted:text-kumo-default"
                   >
-                    <span className="min-w-0 flex-1 truncate">No agent</span>
+                    <span className="min-w-0 flex-1 truncate">{t('chat.composer.noAgent')}</span>
                     {selectedModel == null && (
                       <Check size={12} weight="bold" className="ml-3 flex-shrink-0 text-kumo-inactive" />
                     )}
@@ -3907,6 +3911,7 @@ function DiscardPendingChangesPopover({
   onOpenChange: (open: boolean) => void;
   onConfirm: () => void;
 }) {
+  const t = useT();
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
       <Popover.Trigger
@@ -3916,7 +3921,7 @@ function DiscardPendingChangesPopover({
             disabled={disabled}
             className="inline-flex h-[30px] cursor-pointer items-center justify-center rounded-md border border-kumo-fill bg-kumo-base px-2.5 text-[12px] font-medium leading-[18px] tracking-[-0.25px] text-kumo-default transition-colors enabled:hover:bg-kumo-tint focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-kumo-ring disabled:cursor-not-allowed disabled:opacity-40"
           >
-            Verwerfen…
+            {t('chat.discard')}
           </button>
         }
       />
@@ -3946,7 +3951,7 @@ function DiscardPendingChangesPopover({
             onClick={() => onOpenChange(false)}
             className="flex h-6 cursor-pointer items-center rounded-md px-2 text-[12px] font-medium tracking-[-0.15px] text-kumo-inactive transition-colors enabled:hover:bg-kumo-tint enabled:hover:text-kumo-default focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-kumo-ring disabled:cursor-not-allowed disabled:opacity-40"
           >
-            Abbrechen
+            {t('chat.cancel')}
           </button>
           <button
             type="button"
@@ -4627,6 +4632,7 @@ function ChatInterface({
   outputOfWorkpiece,
 }: ChatInterfaceProps) {
   // Persistent cache that survives reconnects
+  const t = useT();
   const toasts = useKumoToastManager();
   const { currentUser } = useAuthenticatedApi();
   const getOverseer = useCallback(() => overseer, [overseer]);
@@ -7046,7 +7052,7 @@ function ChatInterface({
                 aria-label="Unterhaltungen filtern"
               >
                 <span className="text-[13px] leading-[18px] font-medium tracking-[-0.25px] text-kumo-default">
-                  {CHAT_LIST_SCOPE_LABELS[chatListScope]}
+                  {t(CHAT_LIST_SCOPE_KEYS[chatListScope])}
                 </span>
                 <CaretDown
                   size={10}
@@ -7068,7 +7074,7 @@ function ChatInterface({
                   <span className="mr-2 inline-flex h-3 w-3 items-center justify-center text-kumo-default">
                     {active ? <Check size={11} weight="bold" /> : null}
                   </span>
-                  <span className="flex-1">{CHAT_LIST_SCOPE_LABELS[scope.value]}</span>
+                  <span className="flex-1">{t(CHAT_LIST_SCOPE_KEYS[scope.value])}</span>
                   <span className="ml-3 font-mono text-[11px] text-kumo-inactive">
                     {scope.count}
                   </span>
@@ -7086,7 +7092,7 @@ function ChatInterface({
           </div>
         ) : chatList.length === 0 ? (
           <p className="text-sm text-kumo-inactive text-center py-8">
-            Noch keine Unterhaltungen
+            {t('chat.list.empty')}
           </p>
         ) : (
           <div className="flex flex-col gap-1">
@@ -7095,7 +7101,7 @@ function ChatInterface({
               // the all-empty case is handled by the outer chatList.length check.
               <div className="py-8 text-center">
                 <p className="text-[13px] leading-[18px] text-kumo-inactive">
-                  Noch keine Unterhaltungen von {chatListScope === "agents" ? "Agenten" : "Personen"} gestartet
+                  {t('chat.list.emptyBy', { who: chatListScope === "agents" ? "Agenten" : "Personen" })}
                 </p>
                 <button
                   type="button"
@@ -8184,7 +8190,7 @@ function ChatInterface({
                                         >
                                           {toolCall.code && (
                                             <>
-                                              <span className="font-mono text-[11px] leading-4 text-kumo-inactive uppercase tracking-[0.08em]">Code</span>
+                                              <span className="font-mono text-[11px] leading-4 text-kumo-inactive uppercase tracking-[0.08em]">{t('chat.panel.code')}</span>
                                               <pre className="max-h-56 overflow-auto rounded-xl border border-kumo-line/70 bg-kumo-base p-3 font-mono text-[12px] leading-[18px] text-kumo-subtle whitespace-pre-wrap">
                                                 {toolCall.code}
                                               </pre>
@@ -8192,7 +8198,7 @@ function ChatInterface({
                                           )}
                                           {toolCall.output && (
                                             <>
-                                              <span className="font-mono text-[11px] leading-4 text-kumo-inactive uppercase tracking-[0.08em]">Output</span>
+                                              <span className="font-mono text-[11px] leading-4 text-kumo-inactive uppercase tracking-[0.08em]">{t('chat.panel.output')}</span>
                                               <pre className="max-h-56 overflow-auto rounded-xl border border-kumo-line/70 bg-kumo-base p-3 font-mono text-[12px] leading-[18px] text-kumo-subtle whitespace-pre-wrap">
                                                 {toolCall.output}
                                               </pre>
@@ -8381,8 +8387,8 @@ function ChatInterface({
 
       <DeleteConfirmationDialog
         open={deleteTarget !== null}
-        title="Unterhaltung löschen?"
-        description={<>Dadurch wird <span className="font-medium text-kumo-default">{deleteTarget?.title}</span> entfernt. Das kannst du nicht rückgängig machen.</>}
+        title={t('chat.delete.title')}
+        description={t('chat.delete.body', { title: deleteTarget?.title ?? "" })}
         isDeleting={isDeleting}
         onOpenChange={(open) => {
           if (!open) setDeleteTarget(null);

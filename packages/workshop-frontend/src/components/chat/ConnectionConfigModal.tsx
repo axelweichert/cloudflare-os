@@ -4,6 +4,7 @@ import { X } from '@phosphor-icons/react'
 import type { Connection, ConnectionResource } from '../../data/sample'
 import { logoComponents } from '../ConnectionLogos'
 import { isImeComposing } from '../../keyboardEvent'
+import { useT } from '../../i18n/useT'
 
 export default function ConnectionConfigModal({
   connection,
@@ -20,6 +21,7 @@ export default function ConnectionConfigModal({
     connection.resources ?? []
   )
   const [inputValue, setInputValue] = useState('')
+  const t = useT()
 
   const Logo = logoComponents[connection.logo]
   const config = connection.resourceConfig
@@ -94,7 +96,7 @@ export default function ConnectionConfigModal({
                 onClick={handleAdd}
                 disabled={!inputValue.trim()}
               >
-                Hinzufügen
+                {t('chat.conn.add')}
               </Button>
             </div>
           </div>
@@ -104,7 +106,7 @@ export default function ConnectionConfigModal({
         <div className="max-h-56 overflow-y-auto px-5 pb-4">
           {resources.length === 0 ? (
             <p className="text-sm text-kumo-inactive text-center py-4">
-              Noch keine Ressourcen hinzugefügt
+              {t('chat.conn.emptyResources')}
             </p>
           ) : (
             <div className="space-y-1">
@@ -133,7 +135,7 @@ export default function ConnectionConfigModal({
           <Dialog.Close
             render={(props) => (
               <Button {...props} variant="outline" size="sm">
-                Abbrechen
+                {t('chat.conn.cancel')}
               </Button>
             )}
           />
@@ -145,7 +147,7 @@ export default function ConnectionConfigModal({
               onOpenChange(false)
             }}
           >
-            Speichern
+            {t('chat.conn.save')}
           </Button>
         </div>
       </Dialog>

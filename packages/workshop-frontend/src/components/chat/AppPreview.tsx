@@ -2,12 +2,14 @@ import { Badge } from '@cloudflare/kumo'
 import { Text } from '@cloudflare/kumo'
 import { Circle } from '@phosphor-icons/react'
 import { sampleDataRows } from '../../data/chat'
+import { useT } from '../../i18n/useT'
 
 /**
  * App tab = live preview of the running app.
  * This renders a mock of what the deployed Slack summarizer looks like.
  */
 export default function AppPreview() {
+  const t = useT()
   return (
     <div className="flex flex-col h-full bg-kumo-base">
       {/* App content */}
@@ -15,12 +17,12 @@ export default function AppPreview() {
         {/* App header */}
         <div className="flex items-center justify-between mb-6">
           <div>
-            <Text variant="heading2" as="h1">Kanal-Zusammenfassung</Text>
+            <Text variant="heading2" as="h1">{t('chat.appPreview.title')}</Text>
             <p className="text-sm text-kumo-subtle mt-1">
-              Tägliche Zusammenfassung deiner Slack-Kanäle, powered by Workers AI
+              {t('chat.appPreview.subtitle')}
             </p>
           </div>
-          <Badge variant="success">Live</Badge>
+          <Badge variant="success">{t('chat.appPreview.live')}</Badge>
         </div>
 
         {/* Channel cards */}
@@ -33,7 +35,7 @@ export default function AppPreview() {
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
                   <span className="font-mono text-sm font-semibold text-kumo-default">{row.channel}</span>
-                  <Badge variant="primary">{row.messages} Nachr.</Badge>
+                  <Badge variant="primary">{t('chat.appPreview.msgs', { n: String(row.messages) })}</Badge>
                 </div>
                 <span className="text-xs text-kumo-subtle">{row.lastActive}</span>
               </div>
@@ -67,7 +69,7 @@ export default function AppPreview() {
         {/* Quiet channels */}
         <div className="mt-6">
           <div className="text-xs font-semibold text-kumo-subtle uppercase tracking-wider mb-3">
-            Keine neue Aktivität
+            {t('chat.appPreview.noActivity')}
           </div>
           <div className="flex flex-wrap gap-2">
             {sampleDataRows.filter(r => !r.unread).map((row) => (

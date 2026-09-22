@@ -4,6 +4,7 @@ import { Dialog, Button, Loader, Radio, useKumoToastManager } from '@cloudflare/
 import { Warning } from '@phosphor-icons/react'
 import { useOptionalAuthenticatedApi } from '../../AuthContext'
 import { useCloudflareLimitsEnabled } from '../../ServerConfigContext'
+import { useT } from '../../i18n/useT'
 
 /**
  * Global, mandatory modal that forces the user to pick which Cloudflare account to bill whenever
@@ -11,6 +12,7 @@ import { useCloudflareLimitsEnabled } from '../../ServerConfigContext'
  * the selection is pending, so it can't be missed after connecting. Mounted once in the app shell.
  */
 export default function AccountSelectionModal() {
+  const t = useT()
   const limitsEnabled = useCloudflareLimitsEnabled()
   const auth = useOptionalAuthenticatedApi()
   const toasts = useKumoToastManager()
@@ -55,11 +57,11 @@ export default function AccountSelectionModal() {
     setSaving(true)
     try {
       await auth.authenticatedApi.selectCloudflareAccount(chosen)
-      toasts.add({ title: 'Cloudflare-Konto ausgewählt', variant: 'success' })
+      toasts.add({ title: t('billing.accountSelected'), variant: 'success' })
       setNeedsSelection(false)
       setAccounts(null)
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Konto konnte nicht ausgewählt werden'
+      const msg = err instanceof Error ? err.message : t('billing.selectError')
       toasts.add({ title: msg, variant: 'error' })
     } finally {
       setSaving(false)
@@ -73,19 +75,18 @@ export default function AccountSelectionModal() {
       <Dialog className="responsive-dialog overflow-y-auto p-6 sm:w-[480px]" size="base">
         <Dialog.Title className="text-lg font-semibold mb-2 flex items-center gap-2">
           <Warning size={22} weight="bold" className="text-kumo-warning" />
-          Cloudflare-Konto auswählen
+          {t('billing.selectTitle')}
         </Dialog.Title>
 
         <div className="space-y-4">
           <p className="text-sm text-kumo-subtle">
-            Deine Cloudflare-Verbindung hat Zugriff auf mehrere Konten. Wähle das Konto aus, dessen
-            Guthaben für die Nutzung über das kostenlose Kontingent hinaus abgerechnet werden soll.
+            {t('billing.selectDesc')}
           </p>
 
           {accounts === null ? (
             <div className="flex justify-center py-6"><Loader size="base" /></div>
           ) : accounts.length === 0 ? (
-            <p className="text-sm text-kumo-subtle">Für diese Verbindung sind keine Konten verfügbar.</p>
+            <p className="text-sm text-kumo-subtle">{t('billing.noAccounts')}</p>
           ) : (
             <Radio.Group
               appearance="card"
@@ -93,7 +94,7 @@ export default function AccountSelectionModal() {
               onValueChange={setChosen}
               disabled={saving}
             >
-              <Radio.Legend className="sr-only">Cloudflare-Konto</Radio.Legend>
+              <Radio.Legend className="sr-only">{t('billing.cloudflareAccount')}</Radio.Legend>
               {accounts.map((a) => (
                 <Radio.Item key={a.accountId} value={a.accountId} label={a.accountName} />
               ))}
@@ -107,10 +108,10 @@ export default function AccountSelectionModal() {
               // un-actionable modal — let them retry or dismiss (it re-checks on focus).
               <>
                 <Button variant="ghost" onClick={() => setNeedsSelection(false)}>
-                  Verwerfen
+                  {t('billing.discard')}
                 </Button>
                 <Button variant="secondary" onClick={() => setAccounts(null)}>
-                  Erneut versuchen
+                  {t('billing.tryAgain')}
                 </Button>
               </>
             ) : (
@@ -120,7 +121,7 @@ export default function AccountSelectionModal() {
                 loading={saving}
                 disabled={!chosen || saving}
               >
-                Speichern
+                {t('billing.save')}
               </Button>
             )}
           </div>

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Check, Plus, UserCircle } from '@phosphor-icons/react'
 import { AccountDescription, SupportedResource, VendorDescription } from '@gadgets/workshop-shared/gatekeeper'
+import { useT } from '../i18n/useT'
 
 /**
  * Account info as consumed by the chooser. Matches the shape used by GatekeeperModal and the
@@ -59,22 +60,23 @@ export function AccountChooser({
   onReconnect: (id: number) => void
   onGrantAccess?: (id: number) => void
 }) {
+  const t = useT()
   const isEmailMailbox = vendorId === 'email' && resourceTitle === 'Email Mailbox'
 
   return (
     <section className="overflow-hidden rounded-xl border border-kumo-line bg-kumo-base">
       <div className="border-b border-kumo-line px-3 py-2.5">
-        <p className="text-[12px] leading-4 font-medium tracking-[-0.2px] text-kumo-default">Konto</p>
+        <p className="text-[12px] leading-4 font-medium tracking-[-0.2px] text-kumo-default">{t('gk.account.heading')}</p>
         <p className="mt-0.5 text-[12px] leading-4 font-normal tracking-[-0.2px] text-kumo-subtle">
           {isEmailMailbox
-            ? 'Aktiviere das E-Mail-Empfängerkonto und wähle dann unten den Postfachnamen.'
-            : `Wähle, welche ${vendorName}-Identität diese ${resourceTitle ?? 'Verbindung'} verwenden soll.`}
+            ? t('gk.account.emailDesc')
+            : t('gk.account.identityDesc', { vendor: vendorName, resource: resourceTitle ?? t('gk.account.connectionFallback') })}
         </p>
       </div>
       <div className="divide-y divide-kumo-line">
         {accounts.map(account => {
           const selected = selectedAccountId === account.id
-          const name = account.description.uniqueName || account.description.displayName || 'Verbundenes Konto'
+          const name = account.description.uniqueName || account.description.displayName || t('gk.account.connected')
           const expired = !account.credentialsValid
           const reconnecting = reconnectingAccountId === account.id
           const granted = account.description.grantedResourceUrlPatterns
@@ -108,10 +110,10 @@ export function AccountChooser({
                   <p className="truncate text-[13px] leading-[18px] font-medium tracking-[-0.25px] text-kumo-default">{name}</p>
                   <p className={`truncate text-[12px] leading-4 font-normal tracking-[-0.2px] ${needsAccess ? 'text-kumo-brand' : 'text-kumo-subtle'}`}>
                     {expired
-                      ? 'Abgelaufene Anmeldedaten'
+                      ? t('gk.account.expired')
                       : needsAccess
-                      ? 'Zusätzliche Berechtigung erforderlich'
-                      : resourceTitle ? `Verbundenes ${vendorName}-Konto` : 'Verbunden'}
+                      ? t('gk.account.additionalPermission')
+                      : resourceTitle ? t('gk.account.connectedVendor', { vendor: vendorName }) : t('gk.account.connectedShort')}
                   </p>
                 </div>
               </button>
@@ -122,7 +124,7 @@ export function AccountChooser({
                   disabled={reconnecting}
                   className="shrink-0 cursor-pointer rounded-md border border-kumo-line px-2 py-1 text-[12px] leading-4 font-medium tracking-[-0.2px] text-kumo-default transition-colors hover:bg-kumo-elevated disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {reconnecting ? 'Wird geöffnet …' : 'Erneut verbinden'}
+                  {reconnecting ? t('gk.account.opening') : t('gk.account.reconnect')}
                 </button>
               ) : needsAccess ? (
                 <button
@@ -131,7 +133,7 @@ export function AccountChooser({
                   disabled={granting}
                   className="shrink-0 cursor-pointer rounded-md border border-kumo-line px-2 py-1 text-[12px] leading-4 font-medium tracking-[-0.2px] text-kumo-default transition-colors hover:bg-kumo-elevated disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {granting ? 'Wird geöffnet …' : 'Zugriff erteilen'}
+                  {granting ? t('gk.account.opening') : t('gk.account.grantAccess')}
                 </button>
               ) : null}
               {selected && <Check size={15} weight="bold" className="shrink-0 text-kumo-brand" />}
@@ -152,8 +154,8 @@ export function AccountChooser({
               <Plus size={14} />
             )}
             {isEmailMailbox
-              ? 'E-Mail-Postfächer aktivieren'
-              : accounts.length === 0 ? `${vendorName} verbinden` : `Ein anderes ${vendorName}-Konto verwenden`}
+              ? t('gk.account.enableMailboxes')
+              : accounts.length === 0 ? t('gk.account.connectVendor', { vendor: vendorName }) : t('gk.account.useDifferent', { vendor: vendorName })}
           </button>
         )}
       </div>

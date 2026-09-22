@@ -5,6 +5,7 @@ import { CloudWarning, Lightning } from '@phosphor-icons/react'
 import { useOptionalAuthenticatedApi } from '../../AuthContext'
 import { buildAddCreditsUrl } from './creditsUrl'
 import ResetCountdown from './ResetCountdown'
+import { useT } from '../../i18n/useT'
 
 interface OutOfCreditsModalProps {
   open: boolean
@@ -17,6 +18,7 @@ interface OutOfCreditsModalProps {
  * up credits in the Cloudflare dashboard (if connected but low balance).
  */
 export default function OutOfCreditsModal({ open, onClose }: OutOfCreditsModalProps) {
+  const t = useT()
   const auth = useOptionalAuthenticatedApi()
   const toasts = useKumoToastManager()
   const [usage, setUsage] = useState<CloudflareUsageInfo | null>(null)
@@ -77,7 +79,7 @@ export default function OutOfCreditsModal({ open, onClose }: OutOfCreditsModalPr
       setAccounts(null)
       refresh()
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Konto konnte nicht ausgewählt werden'
+      const msg = err instanceof Error ? err.message : t('billing.selectError')
       toasts.add({ title: msg, variant: 'error' })
     } finally {
       setSelecting(null)
@@ -92,7 +94,7 @@ export default function OutOfCreditsModal({ open, onClose }: OutOfCreditsModalPr
       <Dialog className="responsive-dialog overflow-y-auto p-6 sm:w-[560px]" size="base">
         <Dialog.Title className="text-lg font-semibold mb-2 flex items-center gap-2">
           <CloudWarning size={22} weight="bold" className="text-kumo-warning" />
-          Du hast dein kostenloses Nutzungslimit erreicht
+          {t('billing.limitTitle')}
         </Dialog.Title>
 
         {usage === null ? (
@@ -101,34 +103,34 @@ export default function OutOfCreditsModal({ open, onClose }: OutOfCreditsModalPr
           <div className="space-y-4">
             {!connected ? (
               <p className="text-sm text-kumo-subtle">
-                Du hast heute alle {usage.dailyLimit} deiner kostenlosen {usage.dailyLimit === 1 ? 'Anfrage' : 'Anfragen'}
-                {' '}verbraucht. Verbinde jetzt dein Cloudflare-Konto, um weiterzubauen — Nutzung über das
-                kostenlose Kontingent hinaus wird über dein eigenes Cloudflare-AI-Gateway-Guthaben abgerechnet
+                {t('billing.notConnectedMain', {
+                  count: String(usage.dailyLimit),
+                  requests: t(usage.dailyLimit === 1 ? 'billing.request.one' : 'billing.request.other'),
+                })}
                 {usage.resetAt ? (
                   <>
-                    {' '}— oder warte: deine kostenlosen {usage.dailyLimit === 1 ? 'Anfrage wird' : 'Anfragen werden'} um
-                    00:00 UTC zurückgesetzt, in <ResetCountdown resetAt={usage.resetAt} onElapsed={refresh} />.
+                    {t('billing.resetPrefixNotConnected')}
+                    {t(usage.dailyLimit === 1 ? 'billing.resetSentence.one' : 'billing.resetSentence.other')}
+                    <ResetCountdown resetAt={usage.resetAt} onElapsed={refresh} />.
                   </>
                 ) : '.'}
               </p>
             ) : needsSelection ? (
               <p className="text-sm text-kumo-subtle">
-                Deine Cloudflare-Verbindung hat Zugriff auf mehrere Konten. Wähle aus, dessen
-                AI-Gateway-Guthaben für die Nutzung über das kostenlose Kontingent hinaus
-                abgerechnet werden soll.
+                {t('billing.needsSelectionDesc')}
               </p>
             ) : (
               <p className="text-sm text-kumo-subtle">
-                Dein Cloudflare-Konto ist verbunden
+                {t('billing.lowBalanceConnected')}
                 {usage.balance !== null && (
-                  <> mit einem Guthaben von <strong>${usage.balance.toFixed(2)}</strong></>
+                  <>{t('billing.lowBalanceWith')}<strong>${usage.balance.toFixed(2)}</strong></>
                 )}
-                , liegt aber unter dem für die Fortsetzung nötigen Mindestbetrag. Lade Guthaben in
-                deinem AI Gateway auf, um jetzt weiterzubauen
+                {t('billing.lowBalanceRest')}
                 {usage.resetAt ? (
                   <>
-                    {' '}oder warte — deine kostenlosen {usage.dailyLimit === 1 ? 'Anfrage wird' : 'Anfragen werden'} um
-                    00:00 UTC zurückgesetzt, in <ResetCountdown resetAt={usage.resetAt} onElapsed={refresh} />.
+                    {t('billing.resetPrefixLowBalance')}
+                    {t(usage.dailyLimit === 1 ? 'billing.resetSentence.one' : 'billing.resetSentence.other')}
+                    <ResetCountdown resetAt={usage.resetAt} onElapsed={refresh} />.
                   </>
                 ) : '.'}
               </p>
@@ -137,9 +139,9 @@ export default function OutOfCreditsModal({ open, onClose }: OutOfCreditsModalPr
             {needsSelection && (
               <div className="flex flex-col gap-2">
                 {accounts === null ? (
-                  <p className="text-sm text-kumo-subtle">Konten werden geladen …</p>
+                  <p className="text-sm text-kumo-subtle">{t('billing.loadingAccounts')}</p>
                 ) : accounts.length === 0 ? (
-                  <p className="text-sm text-kumo-subtle">Für diese Verbindung sind keine Konten verfügbar.</p>
+                  <p className="text-sm text-kumo-subtle">{t('billing.noAccounts')}</p>
                 ) : (
                   accounts.map((a) => (
                     <Button
@@ -158,37 +160,37 @@ export default function OutOfCreditsModal({ open, onClose }: OutOfCreditsModalPr
             )}
 
             <p className="text-sm text-kumo-subtle">
-              Mehr über{' '}
+              {t('billing.learnMorePrefix')}
               <a
                 href="https://developers.cloudflare.com/ai-gateway/features/unified-billing/"
                 target="_blank"
                 rel="noreferrer"
                 className="underline"
               >
-                die einheitliche AI-Gateway-Abrechnung
-              </a>{' '}
-              erfahren.
+                {t('billing.learnMoreLink')}
+              </a>
+              {t('billing.learnMoreSuffix')}
             </p>
 
             <div className="flex items-center justify-end gap-2 pt-2">
               {!connected ? (
                 <>
-                  <Button variant="secondary" onClick={onClose}>Vielleicht später</Button>
+                  <Button variant="secondary" onClick={onClose}>{t('billing.maybeLater')}</Button>
                   <Button variant="primary" onClick={connect} loading={connecting}>
                     <Lightning size={16} weight="bold" />
-                    Cloudflare verbinden
+                    {t('billing.connectCloudflare')}
                   </Button>
                 </>
               ) : needsSelection ? (
-                <Button variant="secondary" onClick={onClose}>Schließen</Button>
+                <Button variant="secondary" onClick={onClose}>{t('billing.close')}</Button>
               ) : (
                 <>
-                  <Button variant="secondary" onClick={onClose}>Schließen</Button>
+                  <Button variant="secondary" onClick={onClose}>{t('billing.close')}</Button>
                   <Button
                     variant="primary"
                     onClick={() => window.open(buildAddCreditsUrl(usage.accountId), '_blank')}
                   >
-                    Guthaben in Cloudflare aufladen
+                    {t('billing.addCreditCloudflare')}
                   </Button>
                 </>
               )}

@@ -38,8 +38,18 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>
 }
 
+// Best-effort persistence for the no-provider fallback below; there's no state
+// subscriber outside the provider, so this only records the choice for the next mount.
+function persistLang(next: Lang) {
+  try { localStorage.setItem(STORAGE_KEY, next) } catch {}
+}
+
 export function useI18n() {
   const context = useContext(I18nContext)
-  if (!context) throw new Error('useI18n must be used within I18nProvider')
-  return context
+  // Degrade gracefully instead of throwing when no provider is mounted. The i18n
+  // overlay wraps deep chrome (AppShell, chat, gatekeeper-modal, billing …); any tree
+  // rendered outside <I18nProvider> — unit tests, a lazily-mounted chunk, a portal —
+  // must still render in the default language rather than crash the whole subtree.
+  // The live switcher path (provider present) is unchanged.
+  return context ?? { lang: readLang(), setLang: persistLang }
 }
