@@ -380,3 +380,188 @@ zerstört, wird **rot** und kann bei aktiver Branch Protection nicht gemergt wer
 
 Marker (DE-Keys, Schwellwert) bei künftiger DE-Arbeit im Skript nachziehen, damit die
 Stichprobe repräsentativ bleibt.
+
+---
+
+## 10. Currency-Triage-Register (Read-only-Sichtungen des Upstream-Drifts)
+
+Der wöchentliche `currency-check.sh` ([OWL-1570]) meldet kritischen Upstream-Drift
+als Issue. Jede Sichtung wird hier registriert — **Entscheidung, nicht Integration**.
+Die eigentliche Übernahme läuft ausschließlich über den Overlay-Re-apply-Upgrade
+([docs/UPGRADING.md], Eltern-Issue [OWL-1566], Board-/CTO-Gate).
+
+> **Wichtig — Cherry-pick ist auf dieser Topologie N/A.** `origin/main` hat **keine**
+> gemeinsame Historie mit Upstream (`git merge-base` leer), daher gibt es keinen
+> `cherry-pick -x <sha>`-Pfad. Kritische Upstream-Fixes werden **nicht** einzeln
+> gepickt, sondern **wholesale** beim nächsten Overlay-Re-apply übernommen (Upstream
+> = neue Basis an allen Nicht-Overlay-Pfaden, danach Overlay + 3 Nähte re-applyen).
+> Die Triage klärt hier nur: **berührt** der Drift unsere Nähte/Overlay, und **ist**
+> etwas davon so dringend, dass ein außerplanmäßiger Upgrade nötig wäre.
+
+### Triage 2026-09-22 — `[currency-sync:87e09feb]` (OWL-1571)
+
+- **Drift:** 7 kritische Commits `21d34803..f961c844` (Diff-Basis der Meldung).
+- **Pin-Stand:** `UPSTREAM_REF=f961c844` **enthält bereits alle 7** (`21d34803` ist
+  Vorfahre von `f961c844`) und `== upstream/main` HEAD. → **Nichts fortzuschreiben.**
+- **Naht-Check (die genau 3 Kern-Berührpunkte, Seam-Register in [docs/UPGRADING.md]):**
+  **keiner der 7 Commits** berührt `scripts/release/manifest-lib.ts`,
+  `scripts/release/testdata/golden-manifest.json` oder
+  `packages/router/__tests__/router.test.ts`. → Naht-Re-apply beim Upgrade unverändert.
+- **Overlay-Relevanz (berühren die Commits Pakete, die unser Overlay konsumiert?):**
+
+  | Commit | Betroffene Pfade | Relevanz für owlOS-Overlay |
+  |---|---|---|
+  | `dc009b34e` Outputs-Sidebar height | `workshop-frontend` | UI-Fix, kosmetisch |
+  | `9246f92ef` Anthropic-Streams eval-target | `workshop-evals` (bei uns **absent**), `integration-tests` | irrelevant (Paket fehlt im Snapshot) |
+  | `b98cc0676` user-search UI sizing | `workshop-frontend` | UI-Fix, kosmetisch |
+  | **`0272b0600`** blueprint-configurator readiness | **`configurator-ui`, `workshop-shared/gatekeeper.ts`** (Overlay-**Deps**), `workshop-frontend` | **einzige mit direkter Overlay-Relevanz** — beim Re-apply verifizieren, ob `gatekeeper-unifi`/`-homeassistant` gegen die geänderte `gatekeeper.ts`-API bauen |
+  | `e8b6ce045` bundled-blueprint test PID | `scripts/*.test.ts` | Test-only |
+  | `ca87261f8` staged gatekeeper reconnects | `gatekeeper-kit` (bei uns **absent**) | irrelevant im aktuellen Snapshot; wird beim Upgrade mit Upstream eingezogen |
+  | `87e09feb6` agent-session reconnect/trials | `workshop-evals` (**absent**), `integration-tests` | irrelevant (Paket fehlt im Snapshot) |
+
+- **Entscheidung:** **Kein außerplanmäßiger Upgrade.** 6/7 sind kosmetische UI-/Test-/
+  Eval-Fixes in Paketen, die unser Overlay nicht konsumiert (bzw. im Snapshot fehlen).
+  `0272b0600` ist die einzige mit Overlay-Berührung, aber ein Readiness-Fix ohne
+  Dringlichkeit. Alle 7 werden **automatisch** beim nächsten geplanten Overlay-Re-apply
+  (OWL-1566) übernommen, da `configurator-ui`/`workshop-shared` reine Upstream-(Nicht-
+  Overlay-)Pfade sind und dort wholesale aktualisiert werden.
+- **Aktion beim nächsten Upgrade:** In Schritt 4 (Guards grün) explizit prüfen, dass
+  `gatekeeper-unifi`/`-homeassistant` gegen die neue `workshop-shared/gatekeeper.ts`
+  (0272b0600) tsc-clean bauen.
+- **Read-only bestätigt:** nur `git fetch upstream` (öffentliches `cloudflare/cloudflare-os`),
+  lesende Diffs. Kein Deploy, kein Token, keine fremde `account_id`.
+
+---
+
+## 11. Vendorierte Upstream-Pakete (OWL-1583, 2026-09-22)
+
+Board-Befund OWL-1582: „ein Gatekeeper aus dem Upstream soll in der Auswahl
+auftauchen". Diagnose zuerst, dann Currency.
+
+### (a) Diagnose — die Auswahl ist vollständig
+
+Die „Gatekeepers zur Auswahl" ist **kein UI-Datensatz**, sondern exakt die Menge der
+`installable`-Gatekeeper-Einträge im Release-Manifest: `findDeployablePackages()`
+(scripts/release/manifest-lib.ts) nimmt **jedes** Paket mit `wrangler.jsonc`, der
+Deploy-Service bietet daraus die installierbaren an. Stand heute: **17 Gatekeeper**,
+alle 16 Upstream-Vendors **plus** unser `gatekeeper-unifi`; 16 davon `installable`,
+`gatekeeper-email` bewusst nicht (braucht Email Routing = Zone, workers.dev-Instanzen
+haben keine). **Es fehlt kein Gatekeeper.** Neuer Regressionstest hält das fest:
+`scripts/release/manifest-lib.test.ts` → *„every gatekeeper package reaches the
+wizard's selection"* (prüft gegen die Pakete **auf Platte**, nicht gegen die
+Golden-Datei — ein neuer Gatekeeper, der nie ins Manifest kommt, fällt dort auf).
+
+### (b) Currency — was upstream-only war
+
+| Paket | Status im Fork | Nachweis |
+|---|---|---|
+| `packages/bundled-blueprints` | **übernommen, grün** | 285/285 Tests, 5/5 tsc-Programme clean |
+| `packages/gatekeeper-kit` | **übernommen, aber nicht im Workspace** | 450/450 Logik-Tests grün; `tsc` = **28 Fehler**, alle aus einer Ursache (s.u.) |
+| `packages/ui`, `packages/workshop-evals` | nicht übernommen | begleitende Upstream-Neuzugänge ohne Overlay-Bezug; nachziehen beim Overlay-Re-apply |
+
+Übernahme als **Overlay-Re-apply** (`git checkout upstream/main -- <pfad>` gegen den
+gepinnten `UPSTREAM_REF`), kein merge/rebase — die Topologie hat keine gemeinsame
+Historie. Angepasst wurde nur die Toolchain-Naht: beide Pakete importieren upstream
+`@gadgets/scripts/vitest-task` (ein Workspace-Paket, das unser Snapshot noch nicht
+kennt) → umgebogen auf unseren vorhandenen Pfad `../../scripts/vitest-task-vite-config.js`
+bzw. `../../scripts/assert-workerd.ts`; `@gadgets/scripts`-devDep entfernt.
+Neuer Catalog-Eintrag: `@cloudflare/workers-types` (beide Pakete typen dagegen).
+
+### (c) Blocker `gatekeeper-kit` — eine Ursache, nicht 28
+
+`gatekeeper-kit` typt gegen ein **neueres `@gadgets/workshop-shared`**, als unser
+Snapshot hat: `GitCache`, `ConnectHandoff`, `ActionDescription.pushedCommits`,
+`ObservationInput.containsRestrictedData`, `ObservationAuthorizer.getGitCache`.
+Der Drift in `workshop-shared` ist groß (`api.ts` ~619 Zeilen, `gatekeeper.ts` ~463)
+und zieht `workshop-backend`, alle 17 Gatekeeper und das Frontend nach — das ist der
+**geplante Overlay-Re-apply (OWL-1566)**, kein Paket-Vendoring.
+
+Deshalb liegt das Paket am richtigen Zielort (`packages/gatekeeper-kit`), ist aber per
+`- '!packages/gatekeeper-kit'` in `pnpm-workspace.yaml` aus Install-/Build-/Test-Graph
+genommen, damit der Baum grün bleibt. **Die Zeile wird in genau der Änderung gelöscht,
+die `workshop-shared`/`api` auf den gepinnten `UPSTREAM_REF` hebt.**
+
+Zusatzbefund (nicht blockierend): die workerd-Suite von `gatekeeper-kit`
+(`vitest.worker.config.ts`, `compatibilityDate 2026-09-04` + Flag
+`allow_irrevocable_stub_storage`) startet mit unserem workerd `1.20260801.1` nicht
+(`ERR_RUNTIME_FAILURE`). Upstream fährt `@cloudflare/vitest-pool-workers ^0.22` mit
+Miniflare-Override `5.20260831.0-alpha`; dieser Toolchain-Bump gehört ebenfalls in den
+Re-apply, nicht hierher.
+
+### (d) Nicht angefasst (bewusst)
+
+Upstream baut die Blueprint-Archive inzwischen aus `bundled-blueprints`
+(`scripts/build-bundled-blueprints.ts`). Unser `workshop-backend` liefert weiter die
+vorgebauten `.gadget`-Archive aus `packages/workshop-backend/format-blueprints/`
+(`scripts/build-format-blueprints.mjs`). Diese Umverdrahtung ist Teil desselben
+`workshop-backend`-Drifts und bleibt dem Re-apply überlassen — das Overlay bleibt
+unberührt.
+
+**Read-only bestätigt:** nur `git fetch`/`git checkout` gegen das öffentliche
+`cloudflare/cloudflare-os`. Kein Deploy, kein Token, keine fremde `account_id`.
+
+---
+
+## 12. i18n-Overlay (DE/EN-Umschalter, OWL-1591, 2026-09-22)
+
+CTO-Entscheidung (OWL-1590, verbindlich): DE/EN-Sprachwahl im UI **fork-sicher als
+Overlay**, **kein `react-i18next`** — schlanker eigener Context analog
+`ThemeContext.tsx`/`FeatureFlagsContext.tsx` (`createContext` + `localStorage`).
+Damit koexistiert das Overlay mit der bestehenden Direkt-Ersetzungs-Strategie
+(§0/§6): die deutschen Strings wandern in den Katalog, die alte englische Fassung
+wird zur `en`-Quelle der Wahrheit.
+
+### Topologie — reines Overlay-Verzeichnis (existiert NICHT im Upstream)
+
+```
+packages/workshop-frontend/src/i18n/
+  catalogs/en.ts          # flache key→string-Map; SOURCE OF TRUTH der Keys (TKey)
+  catalogs/de.ts          # Record<TKey,string> → fehlender Key = tsc-Fehler
+  I18nProvider.tsx        # Provider, localStorage-Key `gadgets:lang`, Default DE
+  useT.ts                 # const t = useT(); t('sidebar.home', {name}) — typsicher
+  LanguageSwitcher.tsx    # DE/EN-Toggle-Button (Kumo-Tooltip, live via useI18n, kein Reload)
+  i18n.test.tsx           # Default-DE / Switch-EN / Persistenz / Interpolation
+```
+
+Das ganze Verzeichnis geht beim Upstream-Re-apply **nicht verloren** (Upstream kennt
+es nicht → kein Konflikt, kein Overwrite). Die deutschen Übersetzungswerte leben
+ausschließlich hier.
+
+### Berührte Upstream-Dateien (Overlay-Diffs — beim Re-apply wiederherstellen)
+
+Beim Overlay-Re-apply (§10, OWL-1566) werden diese Dateien aus Upstream frisch
+gezogen; die hier gelisteten `t()`-Nähte müssen danach **erneut angewandt** werden
+(die DE-**Werte** selbst liegen sicher im Katalog-Overlay, nur die mechanischen
+`t()`-Aufrufe gehen verloren):
+
+| Datei | Overlay-Naht |
+|---|---|
+| `src/main.tsx` | `<I18nProvider>` um den Baum gehängt (analog `<ThemeProvider>`) |
+| `src/components/AppShell/AppShell.tsx` | `<LanguageSwitcher/>` in der Top-Bar montiert; `t('appshell.*')` für Menü-/Nav-Labels |
+| `src/components/AppShell/Sidebar.tsx` | `t('sidebar.*')` für Nav-Labels + aria/title |
+| `src/components/AppShell/SidebarUtilityStrip.tsx` | `t('sidebar.gatekeepers')` + `t('theme.*')` (Theme-Label via Interpolation) |
+| `src/LoginPage.tsx` | `t('auth.*')` für Titel, Formular-Labels/Placeholder, Fehler, OAuth-Trenner, Lade-/Fehlerzustände + Dokumenttitel |
+
+**Stand OWL-1591 (Founding Engineer, 2026-09-22):** Zwei doppelte Skelette aus
+Vorläufen zusammengeführt — der tote DOM-MutationObserver-Pfad (`LanguageContext.tsx`
++ `de.json`) **gelöscht**, der typsichere Katalog-Pfad (`I18nProvider`/`useT`) bleibt
+als einzige Quelle. `LanguageSwitcher` auf `useI18n` umgestellt (live, kein Reload).
+Umgestellt: persistente App-Chrome (AppShell + Sidebar + Utility-Strip) **und** der
+Login-Screen (`LoginPage.tsx`, erster sichtbarer Screen). Switcher live (Default DE,
+EN schaltet sofort um), `tsc --noEmit` grün, `i18n.test.tsx` grün (jetzt auch mit
+`auth.*`-Assertion). Die weiteren gestaffelten Screens (`signup`/SignupPage,
+`chat`/ChatInterface, `billing`, `gatekeeper-modal`, restliche `routes`) sind je eine
+mechanische `t()`-Umstellung gegen den bestehenden Katalog → eigene Folge-Issues
+(Kinder von OWL-1590), damit jeder Batch unabhängig verifiziert werden kann.
+
+> **fork-guard-Hinweis (§9):** Die DE-Stichprobe prüft weiterhin deutsche
+> String-**Literale** im Quelltext. Nach der Overlay-Umstellung liegen die DE-Werte
+> von AppShell/Sidebar im Katalog (`catalogs/de.ts`) statt inline — die Stichprobe
+> (`Torwächter`, `Baupläne`, `Entdecken`, `Woran arbeiten wir`) trifft aktuell noch
+> genug inline-DE anderswo, bleibt also grün. Wenn künftige Batches breite Flächen
+> auf `t()` umstellen, den Guard um einen Katalog-Marker ergänzen
+> (z. B. Existenz von `catalogs/de.ts` + Stichprobe deutscher **Katalog-Werte**),
+> damit der Null-Verlust-Test repräsentativ bleibt.
+
+**Read-only bestätigt:** reine Frontend-Code-Änderung im eigenen Weichert.at-Fork.
+Kein Deploy, kein Token, keine fremde `account_id`.

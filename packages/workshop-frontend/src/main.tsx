@@ -6,6 +6,7 @@ import { PublicApi, ServerConfig } from '@gadgets/workshop-shared/api'
 import { RpcContext } from './RpcContext'
 import { ServerConfigContext, ServerConfigErrorContext } from './ServerConfigContext'
 import { ThemeProvider } from './ThemeContext'
+import { I18nProvider } from './i18n/I18nProvider'
 import { createRouter } from './router'
 import AnnouncementBanner from './components/AnnouncementBanner'
 import { applyAccentColor, applyStoredThemeMode } from './theme'
@@ -251,6 +252,7 @@ function AppWithConnection() {
 
   return (
     <ThemeProvider>
+      <I18nProvider>
       <RpcContext.Provider value={rpcState}>
         <ServerConfigErrorContext.Provider value={serverConfigError}>
           <ServerConfigContext.Provider value={serverConfig}>
@@ -263,6 +265,7 @@ function AppWithConnection() {
           </ServerConfigContext.Provider>
         </ServerConfigErrorContext.Provider>
       </RpcContext.Provider>
+      </I18nProvider>
     </ThemeProvider>
   );
 }

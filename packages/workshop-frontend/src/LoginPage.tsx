@@ -10,6 +10,7 @@ import { useDocumentTitle } from './useDocumentTitle'
 import { useConnectionLost } from './RpcContext'
 import OAuthButtons from './components/auth/OAuthButtons'
 import SiteLogo from './components/SiteLogo'
+import { useT } from './i18n/useT'
 
 
 interface LoginPageProps {
@@ -26,7 +27,8 @@ export default function LoginPage({ rpcStub, onLoginSuccess }: LoginPageProps) {
   const serverConfigError = useServerConfigError()
   const siteName = useSiteName()
   const connectionLost = useConnectionLost()
-  useDocumentTitle('Anmelden')
+  const t = useT()
+  useDocumentTitle(t('auth.signIn'))
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
@@ -45,10 +47,10 @@ export default function LoginPage({ rpcStub, onLoginSuccess }: LoginPageProps) {
           window.location.reload()
         }
       } else {
-        setError('Benutzername oder Passwort ist ungültig')
+        setError(t('auth.invalidCredentials'))
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Anmeldung fehlgeschlagen')
+      setError(err instanceof Error ? err.message : t('auth.signInFailed'))
     } finally {
       setLoading(false)
     }
@@ -66,9 +68,9 @@ export default function LoginPage({ rpcStub, onLoginSuccess }: LoginPageProps) {
           className="flex h-full min-h-0 flex-col items-center justify-center gap-4 overflow-y-auto bg-kumo-base px-4 py-8"
         >
           <p className="text-sm text-kumo-danger text-center">
-            Bereitstellungs-Einstellungen konnten nicht geladen werden.
+            {t('auth.configLoadError')}
           </p>
-          <Button variant="secondary" onClick={() => window.location.reload()}>Neu laden</Button>
+          <Button variant="secondary" onClick={() => window.location.reload()}>{t('auth.reload')}</Button>
         </div>
       )
     }
@@ -76,7 +78,7 @@ export default function LoginPage({ rpcStub, onLoginSuccess }: LoginPageProps) {
       <div className="flex h-full min-h-0 flex-col items-center justify-center gap-4 overflow-y-auto bg-kumo-base px-4 py-8">
         <Loader size="lg" />
         <p className="text-sm text-kumo-subtle text-center">
-          {connectionLost ? 'Server nicht erreichbar. Neuer Versuch …' : 'Wird geladen …'}
+          {connectionLost ? t('auth.serverUnreachable') : t('auth.loading')}
         </p>
       </div>
     )
@@ -107,7 +109,7 @@ export default function LoginPage({ rpcStub, onLoginSuccess }: LoginPageProps) {
             </div>
           </SiteLogo>
           <h1 className="text-xl font-semibold text-kumo-default">{siteName}</h1>
-          <p className="text-sm text-kumo-subtle mt-1">Melde dich bei deinem Konto an</p>
+          <p className="text-sm text-kumo-subtle mt-1">{t('auth.signInTitle')}</p>
         </div>
 
         {passwordAuthEnabled && (
@@ -116,19 +118,19 @@ export default function LoginPage({ rpcStub, onLoginSuccess }: LoginPageProps) {
             <form onSubmit={handleSubmit} className="space-y-4">
               <Input
                 className="w-full"
-                label="Benutzername"
+                label={t('auth.username')}
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 autoFocus
                 autoComplete="username"
                 disabled={loading}
-                placeholder="dein-benutzername"
+                placeholder={t('auth.usernamePlaceholder')}
               />
 
               <Input
                 className="w-full"
                 type="password"
-                label="Passwort"
+                label={t('auth.password')}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 autoComplete="current-password"
@@ -147,14 +149,14 @@ export default function LoginPage({ rpcStub, onLoginSuccess }: LoginPageProps) {
                 loading={loading}
                 className="w-full justify-center"
               >
-                Anmelden
+                {t('auth.signIn')}
               </Button>
             </form>
 
             <p className="text-center text-sm text-kumo-subtle mt-6">
-              Noch kein Konto?{' '}
+              {t('auth.noAccount')}{' '}
               <Link to="/signup" className="text-kumo-brand hover:underline font-medium">
-                Konto erstellen
+                {t('auth.createAccount')}
               </Link>
             </p>
           </>
@@ -166,7 +168,7 @@ export default function LoginPage({ rpcStub, onLoginSuccess }: LoginPageProps) {
             {passwordAuthEnabled && (
               <div className="flex items-center gap-3 mb-4">
                 <div className="h-px flex-1 bg-kumo-line" />
-                <span className="text-xs text-kumo-subtle">oder</span>
+                <span className="text-xs text-kumo-subtle">{t('auth.or')}</span>
                 <div className="h-px flex-1 bg-kumo-line" />
               </div>
             )}

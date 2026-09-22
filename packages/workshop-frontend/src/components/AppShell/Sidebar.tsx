@@ -11,6 +11,7 @@ import {
   Stack,
 } from '@phosphor-icons/react'
 import { useSiteName } from '../../ServerConfigContext'
+import { useT } from '../../i18n/useT'
 import SiteLogo from '../SiteLogo'
 import { useGatekeeperApps } from '../../useGatekeeperApps'
 import { openCommandPalette } from './commandPaletteBus'
@@ -42,6 +43,7 @@ export default function Sidebar({
   onToggleCollapsed: () => void
 }) {
   const siteName = useSiteName()
+  const t = useT()
   // Gatekeeper-served management apps the user can reach now (one per gatekeeper that provides a UI
   // and is connected / enabled for everyone). Disabled or not-yet-connected ones aren't returned, so
   // they simply don't appear. The set is fully dynamic — no gatekeeper is hardcoded.
@@ -49,7 +51,7 @@ export default function Sidebar({
 
   return (
     <aside
-      aria-label="Seitenleiste"
+      aria-label={t('sidebar.aside')}
       className={[
         // Sidebar is the app chrome: a hair greyer than the (lighter) content canvas so the two
         // surfaces read as distinct without a heavy divider.
@@ -80,8 +82,8 @@ export default function Sidebar({
             <button
               type="button"
               onClick={() => openCommandPalette()}
-              aria-label="Suche"
-              title="Suche (⌘K)"
+              aria-label={t('sidebar.search')}
+              title={t('sidebar.searchTitle')}
               className="press flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-kumo-inactive transition-colors hover:bg-kumo-tint hover:text-kumo-default"
             >
               <MagnifyingGlass size={15} />
@@ -89,8 +91,8 @@ export default function Sidebar({
             <button
               type="button"
               onClick={onToggleCollapsed}
-              aria-label="Seitenleiste einklappen"
-              title="Seitenleiste einklappen"
+              aria-label={t('sidebar.collapse')}
+              title={t('sidebar.collapse')}
               className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-kumo-inactive transition-colors hover:bg-kumo-tint hover:text-kumo-default"
             >
               <SidebarSimple size={15} />
@@ -104,8 +106,8 @@ export default function Sidebar({
         <button
           type="button"
           onClick={onToggleCollapsed}
-          aria-label="Seitenleiste ausklappen"
-          title="Seitenleiste ausklappen"
+          aria-label={t('sidebar.expand')}
+          title={t('sidebar.expand')}
           className="mx-auto mt-2 flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-kumo-inactive transition-colors hover:bg-kumo-tint hover:text-kumo-default"
         >
           <SidebarSimple size={15} className="rotate-180" />
@@ -119,25 +121,25 @@ export default function Sidebar({
           <nav className="flex flex-col gap-0.5 px-2">
             <SidebarItem
               to="/"
-              label="Start"
+              label={t('sidebar.home')}
               icon={<House size={14} weight="regular" />}
               collapsed={collapsed}
             />
             <SidebarItem
               to="/workspaces"
-              label="Arbeitsbereiche"
+              label={t('sidebar.workspaces')}
               icon={<SquaresFour size={14} weight="regular" />}
               collapsed={collapsed}
             />
             <SidebarItem
               to="/blueprints"
-              label="Baupläne"
+              label={t('sidebar.blueprints')}
               icon={<Blueprint size={14} weight="regular" />}
               collapsed={collapsed}
             />
             <SidebarItem
               to="/outputs"
-              label="Ergebnisse"
+              label={t('sidebar.outputs')}
               icon={<Stack size={14} weight="regular" />}
               collapsed={collapsed}
             />
@@ -182,7 +184,7 @@ export default function Sidebar({
             })}
             <SidebarItem
               to="/explore"
-              label="Entdecken"
+              label={t('sidebar.explore')}
               icon={<Compass size={14} weight="regular" />}
               collapsed={collapsed}
             />
