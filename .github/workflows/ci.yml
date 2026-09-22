@@ -28,6 +28,12 @@ jobs:
       - name: Verify von-Busch fork markers survive
         run: bash vonbusch/scripts/fork-guard.sh --verbose
 
+      # owlOS-Naht-Wächter (OWL-1567): verifiziert, dass die owlOS-Gatekeeper
+      # (unifi, homeassistant) an ihren genau drei Upstream-Kern-Berührpunkten
+      # intakt sind. Läuft im selben schnellen Bash-Job wie der Fork-Guard.
+      - name: Verify owlOS gatekeeper seams survive
+        run: bash scripts/owlos-guard.sh --verbose
+
   # Parallel to `test` so lint and test failures surface on the same run. Package type checking
   # lives in Build; `scripts/` is checked here instead, because it is deliberately kept off
   # `pnpm build`'s hot path (see AGENTS.md) and this is the cheap job.

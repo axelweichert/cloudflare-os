@@ -1,0 +1,15 @@
+# Upstream-Pin für den owlOS/CloudflareOS-Fork (OWL-1567 / AC1)
+#
+# Upstream = cloudflare/cloudflare-os (öffentlich). `origin/main` ist ein
+# Snapshot-Fork OHNE gemeinsame Historie (git merge-base leer) — deshalb wird
+# hier eine explizite Ziel-Ref gepinnt statt auf merge-base zu vertrauen.
+# Upgrade-Prozess: docs/UPGRADING.md.  Format: KEY=value, `#`-Zeilen sind Kommentar.
+
+# Ziel-Ref des nächsten geplanten Upgrades (git rev-parse upstream/main am Pin-Datum).
+UPSTREAM_REF=f961c844047333f834ba628bfebdfb4f41ff236e
+UPSTREAM_REMOTE=https://github.com/cloudflare/cloudflare-os.git
+UPSTREAM_PINNED_AT=2026-09-22
+
+# Basis-Version, auf der der aktuelle Fork-Snapshot beruht (erste Bestandsaufnahme,
+# vonbusch/FORK-SYNC.md). Kein SHA verfügbar, weil Snapshot-Fork ohne Historie.
+BASE_SNAPSHOT_DATE=2026-08-27
