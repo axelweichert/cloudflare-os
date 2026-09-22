@@ -1,6 +1,7 @@
 import { Select, type PortalContainer } from '@cloudflare/kumo'
 import { AiChatAuthorInfo } from '@gadgets/workshop-shared/api'
 import { ConnectionConfigField } from './ConnectionConfigField'
+import { useT } from '../i18n/useT'
 
 export interface AiModelConnectionConfigProps {
   availableModels: AiChatAuthorInfo[]
@@ -15,17 +16,18 @@ export function AiModelConnectionConfig({
   onSelectedModelIdChange,
   selectContainer,
 }: AiModelConnectionConfigProps) {
+  const t = useT()
   return (
     <section className="grid gap-3">
       <ConnectionConfigField
-        label="Modell"
-        description="Wähle das Modell, das diese Verbindung verwenden kann."
+        label={t('gk.aimodel.model')}
+        description={t('gk.aimodel.modelDesc')}
       >
         <Select
-          aria-label="KI-Modell auswählen"
+          aria-label={t('gk.aimodel.selectModel')}
           className="w-full text-sm [&_button]:!h-9"
           container={selectContainer}
-          placeholder="KI-Modell auswählen"
+          placeholder={t('gk.aimodel.selectModel')}
           value={selectedModelId}
           onValueChange={(v) => onSelectedModelIdChange(v as string | undefined)}
           renderValue={(id) => availableModels.find((m) => m.id === id)?.name ?? id}

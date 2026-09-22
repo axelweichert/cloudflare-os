@@ -19,6 +19,7 @@ import {
 import { OutputSummary } from '@gadgets/workshop-shared/api'
 import { useAuthenticatedApi } from '../AuthContext'
 import { useDocumentTitle } from '../useDocumentTitle'
+import { useT } from '../i18n/useT'
 import ViewToggle from '../components/ViewToggle'
 import { MENU_CONTENT, MENU_ITEM, MENU_POSITIONER_STYLE } from '../components/menuStyles'
 import { formatOf } from '../components/format/formats'
@@ -388,7 +389,8 @@ function RenameOutputDialog({
 type TypeFilter = 'all' | string
 
 function OutputsPage() {
-  useDocumentTitle('Ergebnisse')
+  const t = useT()
+  useDocumentTitle(t('routes.outputs.title'))
   const { authenticatedApi } = useAuthenticatedApi()
   const navigate = useNavigate()
   const toasts = useKumoToastManager()
@@ -576,9 +578,9 @@ function OutputsPage() {
     <div className="mx-auto flex h-full w-full max-w-5xl flex-col px-3 sm:px-10">
       <header className="flex items-end justify-between gap-4 px-3 pb-4 pt-6 sm:pt-10">
         <div className="min-w-0">
-          <h1 className="text-2xl font-semibold tracking-tight text-kumo-default">Ergebnisse</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-kumo-default">{t('routes.outputs.title')}</h1>
           <p className="mt-1 text-[13px] leading-[18px] tracking-[-0.25px] text-kumo-subtle">
-            Alles, was deine Arbeitsbereiche erzeugt haben, an einem Ort.
+            {t('routes.outputs.subtitle')}
           </p>
         </div>
         <ViewToggle view={view} onChange={setView} />
@@ -623,7 +625,7 @@ function OutputsPage() {
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Ergebnisse durchsuchen…"
+              placeholder={t('routes.outputs.search')}
               className="h-10 w-full rounded-lg border border-kumo-line bg-kumo-base pl-9 pr-4 text-[16px] text-kumo-default placeholder:text-kumo-inactive transition-[border-color,box-shadow] duration-150 ease-out focus:border-kumo-ring focus:outline-none focus:ring-[3px] focus:ring-kumo-ring/15 sm:h-9 sm:text-[13px]"
             />
           </div>
@@ -651,12 +653,12 @@ function OutputsPage() {
             </div>
             <div>
               <p className="text-sm font-medium text-kumo-default">
-                {isFiltered ? 'Keine passenden Ergebnisse' : 'Noch keine Ergebnisse'}
+                {isFiltered ? t('routes.outputs.emptyMatchTitle') : t('routes.outputs.emptyTitle')}
               </p>
               <p className="mt-1 text-[13px] leading-[18px] text-kumo-subtle">
                 {isFiltered
-                  ? 'Versuch einen anderen Filter oder Suchbegriff.'
-                  : 'Alles, was deine Arbeitsbereiche erstellen, erscheint hier.'}
+                  ? t('routes.outputs.emptyMatchBody')
+                  : t('routes.outputs.emptyBody')}
               </p>
             </div>
             {/* Offer the deployment's formats here rather than sending them to the home page. */}

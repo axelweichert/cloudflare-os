@@ -46,6 +46,12 @@ STRUCT_MARKERS=(
   "vonbusch/I18N-DE.md"                   # DE-Glossar / Übersetzungsstrategie
   "vonbusch/scripts/drift-report.sh"      # Drift-Report (read-only)
   "vonbusch/scripts/fork-guard.sh"        # dieser Wächter selbst
+  # i18n-Overlay (OWL-1590/1591/1596) — upstream-unbekanntes Verzeichnis, in dem
+  # ab OWL-1596 die deutschen UI-Werte konsolidiert leben. Fehlt es, ist die
+  # migrierte DE-Arbeit verloren → Null-Verlust-Verletzung.
+  "packages/workshop-frontend/src/i18n/catalogs/de.ts"
+  "packages/workshop-frontend/src/i18n/catalogs/en.ts"
+  "packages/workshop-frontend/src/i18n/I18nProvider.tsx"
 )
 
 echo "── (1) Struktur-Marker (vonbusch/) ──"
@@ -56,17 +62,22 @@ echo ""
 
 # ── (3) DE-KEYS: Stichprobe realer deutscher UI-Strings im Quelltext ─────────
 # Format: "<Datei>::<gesuchter deutscher String>"
-# Diese Strings sind unsere direkte EN→DE-Ersetzung. Verschwinden sie (z. B.
-# durch einen blinden Upstream-Merge/-Reset), ist Fork-Arbeit verloren → Abbruch.
-# Bewusst breit über Kernflächen gestreut (Home, Sidebar, Torwächter, Baupläne,
-# Entdecken, Verbindungen), damit ein flächiger Verlust sicher auffällt.
+# Diese Strings sind unsere Fork-DE-Arbeit. Verschwinden sie (z. B. durch einen
+# blinden Upstream-Merge/-Reset), ist Fork-Arbeit verloren → Abbruch.
+#
+# i18n-Migration (OWL-1590/1591/1596): sobald eine Fläche auf den i18n-Overlay
+# (`t()`) umgestellt ist, lebt der deutsche WERT nicht mehr inline in der Upstream-
+# Datei, sondern im Overlay-Katalog `i18n/catalogs/de.ts` (liegt im vonbusch-
+# unbekannten Overlay-Verzeichnis → upstream-sicher, kein Re-apply nötig). Der
+# Marker wandert dann mit: er zeigt auf den Katalog, wo der Wert dauerhaft lebt.
+# Noch NICHT migrierte Flächen bleiben als Inline-Marker (Connections, GK-Hero).
 DE_KEY_MARKERS=(
-  "packages/workshop-frontend/src/routes/index.tsx::Woran arbeiten wir"
-  "packages/workshop-frontend/src/routes/gatekeepers.tsx::Torwächter"
-  "packages/workshop-frontend/src/routes/blueprints.tsx::Baupläne"
-  "packages/workshop-frontend/src/routes/explore.tsx::Entdecken"
+  "packages/workshop-frontend/src/i18n/catalogs/de.ts::Woran arbeiten wir"
+  "packages/workshop-frontend/src/i18n/catalogs/de.ts::Torwächter"
+  "packages/workshop-frontend/src/i18n/catalogs/de.ts::Baupläne"
+  "packages/workshop-frontend/src/i18n/catalogs/de.ts::Entdecken"
+  "packages/workshop-frontend/src/i18n/catalogs/de.ts::Anmelden"
   "packages/workshop-frontend/src/Connections.tsx::Verbindungen"
-  "packages/workshop-frontend/src/components/AppShell/Sidebar.tsx::Baupläne"
 )
 
 echo "── (3) DE-Key-Stichprobe (reale Übersetzungen im Quelltext) ──"
@@ -85,18 +96,29 @@ echo ""
 
 # ── Gesamt-Zählwerk: sind überhaupt noch nennenswert viele DE-Strings da? ─────
 # Fängt den Fall ab, dass die Stichprobe zufällig überlebt, aber eine breite
-# Rückabwicklung (z. B. reset --hard upstream) fast alle DE-Strings entfernt hätte.
-MIN_DE_FILES=20   # Baseline 2026-08-27: 26 Dateien. Upstream hätte 0. Puffer für legitime Churn.
+# Rückabwicklung (z. B. reset --hard upstream) fast alle DE-Werte entfernt hätte.
+#
+# Zwei komplementäre Quellen (OR — eine reicht, beide werden angezeigt):
+#   (a) Katalog-Werte  — ab OWL-1596 der kanonische DE-Sitz. Jeder migrierte
+#       String ist eine Zeile in catalogs/de.ts. Wächst mit der Migration; ein
+#       Upstream-Reset (Katalog existiert dort nicht) fiele auf 0 → rot.
+#   (b) Inline-DE-Dateien — noch nicht migrierte Flächen mit deutschen Literalen.
+#       Schrumpft naturgemäß mit der i18n-Migration; nur informativ, nicht mehr
+#       allein maßgeblich (sonst würde legitime Migration den Guard fälschlich rot).
+MIN_DE_CATALOG=80   # de.ts hält aktuell ~200 Keys. Upstream hätte 0. Großer Puffer.
+DE_CATALOG_COUNT=$(grep -cE "^\s*'[A-Za-z0-9.]+'\s*:" \
+  packages/workshop-frontend/src/i18n/catalogs/de.ts 2>/dev/null || echo 0)
 DE_FILE_COUNT=$(grep -rIlE 'Torwächter|Baupläne|Entdecken|Verbindungen|Einstellungen|Woran arbeiten wir' \
   packages/workshop-frontend/src packages/workshop-backend/src 2>/dev/null | wc -l | tr -d ' ')
-echo "── Flächen-Check: DE-übersetzte Quelldateien ──"
+echo "── Flächen-Check: DE-Werte (Katalog + Inline) ──"
 CHECKS=$((CHECKS+1))
-if [ "$DE_FILE_COUNT" -ge "$MIN_DE_FILES" ]; then
-  printf '  %s✓%s %s DE-Quelldateien gefunden (Mindestwert: %s)\n' "$GREEN" "$RESET" "$DE_FILE_COUNT" "$MIN_DE_FILES"
+if [ "$DE_CATALOG_COUNT" -ge "$MIN_DE_CATALOG" ]; then
+  printf '  %s✓%s %s DE-Katalog-Keys (Mindestwert: %s) + %s Inline-DE-Dateien (informativ)\n' \
+    "$GREEN" "$RESET" "$DE_CATALOG_COUNT" "$MIN_DE_CATALOG" "$DE_FILE_COUNT"
 else
   FAILURES=$((FAILURES+1))
-  printf '  %s✗ FEHLT%s nur %s DE-Quelldateien gefunden (erwartet ≥ %s) → breiter Verlust?\n' \
-    "$RED" "$RESET" "$DE_FILE_COUNT" "$MIN_DE_FILES"
+  printf '  %s✗ FEHLT%s nur %s DE-Katalog-Keys (erwartet ≥ %s) → breiter DE-Verlust?\n' \
+    "$RED" "$RESET" "$DE_CATALOG_COUNT" "$MIN_DE_CATALOG"
 fi
 echo ""
 

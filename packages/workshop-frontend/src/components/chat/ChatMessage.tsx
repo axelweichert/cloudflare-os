@@ -2,6 +2,7 @@ import { Loader } from '@cloudflare/kumo'
 import { Hexagon } from '@phosphor-icons/react'
 import type { ChatMessage as ChatMessageType } from '../../data/chat'
 import ToolCallCard from './ToolCallCard'
+import { useT } from '../../i18n/useT'
 
 function AssistantAvatar() {
   return (
@@ -58,6 +59,7 @@ function RichContent({ text }: { text: string }) {
 
 export default function ChatMessage({ message }: { message: ChatMessageType }) {
   const isUser = message.role === 'user'
+  const t = useT()
 
   return (
     <div className="flex gap-3 items-start">
@@ -67,7 +69,7 @@ export default function ChatMessage({ message }: { message: ChatMessageType }) {
         {/* Role + time */}
         <div className="flex items-center gap-2">
           <span className="text-xs font-semibold text-kumo-default">
-            {isUser ? 'Du' : 'Workshop'}
+            {isUser ? t('chat.msg.you') : 'Workshop'}
           </span>
           <span className="font-mono text-xs text-kumo-subtle">{message.timestamp}</span>
         </div>

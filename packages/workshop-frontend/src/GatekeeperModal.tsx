@@ -36,6 +36,7 @@ import { reportIssue } from './errorReporting'
 import { useSiteName } from './ServerConfigContext'
 import { AccountsSubscriberAdapter } from './accountsSubscriber'
 import { useDialogSelectPortalContainer } from './useDialogSelectPortalContainer'
+import { useT } from './i18n/useT'
 
 export interface GatekeeperModalProps {
   open: boolean
@@ -117,6 +118,8 @@ type ConfiguratorFrameState = {
   resourceUrlPattern: string
 }
 
+// TODO i18n: module-level const, cannot use the useT() hook here. Keys gk.type.aiModel.* /
+// gk.type.agent.* exist for a later refactor that threads translations in from the component.
 function platformConnectionTypes(siteName: string): ConnectionType[] {
   return [
   {
@@ -189,6 +192,7 @@ export default function GatekeeperModal({
 }: GatekeeperModalProps) {
   const { authenticatedApi } = useAuthenticatedApi()
   const toasts = useKumoToastManager()
+  const t = useT()
 
   const [selectedConnectionId, setSelectedConnectionId] = useState<ConnectionTypeId | null>(null)
   const [searchText, setSearchText] = useState('')
@@ -384,7 +388,7 @@ export default function GatekeeperModal({
       if (cancelled) return
       console.error('Failed to load models:', err)
       reportIssue('gatekeeper.models-load', err)
-      toasts.add({ title: 'KI-Modelle konnten nicht geladen werden', variant: 'error' })
+      toasts.add({ title: t('gk.err.modelsLoad'), variant: 'error' })
     })
 
     authenticatedApi.listGatekeeperVendors().then(vendors => {
@@ -394,7 +398,7 @@ export default function GatekeeperModal({
       if (cancelled) return
       console.error('Failed to load connection vendors:', err)
       reportIssue('gatekeeper.vendors-load', err)
-      toasts.add({ title: 'Verbindungsoptionen konnten nicht geladen werden', variant: 'error' })
+      toasts.add({ title: t('gk.err.optionsLoad'), variant: 'error' })
     })
 
     return () => {
@@ -563,7 +567,7 @@ export default function GatekeeperModal({
           reportIssue('gatekeeper.configurator-start', error, {
             gatekeeperVendorId: selectedConnection?.vendorId,
           })
-          setConfiguratorError(error?.message || 'Konfigurator konnte nicht gestartet werden.')
+          setConfiguratorError(error?.message || t('gk.err.configuratorStart'))
         }
       })
       .finally(() => {
@@ -597,16 +601,16 @@ export default function GatekeeperModal({
         await authenticatedApi.provisionAmbientAccount(vendorId)
         // The minted account arrives via subscribeConnectedAccounts() and is auto-selected by the
         // "first valid account" effect, so the flow continues to resource selection.
-        toasts.add({ title: 'Konto verbunden.', variant: 'success' })
+        toasts.add({ title: t('gk.toast.accountConnected'), variant: 'success' })
         return
       }
       const result = await authenticatedApi.connectAccount(vendorId, resourceUrlPatterns)
       window.open(result.url, '_blank', 'noopener,noreferrer')
-      toasts.add({ title: 'Schließe die Kontoverbindung im neuen Tab ab.', variant: 'success' })
+      toasts.add({ title: t('gk.toast.finishConnect'), variant: 'success' })
     } catch (error) {
       console.error('Failed to initiate connection:', error)
       reportIssue('gatekeeper.connect-start', error, { gatekeeperVendorId: vendorId })
-      toasts.add({ title: 'Verbindungsvorgang konnte nicht gestartet werden', variant: 'error' })
+      toasts.add({ title: t('gk.err.connectStart'), variant: 'error' })
     } finally {
       setConnectingVendor(null)
     }
@@ -624,7 +628,7 @@ export default function GatekeeperModal({
       const result = await authenticatedApi.ensureAccountResources(accountId, missing)
       if (result.url) {
         window.open(result.url, '_blank', 'noopener,noreferrer')
-        toasts.add({ title: 'Erteile den zusätzlichen Zugriff im neuen Tab.', variant: 'success' })
+        toasts.add({ title: t('gk.toast.grantAccessTab'), variant: 'success' })
       }
       // The new grant arrives via subscribeConnectedAccounts(); the account's flag then clears and
       // the configurator loads automatically.
@@ -633,7 +637,7 @@ export default function GatekeeperModal({
       reportIssue('gatekeeper.resource-grant', error, {
         gatekeeperVendorId: selectedConnection?.vendorId,
       })
-      toasts.add({ title: 'Zusätzlicher Zugriff konnte nicht angefordert werden', variant: 'error' })
+      toasts.add({ title: t('gk.err.additionalAccess'), variant: 'error' })
     } finally {
       setGrantingAccountId(null)
     }
@@ -644,13 +648,13 @@ export default function GatekeeperModal({
     try {
       const result = await authenticatedApi.reconnectAccount(accountId)
       window.open(result.url, '_blank', 'noopener,noreferrer')
-      toasts.add({ title: 'Schließe die erneute Kontoverbindung im neuen Tab ab.', variant: 'success' })
+      toasts.add({ title: t('gk.toast.finishReconnect'), variant: 'success' })
     } catch (error) {
       console.error('Failed to initiate reconnect:', error)
       reportIssue('gatekeeper.reconnect-start', error, {
         gatekeeperVendorId: selectedConnection?.vendorId,
       })
-      toasts.add({ title: 'Vorgang zum erneuten Verbinden konnte nicht gestartet werden', variant: 'error' })
+      toasts.add({ title: t('gk.err.reconnectStart'), variant: 'error' })
     } finally {
       setReconnectingAccountId(null)
     }
@@ -658,7 +662,7 @@ export default function GatekeeperModal({
 
   const handleCreateAiModel = async () => {
     if (!selectedModelId) {
-      toasts.add({ title: 'Bitte wähle ein KI-Modell aus', variant: 'warning' })
+      toasts.add({ title: t('gk.err.selectModel'), variant: 'warning' })
       return
     }
     setCreating(true)
@@ -672,11 +676,11 @@ export default function GatekeeperModal({
         transferred = true
         onClose()
       } else {
-        toasts.add({ title: 'KI-Modell-Verbindung konnte nicht erstellt werden', variant: 'error' })
+        toasts.add({ title: t('gk.err.modelConnCreate'), variant: 'error' })
       }
     } catch (err) {
       console.error('Failed to create AI model gatekeeper:', err)
-      toasts.add({ title: 'Failed to create AI model connection', variant: 'error' })
+      toasts.add({ title: t('gk.err.modelConnCreate'), variant: 'error' })
     } finally {
       if (gatekeeper && !transferred) gatekeeper[Symbol.dispose]()
       setCreating(false)
@@ -685,7 +689,7 @@ export default function GatekeeperModal({
 
   const handleCreateAgentSpawner = async () => {
     if (!spawnerDisplayName.trim()) {
-      toasts.add({ title: 'Bitte gib einen Anzeigenamen ein', variant: 'warning' })
+      toasts.add({ title: t('gk.err.enterDisplayName'), variant: 'warning' })
       return
     }
     if (spawnerEnvError) {
@@ -709,11 +713,11 @@ export default function GatekeeperModal({
         transferred = true
         onClose()
       } else {
-        toasts.add({ title: 'Agent-Spawner-Verbindung konnte nicht erstellt werden', variant: 'error' })
+        toasts.add({ title: t('gk.err.spawnerConnCreate'), variant: 'error' })
       }
     } catch (err) {
       console.error('Failed to create agent spawner gatekeeper:', err)
-      toasts.add({ title: 'Failed to create agent spawner connection', variant: 'error' })
+      toasts.add({ title: t('gk.err.spawnerConnCreate'), variant: 'error' })
     } finally {
       if (gatekeeper && !transferred) gatekeeper[Symbol.dispose]()
       setCreating(false)
@@ -731,10 +735,10 @@ export default function GatekeeperModal({
     let transferred = false
     try {
       if (!configuratorFrameState?.frame || configuratorFrameState.accountId !== selectedAccountId || configuratorFrameState.resourceUrlPattern !== resourceUrlPattern) {
-        throw new Error('Konfigurator ist nicht bereit.')
+        throw new Error(t('gk.err.configuratorNotReady'))
       }
       const resourceUrl = await configuratorCollectResourceUrlRef.current?.()
-      if (!resourceUrl) throw new Error('Konfigurator hat keine Ressourcen-URL geliefert.')
+      if (!resourceUrl) throw new Error(t('gk.err.noResourceUrl'))
       const overseer = await getOverseer()
       gatekeeper = await overseer.newGatekeeper(selectedAccountId, resourceUrl)
       if (gatekeeper) {
@@ -742,11 +746,11 @@ export default function GatekeeperModal({
         transferred = true
         onClose()
       } else {
-        toasts.add({ title: 'Verbindung konnte nicht erstellt werden', variant: 'error' })
+        toasts.add({ title: t('gk.err.connCreate'), variant: 'error' })
       }
     } catch (err) {
       console.error('Failed to create resource gatekeeper:', err)
-      toasts.add({ title: err instanceof Error && err.message ? err.message : 'Verbindung konnte nicht erstellt werden', variant: 'error' })
+      toasts.add({ title: err instanceof Error && err.message ? err.message : t('gk.err.connCreate'), variant: 'error' })
     } finally {
       if (gatekeeper && !transferred) gatekeeper[Symbol.dispose]()
       setCreating(false)
@@ -786,8 +790,8 @@ export default function GatekeeperModal({
   }
 
   const createLabel = selectedConnection?.resourceUrlPattern
-    ? 'Verbindung hinzufügen'
-    : 'Verbindung erstellen'
+    ? t('gk.header.addConnection')
+    : t('gk.header.createConnection')
 
   return (
     <Dialog.Root open={open} onOpenChange={(o) => { if (!o) onClose() }}>
@@ -799,17 +803,17 @@ export default function GatekeeperModal({
         <div ref={headerRef} className="shrink-0 flex items-start justify-between gap-4 border-b border-kumo-line px-5 py-4">
           <div className="min-w-0">
             <Dialog.Title className="text-[17px] leading-6 font-medium tracking-[-0.35px] text-kumo-default">
-              {selectedConnection ? selectedConnection.title : 'Neue Verbindung erstellen'}
+              {selectedConnection ? selectedConnection.title : t('gk.header.createNew')}
             </Dialog.Title>
             <Dialog.Description className="mt-1 text-[13px] leading-[18px] font-normal tracking-[-0.25px] text-kumo-subtle">
               {selectedConnection
                 ? selectedConnection.description
-                : 'Wähle aus, was dieses Gadget verwenden können soll.'}
+                : t('gk.header.chooseDesc')}
             </Dialog.Description>
           </div>
           <Dialog.Close
             render={(props) => (
-              <WorkshopIconButton {...props} aria-label="Schließen">
+              <WorkshopIconButton {...props} aria-label={t('gk.close')}>
                 <X size={16} />
               </WorkshopIconButton>
             )}
@@ -825,7 +829,7 @@ export default function GatekeeperModal({
                 className="mb-4 inline-flex cursor-pointer items-center gap-1.5 text-[12px] leading-4 font-medium tracking-[-0.2px] text-kumo-subtle transition-colors hover:text-kumo-default"
               >
                 <CaretLeft size={13} />
-                Alle Verbindungstypen
+                {t('gk.allTypes')}
               </button>
 
               <div className="space-y-4">
@@ -899,7 +903,7 @@ export default function GatekeeperModal({
                 <input
                   value={searchText}
                   onChange={(event) => setSearchText(event.target.value)}
-                  placeholder="Dienste, Apps, Datenquellen durchsuchen …"
+                  placeholder={t('gk.searchTypes')}
                   autoFocus
                   className="h-10 w-full rounded-xl border border-kumo-line bg-kumo-base pl-9 pr-3 text-[13px] leading-[18px] font-normal tracking-[-0.25px] text-kumo-default placeholder:text-kumo-inactive shadow-none outline-none transition-[border-color,box-shadow] focus:border-kumo-ring focus:ring-2 focus:ring-kumo-ring/10"
                 />
@@ -911,7 +915,7 @@ export default function GatekeeperModal({
                 {isSearching ? (
                   filteredConnections.length === 0 ? (
                     <div className="px-4 py-8 text-center text-[13px] leading-[18px] font-normal tracking-[-0.25px] text-kumo-subtle">
-                      Keine passenden Verbindungstypen.
+                      {t('gk.noMatchTypes')}
                     </div>
                   ) : filteredConnections.map((connection, index) => (
                     <ConnectionTypeRow
@@ -924,7 +928,7 @@ export default function GatekeeperModal({
                 ) : (
                   groupedConnections.length === 0 ? (
                     <div className="px-4 py-8 text-center text-[13px] leading-[18px] font-normal tracking-[-0.25px] text-kumo-subtle">
-                      Keine Verbindungstypen verfügbar.
+                      {t('gk.noTypes')}
                     </div>
                   ) : groupedConnections.map((group, index) => (
                     <ConnectionGroupRow
@@ -949,14 +953,14 @@ export default function GatekeeperModal({
             <div />
             <div className="flex shrink-0 items-center gap-2">
               <WorkshopButton onClick={() => setSelectedConnectionId(null)} disabled={creating} className="!h-9">
-                Zurück
+                {t('gk.back')}
               </WorkshopButton>
               <WorkshopButton
                 tone="primary"
                 onClick={handleCreate}
                 disabled={!canCreate || creating}
               >
-                {creating ? 'Wird erstellt …' : createLabel}
+                {creating ? t('gk.creating') : createLabel}
               </WorkshopButton>
             </div>
           </div>

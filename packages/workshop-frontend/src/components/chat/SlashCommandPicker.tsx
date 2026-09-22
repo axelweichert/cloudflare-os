@@ -13,6 +13,7 @@ import {
   slashCommandTokenKey, type ParsedSlashCommandInput,
 } from "./slash-command-input";
 import { loadSlashCommandCatalog, slashCommandKey } from "./slash-command-catalog";
+import { useT } from "../../i18n/useT";
 
 type SlashCommandPopupLayout = {
   left: number;
@@ -71,6 +72,7 @@ export function useSlashCommandPicker({
    */
   chatExists: boolean;
 }) {
+  const t = useT();
   const [choices, setChoices] = useState<SlashCommandChoice[]>([]);
   const [choicesQuery, setChoicesQuery] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -231,7 +233,7 @@ export function useSlashCommandPicker({
         maxHeight: layout.maxHeight,
       }}
     >
-      <p className={`m-0 shrink-0 px-3.5 pb-1 pt-2.5 ${PICKER_CAPTION}`}>Kommandos</p>
+      <p className={`m-0 shrink-0 px-3.5 pb-1 pt-2.5 ${PICKER_CAPTION}`}>{t('chat.slash.caption')}</p>
       <div
         ref={listRef}
         id={listboxId}
@@ -241,7 +243,7 @@ export function useSlashCommandPicker({
         className="sidebar-scroll min-h-0 flex-1 overflow-y-auto"
       >
         {loading && choices.length === 0 ? (
-          <p className={PICKER_EMPTY}>Kommandos werden geladen…</p>
+          <p className={PICKER_EMPTY}>{t('chat.slash.loading')}</p>
         ) : choices.length > 0 ? (
           choices.map((choice, optionIndex) => (
             <button
@@ -274,10 +276,10 @@ export function useSlashCommandPicker({
         ) : (
           <p className={PICKER_EMPTY}>
             {error
-              ? `Kommandos konnten nicht geladen werden. ${error}`
+              ? t('chat.slash.loadError', { error })
               : query
-                ? "Keine Kommandos passen zu deiner Suche."
-                : "Keine Kommandos verfügbar."}
+                ? t('chat.slash.noMatch')
+                : t('chat.slash.none')}
           </p>
         )}
       </div>
@@ -301,10 +303,10 @@ export function useSlashCommandPicker({
     setIndex: selectIndex,
     status: open
       ? loading
-        ? "Slash-Kommandos werden geladen"
+        ? t('chat.slash.srLoading')
         : error
-          ? `Slash-Kommandos nicht verfügbar: ${error}`
-          : `${choices.length} Slash-Kommando${choices.length === 1 ? "" : "s"} gefunden`
+          ? t('chat.slash.srUnavailable', { error })
+          : t('chat.slash.srFound', { n: String(choices.length) })
       : "",
   };
 }

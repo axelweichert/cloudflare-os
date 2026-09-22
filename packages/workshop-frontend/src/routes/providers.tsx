@@ -17,6 +17,7 @@ import {
 } from '@phosphor-icons/react'
 import AddModelModal from '../AddModelModal'
 import { useDocumentTitle } from '../useDocumentTitle'
+import { useT } from '../i18n/useT'
 import { MENU_CONTENT, MENU_ITEM, MENU_ITEM_DANGER } from '../components/menuStyles'
 
 export const Route = createFileRoute('/providers')({ component: ProvidersPage })
@@ -131,7 +132,8 @@ function Notice({ children }: { children: React.ReactNode }) {
 // ─── main page ────────────────────────────────────────────────────────────────
 
 function ProvidersPage() {
-  useDocumentTitle('KI-Anbieter')
+  const t = useT()
+  useDocumentTitle(t('routes.providers.title'))
 
   const { authenticatedApi } = useAuthenticatedApi()
   const toasts = useKumoToastManager()
@@ -216,14 +218,14 @@ function ProvidersPage() {
     <div className="mx-auto flex h-full w-full max-w-4xl flex-col px-3 sm:px-10">
       <header className="flex flex-col items-stretch gap-4 px-3 pb-3 pt-6 sm:flex-row sm:items-end sm:justify-between sm:pt-10">
         <div className="min-w-0">
-          <h1 className="text-2xl font-semibold tracking-tight text-kumo-default">KI-Anbieter</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-kumo-default">{t('routes.providers.title')}</h1>
           <p className="mt-1 text-[13px] leading-[18px] tracking-[-0.25px] text-kumo-subtle">
-            Konfiguriere die KI-Modelle, die deinen Arbeitsbereichen zur Verfügung stehen.
+            {t('routes.providers.subtitle')}
           </p>
         </div>
         <button type="button" onClick={() => setSheetOpen(true)} className={`${PRIMARY_BTN} h-11 justify-center text-[14px] sm:h-9 sm:text-[13px]`}>
           <Plus size={14} weight="bold" />
-          Anbieter hinzufügen
+          {t('routes.providers.add')}
         </button>
       </header>
 
@@ -236,7 +238,7 @@ function ProvidersPage() {
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Anbieter durchsuchen …"
+              placeholder={t('routes.providers.search')}
               className="h-9 w-full rounded-lg border border-kumo-line bg-kumo-base pl-9 pr-4 text-[13px] tracking-[-0.25px] text-kumo-default placeholder:text-kumo-inactive transition-[border-color,box-shadow] duration-150 ease-out focus:border-kumo-ring focus:outline-none focus:ring-[3px] focus:ring-kumo-ring/15"
             />
           </div>
@@ -293,14 +295,14 @@ function ProvidersPage() {
               <Lightning size={18} />
             </div>
             <div>
-              <p className="text-sm font-medium text-kumo-default">Noch keine KI-Anbieter</p>
+              <p className="text-sm font-medium text-kumo-default">{t('routes.providers.emptyTitle')}</p>
               <p className="mt-1 text-[13px] leading-[18px] text-kumo-subtle">
-                Füge einen Anbieter hinzu, um Arbeitsbereiche mit KI zu erstellen.
+                {t('routes.providers.emptyBody')}
               </p>
             </div>
             <button type="button" onClick={() => setSheetOpen(true)} className={PRIMARY_BTN}>
               <Plus size={14} weight="bold" />
-              Ersten Anbieter hinzufügen
+              {t('routes.providers.addFirst')}
             </button>
           </div>
         ) : filtered.length === 0 ? (

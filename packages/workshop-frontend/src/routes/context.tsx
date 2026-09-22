@@ -3,6 +3,7 @@ import { BookOpen, Sparkle, type Icon as PhosphorIcon } from '@phosphor-icons/re
 import { useDocumentTitle } from '../useDocumentTitle'
 import ComingSoonPreview from '../components/ComingSoonPreview'
 import { useSiteName } from '../ServerConfigContext'
+import { useT } from '../i18n/useT'
 
 /**
  * Context & Skills. The knowledge/skills surface isn't built into the rail yet — agents read
@@ -58,21 +59,22 @@ function ContextRow({ item }: { item: ContextItem }) {
 }
 
 function ContextPage() {
-  useDocumentTitle('Kontext & Skills')
+  const t = useT()
+  useDocumentTitle(t('routes.context.title'))
   const siteName = useSiteName()
   return (
     <div className="mx-auto flex h-full w-full max-w-4xl flex-col px-3 sm:px-10">
       <header className="px-3 pb-4 pt-6 sm:pt-10">
-        <h1 className="text-2xl font-semibold tracking-tight text-kumo-default">Kontext &amp; Skills</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-kumo-default">{t('routes.context.title')}</h1>
         <p className="mt-1 text-[13px] leading-[18px] tracking-[-0.25px] text-kumo-subtle">
-          Kuratierte Wissenssammlungen, die Deine Agenten lesen, plus wiederverwendbare Skills, die sie anwenden können.
+          {t('routes.context.subtitle')}
         </p>
       </header>
 
       <ComingSoonPreview
         icon={BookOpen}
-        title={`Kontext & Skills kommen bald zu ${siteName}`}
-        description="Eine Vorschau, wie Du Wissenssammlungen und Skills für Deine Agenten erstellst, auf die sie zurückgreifen können."
+        title={t('routes.context.comingSoonTitle', { siteName })}
+        description={t('routes.context.comingSoonBody')}
       >
         <div className="chat-panel min-h-0 flex-1 overflow-y-auto pb-8 pt-1">
           <div className="flex flex-col gap-0.5">

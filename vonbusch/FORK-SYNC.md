@@ -563,5 +563,56 @@ mechanische `t()`-Umstellung gegen den bestehenden Katalog → eigene Folge-Issu
 > (z. B. Existenz von `catalogs/de.ts` + Stichprobe deutscher **Katalog-Werte**),
 > damit der Null-Verlust-Test repräsentativ bleibt.
 
+**Stand OWL-1596 (Founding Engineer, 2026-09-23) — Stufe 2:** Overlay auf die
+restlichen user-sichtbaren Flächen ausgerollt. `catalogs/en.ts`/`de.ts` von ~30 auf
+~200 Keys erweitert (Namespaces `routes.*`, `chat.*`, `billing.*`, `gk.*`). Vier
+Flächen verdrahtet: **routes** (Seitentitel/H1/Untertitel/Suche/Leerzustände +
+`__root`-Ladeschirme), **chat** (Composer-Platzhalter, Liste, Löschdialog,
+Anhänge, DataTab, PermissionToast, SlashCommandPicker, ToolCallCard, AppPreview),
+**billing** (alle drei Flächen inkl. Plural via `request.one/other` und
+`<ResetCountdown/>`-Splitting in Prefix-/Suffix-Keys), **gatekeeper-modal**
+(GatekeeperModal + AccountChooser/AgentSpawner/AiModel/ConnectionConfigField).
+`tsc --noEmit` grün, `i18n.test.tsx` grün (4 Tests, jetzt mit Stufe-2-Assertion je
+Fläche + Plural/Interpolation).
+
+Berührte Upstream-Dateien (Overlay-`t()`-Nähte — beim Re-apply erneut anwenden; die
+DE-**Werte** liegen sicher im Katalog):
+
+| Bereich | Dateien |
+|---|---|
+| routes | `routes/__root.tsx`, `index.tsx`, `workspaces.tsx`, `blueprints.tsx`, `explore.tsx`, `outputs.tsx`, `gatekeepers.tsx`, `gatekeepers_.$appId.tsx`, `context.tsx`, `providers.tsx` |
+| chat | `ChatInterface.tsx`, `components/chat/{ChatMessage,ConnectionConfigModal,DataTab,PermissionToast,SlashCommandPicker,ToolCallCard,AppPreview}.tsx` |
+| billing | `components/billing/{AccountSelectionModal,OutOfCreditsModal,UsageSettings}.tsx` |
+| gatekeeper-modal | `GatekeeperModal.tsx`, `gatekeeper-modal/{AccountChooser,AgentSpawnerConfigForm,AiModelConnectionConfig,ConnectionConfigField}.tsx` |
+
+**Overlay-Härtung:** `useI18n()` wirft nicht mehr ohne Provider, sondern liefert den
+DE-Default (`readLang()`). Grund: das Overlay umschließt tiefe Chrome; ein außerhalb
+`<I18nProvider>` gerenderter Teilbaum (Unit-Test, Lazy-Chunk, Portal) muss in der
+Default-Sprache rendern statt zu crashen. Der Live-Switch-Pfad (Provider vorhanden)
+ist unverändert.
+
+**fork-guard §9 nachgezogen (wie im Hinweis oben vorgesehen):** (a) `catalogs/de.ts`,
+`en.ts`, `I18nProvider.tsx` als **Struktur-Marker** aufgenommen (Overlay-Existenz =
+Null-Verlust-Kern). (b) DE-Key-Stichprobe der migrierten Strings von der Upstream-Datei
+auf `catalogs/de.ts` umgezogen (dort lebt der Wert jetzt dauerhaft, upstream-sicher);
+noch nicht migrierte Flächen bleiben inline (`Connections.tsx::Verbindungen`).
+(c) Flächen-Check auf den Katalog verankert (`≥ 80` DE-Keys statt Inline-Datei-Zählung),
+damit die laufende Migration den Null-Verlust-Test nicht fälschlich rot färbt. Guard
+grün (15 Marker).
+
+**Bewusst nicht migriert (Modul-Ebene / außerhalb Scope):** `platformConnectionTypes`
+(GatekeeperModal) und `validateSpawnerEnv`-Meldung — Modul-Konstanten ohne Hook-Kontext
+(`// TODO i18n`, Keys existieren); tiefe Sekundär-Notices in `providers`/`outputs`;
+aria-/title-Tooltips und AppPreview-Mock-Copy; das `who`-Argument (`Agenten`/`Personen`)
+in der Chat-Liste bleibt Datenwert.
+
+> **Hinweis Test-Suite:** Die breite Frontend-Suite hat **vorbestehende** rote Tests
+> (schon bei HEAD `94a46c83` rot, Ursache OWL-1591-Provider-Pflicht + frühere direkte
+> EN→DE-Ersetzung vs. englisch erwartende Tests: `ShareModal`, `ObserverConfigModal`,
+> `BlueprintLandingPage`, `GadgetExportMenu`, `WorkpiecePicker`, `CodeDiffEditor`,
+> `GatekeeperModal.ambient`, `ChatInterface.markdown`). Diese sind **nicht** aus
+> OWL-1596; die Provider-Härtung oben hat sie von „crash beim Render" auf „rendert,
+> Assertion veraltet" verbessert. Sauberer Test-Nachzug = eigenes Issue.
+
 **Read-only bestätigt:** reine Frontend-Code-Änderung im eigenen Weichert.at-Fork.
 Kein Deploy, kein Token, keine fremde `account_id`.

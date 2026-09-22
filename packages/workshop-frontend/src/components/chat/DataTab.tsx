@@ -3,9 +3,11 @@ import { Table } from '@cloudflare/kumo'
 import { Badge } from '@cloudflare/kumo'
 import { Button } from '@cloudflare/kumo'
 import { sampleDataRows } from '../../data/chat'
+import { useT } from '../../i18n/useT'
 
 export default function DataTab() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const t = useT()
 
   function toggleRow(id: string) {
     setSelectedIds((prev) => {
@@ -30,16 +32,16 @@ export default function DataTab() {
       <div className="flex items-center justify-between px-4 py-2 border-b border-kumo-fill bg-kumo-elevated">
         <div className="flex items-center gap-3">
           <span className="font-mono text-sm text-kumo-default">channels</span>
-          <Badge variant="secondary">{sampleDataRows.length} Zeilen</Badge>
+          <Badge variant="secondary">{t('chat.data.rows', { n: String(sampleDataRows.length) })}</Badge>
         </div>
         <div className="flex items-center gap-2">
           {selectedIds.size > 0 && (
             <span className="text-xs text-kumo-subtle">
-              {selectedIds.size} ausgewählt
+              {t('chat.data.selected', { n: String(selectedIds.size) })}
             </span>
           )}
-          <Button variant="ghost" size="xs">Filtern</Button>
-          <Button variant="ghost" size="xs">Sortieren</Button>
+          <Button variant="ghost" size="xs">{t('chat.data.filter')}</Button>
+          <Button variant="ghost" size="xs">{t('chat.data.sort')}</Button>
         </div>
       </div>
 
@@ -54,10 +56,10 @@ export default function DataTab() {
                 onValueChange={toggleAll}
                 aria-label="Alle Zeilen auswählen"
               />
-              <Table.Head>Kanal</Table.Head>
-              <Table.Head>Nachrichten</Table.Head>
-              <Table.Head>Zuletzt aktiv</Table.Head>
-              <Table.Head>Status</Table.Head>
+              <Table.Head>{t('chat.data.colChannel')}</Table.Head>
+              <Table.Head>{t('chat.data.colMessages')}</Table.Head>
+              <Table.Head>{t('chat.data.colLastActive')}</Table.Head>
+              <Table.Head>{t('chat.data.colStatus')}</Table.Head>
             </Table.Row>
           </Table.Header>
           <Table.Body>
@@ -81,9 +83,9 @@ export default function DataTab() {
                 </Table.Cell>
                 <Table.Cell>
                   {row.unread ? (
-                    <Badge variant="primary">Ungelesen</Badge>
+                    <Badge variant="primary">{t('chat.data.unread')}</Badge>
                   ) : (
-                    <Badge variant="secondary">Gelesen</Badge>
+                    <Badge variant="secondary">{t('chat.data.read')}</Badge>
                   )}
                 </Table.Cell>
               </Table.Row>
@@ -95,10 +97,10 @@ export default function DataTab() {
       {/* Footer */}
       <div className="px-4 py-2 border-t border-kumo-fill bg-kumo-elevated flex items-center justify-between">
         <span className="font-mono text-xs text-kumo-subtle">
-          {sampleDataRows.length} Zeilen in channels
+          {t('chat.data.rowsInChannels', { n: String(sampleDataRows.length) })}
         </span>
         <span className="font-mono text-xs text-kumo-subtle">
-          {sampleDataRows.reduce((sum, r) => sum + r.messages, 0).toLocaleString()} Nachrichten insgesamt
+          {t('chat.data.messagesTotal', { n: sampleDataRows.reduce((sum, r) => sum + r.messages, 0).toLocaleString() })}
         </span>
       </div>
     </div>
