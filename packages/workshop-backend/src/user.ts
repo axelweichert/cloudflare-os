@@ -1711,61 +1711,72 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
     return {class: cls, vendorId: account.vendorId, typeUrlPattern: resource.urlPattern};
   }
 
-  // First valid connected UniFi account, or (failing that) an expired one so the caller can surface
-  // a "reconnect" state. Uses the resilient id-scan (never .list()) so one corrupt record can't
-  // poison the lookup -- same reasoning as #findConnectedAccountByIdentity.
-  #findUnifiAccount(): ConnectedAccountRecord | undefined {
+  // All valid connected UniFi accounts (one per Site-Manager key), plus whether any account exists
+  // only in an expired state so the caller can surface a "reconnect" prompt when none are usable.
+  // Uses the resilient id-scan (never .list()) so one corrupt record can't poison the lookup --
+  // same reasoning as #findConnectedAccountByIdentity.
+  #findUnifiAccounts(): {valid: ConnectedAccountRecord[], anyExpired: boolean} {
     let next = this.storage.nextAccountId.get();
-    let expired: ConnectedAccountRecord | undefined;
+    let valid: ConnectedAccountRecord[] = [];
+    let anyExpired = false;
     for (let id = 0; id < next; id++) {
       let rec: ConnectedAccountRecord | undefined;
       try { rec = this.storage.connectedAccounts.get(id); } catch { continue; }
       if (!rec || rec.vendorId.toLowerCase() !== "unifi") continue;
-      if (areCredentialsValid(rec)) return rec;
-      expired ??= rec;
+      if (areCredentialsValid(rec)) valid.push(rec);
+      else anyExpired = true;
     }
-    return expired;
+    return {valid, anyExpired};
   }
 
   /**
-   * Read-only UniFi inventory for the /unifi dashboard. Opens a short-lived session on the account's
-   * UniFi gatekeeper (instantiated as a facet, the same primitive the overseer uses for bound
-   * gatekeepers) and rolls hosts/sites/devices into a flat, UI-friendly shape. Never mutates.
+   * Read-only UniFi inventory for the /unifi dashboard. Aggregates across ALL connected UniFi
+   * accounts: a single Site-Manager API key only exposes the sites under that key (independent
+   * sites), so a user with sites split across separate keys/fabrics connects one account per key
+   * and this rolls them into one view. Opens a short-lived session per account (facet, the same
+   * primitive the overseer uses for bound gatekeepers), concatenates hosts/sites/devices — hostIds
+   * are globally unique so shapeUnifiInventory keys cleanly across accounts — and flattens. Never
+   * mutates.
    */
   async getUnifiInventory(): Promise<UnifiInventory> {
-    let record = this.#findUnifiAccount();
-    if (!record) return {connected: false, hostCount: 0, sites: []};
-    if (!areCredentialsValid(record)) {
-      return {connected: true, credentialsExpired: true, hostCount: 0, sites: []};
+    let {valid, anyExpired} = this.#findUnifiAccounts();
+    if (valid.length === 0) {
+      // No usable key: surface reconnect if one is merely expired, otherwise "not connected".
+      return anyExpired
+          ? {connected: true, credentialsExpired: true, hostCount: 0, sites: []}
+          : {connected: false, hostCount: 0, sites: []};
     }
 
-    let cls: unknown;
-    try {
-      ({class: cls} = await record.account.getGatekeeperClassFor(UNIFI_RESOURCE_URL));
-    } catch (err) {
-      return {connected: true, hostCount: 0, sites: [],
-              error: err instanceof Error ? err.message : String(err)};
+    let allHosts: any[] = [], allSites: any[] = [], allGroups: any[] = [];
+    let firstError: string | undefined;
+    for (let record of valid) {
+      try {
+        let {class: cls} = await record.account.getGatekeeperClassFor(UNIFI_RESOURCE_URL);
+        // Keyed per account so reconnecting a different UniFi key doesn't reuse a stale facet.
+        let gk = this.ctx.facets.get<Gatekeeper<any>>(
+            `unifi-read-${record.id}`, () => ({class: cls as any}));
+        // @ts-expect-error Cap'n Web cyclic type issue (mirrors OverseerImpl.openSession).
+        using session = await gk.startSession(new ReadOnlyApprovalQueue());
+        let [hosts, sites, deviceGroups] = await Promise.all([
+          Promise.resolve(session.listHosts()).catch(() => [] as any[]),   // Cloud-only; empty locally.
+          session.listSites(),
+          Promise.resolve(session.listDevices()).catch(() => [] as any[]),
+        ]);
+        allHosts.push(...(hosts ?? []));
+        allSites.push(...(sites ?? []));
+        allGroups.push(...(deviceGroups ?? []));
+      } catch (err) {
+        logger.warn("UniFi inventory read failed", {
+          event: "unifi.inventory.read.failed", accountId: record.id, error: err});
+        firstError ??= err instanceof Error ? err.message : String(err);
+      }
     }
 
-    // Keyed per account so reconnecting a different UniFi account doesn't reuse a stale facet.
-    let gk = this.ctx.facets.get<Gatekeeper<any>>(
-        `unifi-read-${record.id}`, () => ({class: cls as any}));
-
-    try {
-      // @ts-expect-error Cap'n Web cyclic type issue (mirrors OverseerImpl.openSession).
-      using session = await gk.startSession(new ReadOnlyApprovalQueue());
-      let [hosts, sites, deviceGroups] = await Promise.all([
-        Promise.resolve(session.listHosts()).catch(() => [] as any[]),   // Cloud-only; empty locally.
-        session.listSites(),
-        Promise.resolve(session.listDevices()).catch(() => [] as any[]),
-      ]);
-      return shapeUnifiInventory(hosts, sites, deviceGroups);
-    } catch (err) {
-      logger.warn("UniFi inventory read failed", {
-        event: "unifi.inventory.read.failed", accountId: record.id, error: err});
-      return {connected: true, hostCount: 0, sites: [],
-              error: err instanceof Error ? err.message : String(err)};
-    }
+    let inventory = shapeUnifiInventory(allHosts, allSites, allGroups);
+    // Only surface the error if EVERY account failed (no sites at all) — a partial read still shows
+    // the accounts that worked rather than hiding them behind one key's failure.
+    if (inventory.sites.length === 0 && firstError) inventory.error = firstError;
+    return inventory;
   }
 
   /**
