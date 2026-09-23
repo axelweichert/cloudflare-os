@@ -34,7 +34,16 @@ const runConfig = {
        * path `deploy` uses.
        */
       build: {
-        command: ['tsc', 'tsc -p tsconfig.vite.json', 'NODE_ENV=production vite build'],
+        // Post-build guard: a dev bundle inlines the `localhost:8787` backend fallback
+        // (see `main.tsx` getBackendHost dev branch); a prod bundle never does. Fail the
+        // build if it leaks into dist/assets so a dev build can't be deployed as the
+        // router's ASSETS (the OWL-1619 regression). ponytail: one grep, no framework.
+        command: [
+          'tsc',
+          'tsc -p tsconfig.vite.json',
+          'NODE_ENV=production vite build',
+          "! grep -rq 'localhost:8787' dist/assets || { echo 'GUARD FAIL: dev build (localhost:8787) leaked into dist/assets -- refusing to ship. Build with NODE_ENV=production.' >&2; exit 1; }",
+        ],
         dependsOn: ['clean:dist'],
         env: ['VITE_*'],
         input: [
