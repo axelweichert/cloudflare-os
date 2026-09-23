@@ -1,0 +1,30 @@
+{
+  "blueprintId": "owlos.angebot",
+  "version": 1,
+  "created": "2026-09-24T00:00:00.000Z",
+  "sidecar": {
+    "title": "Angebot anlegen",
+    "description": "owlOS-Workflow: legt ein neues Angebot (Quote) in der owlOS Cloud-ERP-Instanz an. Der Agent liest bestehende Angebote, legt das Angebot mit Pflicht-Titel approval-pflichtig an und verknüpft es mit dem Kunden — statt jedes Mal denselben Prompt neu zu tippen.",
+    "output": { "id": "workflow", "noun": "Angebot", "plural": "Angebote", "icon": "flowArrow" },
+    "author": { "type": "user", "name": "CloudflareOS", "id": "owlos@cloudflareos.weichert.at" },
+    "revision": 1
+  },
+  "bindings": {
+    "WORKFLOW": {
+      "title": "Angebots-Agent",
+      "description": "Der KI-Agent, der das Angebot in owlOS anlegt. Der Agent bekommt den owlOS-Gatekeeper in seine env; wählen Sie nur, mit welchem Modell er laufen soll.",
+      "type": "agentSpawner",
+      "env": {
+        "owlos": { "type": "binding", "name": "owlos" }
+      }
+    },
+    "owlos": {
+      "title": "owlOS Workspace",
+      "description": "Gatekeeper auf die verbundene owlOS Cloud-ERP-Instanz (Kunden, Angebote, Rechnungen). Reads direkt, Creates approval-pflichtig.",
+      "spawnerOnly": true,
+      "type": "gatekeeper",
+      "gatekeeperName": "owlos",
+      "typeUrlPattern": "https://*.owl-os.cloud/*"
+    }
+  }
+}

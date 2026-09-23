@@ -1,0 +1,18 @@
+{
+  "$comment": "GENERIERT aus src/owlos-rechnung/blueprint.json durch build-blueprints.mjs — dort editieren, nicht hier.",
+  "blueprintId": "owlos.rechnung",
+  "title": "Rechnung anlegen",
+  "description": "owlOS-Workflow: legt eine neue Ausgangsrechnung (Faktura) in der owlOS Cloud-ERP-Instanz an. Der Agent liest bestehende Ausgangsbelege, legt den Rechnungskopf approval-pflichtig an, ergänzt Positionen und finalisiert die Rechnung — statt jedes Mal denselben Prompt neu zu tippen.",
+  "output": {
+    "id": "workflow",
+    "noun": "Rechnung",
+    "plural": "Rechnungen",
+    "icon": "flowArrow"
+  },
+  "author": {
+    "type": "user",
+    "name": "CloudflareOS",
+    "id": "owlos@cloudflareos.weichert.at"
+  },
+  "revision": 1
+}
