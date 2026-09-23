@@ -7,16 +7,11 @@ import {
   stripTrailingSlashes,
 } from "@gadgets/workshop-shared/gatekeeper";
 import { CloudflareGatekeeperUser } from "@gadgets/workshop-shared/cloudflare-gatekeeper";
-import {
-  getOAuthConfig, buildAuthorizeUrl, generatePkce, exchangeCode, refreshTokens,
-  AUTH_SCOPES, BILLING_SCOPES, persistentScopesForResources,
-} from "./oauth";
-import { fetchIdentity } from "./cloudflare-api";
+import { verifyToken, listAccounts } from "./cloudflare-api";
 import {
   OBSERVABILITY_RESOURCES,
   ACCOUNT_OBSERVABILITY_RESOURCE,
   WORKER_OBSERVABILITY_RESOURCE,
-  grantedObservabilityResourcePatterns,
   accountObservabilityUrl,
   workerObservabilityUrl,
   parseObservabilityResourceUrl,
@@ -38,23 +33,18 @@ const logger = obsContext.createLogger({
   component: "gatekeeper.cloudflare", vendorId: VENDOR_ID,
 });
 
-// A nonce stored in UserAccount KV to protect the OAuth flow. Only one is active at a time; `stage`
-// tracks where we are. For the OAuth stage we also stash the PKCE verifier alongside the nonce.
-type StoredNonce = {
-  value: string;
-  expiresAt: number;
-  stage: "initiation" | "oauth";
-  verifier?: string;
-  scopes?: string[];
-};
+// OWL-1618: this gatekeeper connects a Cloudflare account by pasting an API token (the proven UniFi
+// pattern), not by OAuth redirect. Cloudflare's self-managed OAuth does not expose the AI Gateway
+// scopes this integration needs in its consent catalog; the same capability exists as API-token
+// permissions (AI Gateway Read + Run, Account Settings Read, Workers Observability Read). The stored
+// token is a long-lived bearer credential used directly against api.cloudflare.com.
 
-// A cached access token plus its absolute expiry (unix ms).
-type StoredAccessToken = { token: string; expires: number };
+// A short-lived nonce stored in UserAccount KV, protecting the connect link (same shape as UniFi).
+type StoredNonce = { value: string; expiresAt: number };
+type StoredCredentials = { apiToken: string };
 
 const NONCE_BYTES = 32;
-const INITIATION_NONCE_LIFETIME_MS = 10 * 60 * 1000;
-const OAUTH_NONCE_LIFETIME_MS = 10 * 60 * 1000;
-const ACCESS_TOKEN_EXPIRY_SAFETY_MS = 60 * 1000;
+const NONCE_LIFETIME_MS = 10 * 60 * 1000;
 
 // Official Cloudflare logomark (orange cloud on a transparent background), as a data URI so it can
 // be rendered directly as the vendor/account avatar.
@@ -81,11 +71,8 @@ function constantTimeEqual(a: string, b: string): boolean {
   return crypto.subtle.timingSafeEqual(bufA, bufB);
 }
 
-// Optional env vars (may be omitted from wrangler.jsonc; secrets come from .dev.vars / dashboard).
 type Env = Cloudflare.Env & {
   BASE_URL?: string;
-  CLIENT_ID?: string;
-  CLIENT_SECRET?: string;
 };
 
 function getBaseUrl(env: Env) {
@@ -97,27 +84,85 @@ function getBasePath(env: Env) {
   return path === "/" ? "" : path;
 }
 
+// All observability resources are grantable by any account-scoped token that carries the required
+// read permissions, so a connected token is treated as granting the whole set.
+const ALL_RESOURCE_PATTERNS = OBSERVABILITY_RESOURCES.map(r => r.urlPattern);
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
+}
+
+const CONNECT_FORM_HTML = (params: { actionUrl: string; error?: string }) => `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Connect Cloudflare</title>
+<style>
+  body { font-family: system-ui, -apple-system, sans-serif; background: #f5f5f5; margin: 0; min-height: 100vh; display: flex; justify-content: center; align-items: center; }
+  .card { background: white; padding: 2rem; max-width: 560px; width: 100%; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+  h1 { margin-top: 0; font-size: 1.4rem; color: #f4801f; }
+  label { display: block; font-weight: 600; margin-top: 1rem; margin-bottom: 0.25rem; color: #333; }
+  input { width: 100%; box-sizing: border-box; padding: 0.5rem; font-size: 1rem; border: 1px solid #ccc; border-radius: 4px; font-family: ui-monospace, monospace; }
+  details { margin-top: 1rem; font-size: 0.9rem; color: #555; }
+  summary { cursor: pointer; color: #f4801f; }
+  details ol { padding-left: 1.25rem; }
+  details li { margin: 0.35rem 0; }
+  button { margin-top: 1.5rem; padding: 0.6rem 1.5rem; background: #f4801f; color: white; border: none; border-radius: 4px; font-size: 1rem; cursor: pointer; }
+  button:hover { background: #d96e12; }
+  .error { background: #ffebee; color: #c62828; padding: 0.75rem 1rem; border-radius: 4px; margin: 1rem 0; }
+  .hint { font-size: 0.85rem; color: #666; margin-top: 0.25rem; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>Connect Cloudflare</h1>
+    <p>Paste a Cloudflare API token. Cloudflare OS uses it to read your accounts, AI Gateway, and Workers Observability (read-only).</p>
+    ${params.error ? `<div class="error">${escapeHtml(params.error)}</div>` : ""}
+    <form method="POST" action="${escapeHtml(params.actionUrl)}">
+      <label for="apiToken">Cloudflare API Token</label>
+      <input id="apiToken" name="apiToken" type="password" required placeholder="xxxxxxxx..." autofocus>
+      <div class="hint">Stored encrypted and never shown again. Revoke it any time from the Cloudflare dashboard.</div>
+
+      <details>
+        <summary>How to create an API token</summary>
+        <ol>
+          <li>Sign in to the <b>Cloudflare dashboard</b> and open <b>My Profile → API Tokens</b>.</li>
+          <li>Click <b>Create Token → Create Custom Token</b>.</li>
+          <li>Add these permissions (all <b>Read</b>, plus AI Gateway <b>Run</b>):
+            <ul>
+              <li><b>Account</b> → <b>AI Gateway</b> → Read</li>
+              <li><b>Account</b> → <b>AI Gateway</b> → Run</li>
+              <li><b>Account</b> → <b>Account Settings</b> → Read</li>
+              <li><b>Account</b> → <b>Workers Observability</b> → Read</li>
+            </ul>
+          </li>
+          <li>Scope it to the account(s) you want, create it, and copy the token.</li>
+          <li>Paste it above.</li>
+        </ol>
+      </details>
+
+      <button type="submit">Connect</button>
+    </form>
+  </div>
+</body>
+</html>`;
+
 const SELF_CLOSING_HTML = `<!DOCTYPE html>
-<html lang="en"><body>
+<html lang="en"><head><meta charset="UTF-8"><title>Connected</title></head>
+<body style="font-family: system-ui, sans-serif; text-align: center; padding: 2rem;">
 <script type="text/javascript">window.close();</script>
-<p>Authorization complete. You may close this tab and return to Cloudflare OS.
-</body></html>`;
+<h2 style="color:#f4801f;">Connected!</h2>
+<p>Your Cloudflare account has been linked to Cloudflare OS. You may close this tab.</p></body></html>`;
 
 const INVALID_LINK_HTML = `<!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8"><title>Authorization Link Expired</title></head>
+<html lang="en"><head><meta charset="UTF-8"><title>Link Expired</title></head>
 <body style="font-family: system-ui, sans-serif; text-align: center; padding: 3rem;">
-<h1 style="color:#d97706;">Authorization Link Expired</h1>
-<p>This authorization link is invalid or has expired. Please return to Cloudflare OS and try again.</p>
+<h1 style="color:#d97706;">Connection Link Expired</h1>
+<p>This connection link is invalid or has expired. Please return to Cloudflare OS and try again.</p>
 <button onclick="window.close()">Close</button></body></html>`;
 
-const NOT_CONFIGURED_HTML = `<!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8"><title>Configuration Required</title></head>
-<body style="font-family: system-ui, sans-serif; text-align: center; padding: 3rem;">
-<h1 style="color:#d97706;">Cloudflare Gatekeeper Not Configured</h1>
-<p>Please see the README.md for instructions on configuring an OAuth client ID and secret.</p>
-</body></html>`;
-
-/** Main HTTP entrypoint — used only to initiate and complete the OAuth flow. */
+/** Main HTTP entrypoint — serves the token connect form and accepts its POST. */
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext) {
     const url = new URL(req.url);
@@ -128,39 +173,45 @@ export default {
     const relPath = url.pathname.slice(basePath.length);
     const path = relPath.slice(1).split("/");
 
+    // Connect URL: /<doId>/<nonce>
     if (path.length === 2 && path[0].length === 64 && path[1].length === NONCE_BYTES * 2) {
-      if (!env.CLIENT_ID || !env.CLIENT_SECRET) {
-        return new Response(NOT_CONFIGURED_HTML, { headers: { "Content-Type": "text/html; charset=utf-8" } });
-      }
       const doId = path[0];
-      const initiationNonce = path[1];
+      const nonce = path[1];
       const stub = ctx.exports.UserAccount.get(ctx.exports.UserAccount.idFromString(doId));
-      const begun = await stub.beginOAuthFlow(initiationNonce);
-      if (begun === null) {
-        return new Response(INVALID_LINK_HTML, { headers: { "Content-Type": "text/html; charset=utf-8" } });
-      }
-      const config = getOAuthConfig(env.CLIENT_ID, env.CLIENT_SECRET, getBaseUrl(env))!;
-      const authUrl = buildAuthorizeUrl(config, `${doId}:${begun.oauthNonce}`, begun.challenge, begun.scopes);
-      return Response.redirect(authUrl, 302);
-    } else if (relPath === "/oauth") {
-      const error = url.searchParams.get("error");
-      if (error) {
-        return new Response(`${error}: ${url.searchParams.get("error_description")}`);
-      }
-      const state = url.searchParams.get("state");
-      if (!state) return new Response("Error: no 'state' provided");
-      const colonIdx = state.indexOf(":");
-      if (colonIdx < 0) return new Response("Error: malformed state");
-      const doId = state.slice(0, colonIdx);
-      const oauthNonce = state.slice(colonIdx + 1);
-      const code = url.searchParams.get("code");
-      if (!code) return new Response("Error: no 'code' provided");
 
-      const stub = ctx.exports.UserAccount.get(ctx.exports.UserAccount.idFromString(doId));
-      if (!await stub.acceptAuthCode(code, oauthNonce)) {
-        return new Response(INVALID_LINK_HTML, { headers: { "Content-Type": "text/html; charset=utf-8" } });
+      if (req.method === "GET") {
+        if (!await stub.verifyNonceWithoutConsuming(nonce)) {
+          return new Response(INVALID_LINK_HTML, { headers: { "Content-Type": "text/html; charset=utf-8" } });
+        }
+        return new Response(CONNECT_FORM_HTML({ actionUrl: req.url }), {
+          headers: { "Content-Type": "text/html; charset=utf-8" },
+        });
       }
-      return new Response(SELF_CLOSING_HTML, { headers: { "Content-Type": "text/html; charset=utf-8" } });
+
+      if (req.method === "POST") {
+        let formData: FormData;
+        try {
+          formData = await req.formData();
+        } catch {
+          return new Response("Invalid form submission.", { status: 400 });
+        }
+        const tokenInput = String(formData.get("apiToken") ?? "").trim();
+        if (!tokenInput) {
+          return new Response(CONNECT_FORM_HTML({ actionUrl: req.url, error: "An API token is required." }), {
+            headers: { "Content-Type": "text/html; charset=utf-8" }, status: 400,
+          });
+        }
+        const result = await stub.completeConnection(nonce, tokenInput);
+        if (result.kind === "invalid_nonce") {
+          return new Response(INVALID_LINK_HTML, { headers: { "Content-Type": "text/html; charset=utf-8" } });
+        }
+        if (result.kind === "error") {
+          return new Response(CONNECT_FORM_HTML({ actionUrl: req.url, error: result.message }), {
+            headers: { "Content-Type": "text/html; charset=utf-8" }, status: 400,
+          });
+        }
+        return new Response(SELF_CLOSING_HTML, { headers: { "Content-Type": "text/html; charset=utf-8" } });
+      }
     }
     return new Response("Not Found", { status: 404 });
   },
@@ -176,26 +227,20 @@ export class GatekeeperVendor extends WorkerEntrypoint<Env> implements Gatekeepe
       url: "https://cloudflare.com",
       logo: { url: CLOUDFLARE_LOGO_URL },
       color: "#fbece0",
-      tagline: "Sign in, use AI Gateway, and inspect Workers Observability",
+      tagline: "Use AI Gateway and inspect Workers Observability",
       description:
-          "Sign in with your Cloudflare account and use your own Cloudflare AI Gateway credits for " +
-          "usage beyond the free tier. You can also connect Workers Observability to inspect logs, " +
-          "invocations, traces, and aggregate metrics.",
-      providesAuth: true,
+          "Connect a Cloudflare account with an API token to use your own AI Gateway credits for " +
+          "usage beyond the free tier, and to inspect Workers Observability: logs, invocations, " +
+          "traces, and aggregate metrics. Read-only.",
     };
   }
 
   async connectAccount(callback: Fetcher<GatekeeperConnectCallback>,
-                       options?: GatekeeperConnectOptions): Promise<{ url: string }> {
+                       _options?: GatekeeperConnectOptions): Promise<{ url: string }> {
     const userObjectId = this.ctx.exports.UserAccount.newUniqueId();
-    const initiationNonce = generateNonce();
-    const authOnly = options?.scopes === "auth";
-    const scopes = authOnly
-      ? AUTH_SCOPES
-      : persistentScopesForResources(options?.resourceUrlPatterns);
-    await this.ctx.exports.UserAccount.get(userObjectId)
-        .setCallback(callback, initiationNonce, scopes, authOnly);
-    return { url: `${getBaseUrl(this.env)}/${userObjectId.toString()}/${initiationNonce}` };
+    const nonce = generateNonce();
+    await this.ctx.exports.UserAccount.get(userObjectId).setCallback(callback, nonce);
+    return { url: `${getBaseUrl(this.env)}/${userObjectId.toString()}/${nonce}` };
   }
 
   async getSupportedResources(): Promise<SupportedResource[]> {
@@ -207,167 +252,102 @@ export class GatekeeperVendor extends WorkerEntrypoint<Env> implements Gatekeepe
   }
 }
 
-export class UserAccount extends DurableObject<Env> {
-  #config() {
-    const config = getOAuthConfig(this.env.CLIENT_ID, this.env.CLIENT_SECRET, getBaseUrl(this.env));
-    if (!config) throw new Error("The Cloudflare Gatekeeper is not configured.");
-    return config;
-  }
+type CompleteConnectionResult =
+  | { kind: "ok" }
+  | { kind: "invalid_nonce" }
+  | { kind: "error"; message: string };
 
-  async setCallback(callback: Fetcher<GatekeeperConnectCallback>, initiationNonce: string,
-                    scopes: string[], ephemeral?: boolean) {
-    if (!this.ctx.storage.kv.get<string>("refreshToken")) {
+export class UserAccount extends DurableObject<Env> {
+  async setCallback(callback: Fetcher<GatekeeperConnectCallback>, nonce: string) {
+    if (!this.ctx.storage.kv.get<StoredCredentials>("credentials")) {
       this.ctx.storage.setAlarm(Date.now() + 3600 * 1000);
     }
     this.ctx.storage.kv.put("callback", callback);
-    // Scopes to request (auth-only for sign-in, or the full capability set). Reused on reconnect.
-    this.ctx.storage.kv.put<string[]>("scopes", scopes);
-    // Auth-only sign-in grants are transient: dropped shortly after the email is read.
-    this.ctx.storage.kv.put<boolean>("ephemeral", ephemeral ?? false);
     this.ctx.storage.kv.put<StoredNonce>("nonce", {
-      value: initiationNonce,
-      expiresAt: Date.now() + INITIATION_NONCE_LIFETIME_MS,
-      stage: "initiation",
+      value: nonce,
+      expiresAt: Date.now() + NONCE_LIFETIME_MS,
     });
   }
 
-  async prepareReconnect(initiationNonce: string, scopes: string[]) {
+  async prepareReconnect(nonce: string) {
     this.ctx.storage.kv.put<boolean>("reconnecting", true);
-    this.ctx.storage.kv.put<string[]>("scopes", scopes);
     this.ctx.storage.kv.put<StoredNonce>("nonce", {
-      value: initiationNonce,
-      expiresAt: Date.now() + INITIATION_NONCE_LIFETIME_MS,
-      stage: "initiation",
+      value: nonce,
+      expiresAt: Date.now() + NONCE_LIFETIME_MS,
     });
   }
 
-  async getGrantedScopes(): Promise<string[]> {
-    // Accounts connected before resource grants existed had exactly the billing scopes.
-    return this.ctx.storage.kv.get<string[]>("grantedScopes") ?? [...BILLING_SCOPES];
+  /** Validate the nonce without consuming it (so the user can resubmit if verification fails). */
+  async verifyNonceWithoutConsuming(nonce: string): Promise<boolean> {
+    const stored = this.ctx.storage.kv.get<StoredNonce>("nonce");
+    if (!stored || Date.now() >= stored.expiresAt) return false;
+    return constantTimeEqual(stored.value, nonce);
   }
 
-  /**
-   * Verify+consume the initiation nonce; mint a fresh OAuth nonce + PKCE pair. Returns the OAuth
-   * nonce (for the `state`) and the PKCE challenge (for the authorize URL), or null if invalid.
-   */
-  async beginOAuthFlow(initiationNonce: string): Promise<{ oauthNonce: string; challenge: string; scopes: string[] } | null> {
+  async completeConnection(nonce: string, apiToken: string): Promise<CompleteConnectionResult> {
     const stored = this.ctx.storage.kv.get<StoredNonce>("nonce");
-    if (!stored || stored.stage !== "initiation" ||
-        Date.now() >= stored.expiresAt || !constantTimeEqual(stored.value, initiationNonce)) {
-      return null;
+    if (!stored || Date.now() >= stored.expiresAt || !constantTimeEqual(stored.value, nonce)) {
+      return { kind: "invalid_nonce" };
     }
-    const oauthNonce = generateNonce();
-    const { verifier, challenge } = await generatePkce();
-    this.ctx.storage.kv.put<StoredNonce>("nonce", {
-      value: oauthNonce,
-      expiresAt: Date.now() + OAUTH_NONCE_LIFETIME_MS,
-      stage: "oauth",
-      verifier,
-    });
-    // Fail closed: a missing `scopes` key is legacy or corrupted state, so request only the billing
-    // set rather than silently asking for observability the user never chose.
-    const scopes = this.ctx.storage.kv.get<string[]>("scopes") ?? [...BILLING_SCOPES];
-    return { oauthNonce, challenge, scopes };
-  }
 
-  async acceptAuthCode(code: string, oauthNonce: string): Promise<boolean> {
-    const stored = this.ctx.storage.kv.get<StoredNonce>("nonce");
-    if (!stored || stored.stage !== "oauth" || !stored.verifier ||
-        Date.now() >= stored.expiresAt || !constantTimeEqual(stored.value, oauthNonce)) {
-      return false;
+    // Validate the token can actually authenticate before we store it.
+    let valid = false;
+    try {
+      valid = await verifyToken(apiToken);
+    } catch (e: any) {
+      return { kind: "error", message: `Unable to reach the Cloudflare API: ${e?.message ?? e}` };
     }
+    if (!valid) {
+      return { kind: "error", message: "Cloudflare rejected the API token. It may be invalid, revoked, or inactive." };
+    }
+
+    // Consume the nonce now that we've validated.
     this.ctx.storage.kv.delete("nonce");
+    this.ctx.storage.kv.put<StoredCredentials>("credentials", { apiToken });
 
     const callback = this.ctx.storage.kv.get<Fetcher<GatekeeperConnectCallback>>("callback");
     if (!callback) {
-      throw new Error("Took too long to complete the authorization. Please try again.");
+      this.ctx.storage.kv.delete("credentials");
+      return { kind: "error", message: "Connection callback expired. Please restart." };
     }
-
-    const tokens = await exchangeCode(this.#config(), code, stored.verifier);
-    if (!tokens || !tokens.refreshToken) {
-      throw new Error("Cloudflare OAuth exchange failed or returned no refresh token.");
-    }
-
-    this.ctx.storage.kv.put<string>("refreshToken", tokens.refreshToken);
-    this.ctx.storage.kv.put<StoredAccessToken>("accessToken", {
-      token: tokens.accessToken,
-      expires: Date.now() + tokens.expiresIn * 1000,
-    });
-    // Fail closed for the same reason as `beginOAuthFlow`: recording the full scope list here when
-    // the provider omitted `scope` would advertise an observability grant that was never made, and
-    // `ensureResources` would then short-circuit into a binding that 403s with no way to fix it.
-    this.ctx.storage.kv.put<string[]>(
-      "grantedScopes",
-      tokens.scopes ?? this.ctx.storage.kv.get<string[]>("scopes") ?? [...BILLING_SCOPES],
-    );
 
     const reconnecting = this.ctx.storage.kv.get<boolean>("reconnecting");
     if (reconnecting) {
       this.ctx.storage.kv.delete("reconnecting");
-      await callback.credentialsRestored();
+      try {
+        await callback.credentialsRestored();
+      } catch (e: any) {
+        return { kind: "error", message: `Failed to notify workshop: ${e?.message ?? e}` };
+      }
     } else {
       try {
         await callback.complete(this.ctx.exports.GatekeeperUserImpl({ props: { userObjectId: this.ctx.id.toString() } }));
-      } catch (err) {
-        this.ctx.storage.kv.delete("refreshToken");
-        throw err;
-      }
-      // Auth-only sign-in grants are transient: the caller read the email via complete(), so
-      // schedule a prompt self-destruct. We do NOT call a provider revoke endpoint; we just drop
-      // our local copy.
-      if (this.ctx.storage.kv.get<boolean>("ephemeral")) {
-        this.ctx.storage.setAlarm(Date.now() + 2 * 60 * 1000);
+      } catch (e: any) {
+        this.ctx.storage.kv.delete("credentials");
+        return { kind: "error", message: `Failed to notify workshop: ${e?.message ?? e}` };
       }
     }
-    return true;
+
+    await this.ctx.storage.deleteAlarm();
+    return { kind: "ok" };
   }
 
-  hasRefreshToken() {
-    return this.ctx.storage.kv.get<string>("refreshToken") !== undefined;
+  hasCredentials() {
+    return this.ctx.storage.kv.get<StoredCredentials>("credentials") !== undefined;
   }
 
   /**
-   * Returns a usable access token (refreshing if needed), or null if the credentials are gone or
-   * can no longer be refreshed (in which case the workshop is notified via credentialsExpired()).
+   * Returns the stored Cloudflare API token, or null if the account isn't connected. Named
+   * getAccessToken so the observability API/verifier and the AI Gateway billing service — which take
+   * a `() => Promise<string | null>` token getter — work unchanged against the pasted API token.
    */
   async getAccessToken(): Promise<string | null> {
-    const refreshToken = this.ctx.storage.kv.get<string>("refreshToken");
-    if (!refreshToken) return null;
-
-    const cached = this.ctx.storage.kv.get<StoredAccessToken>("accessToken");
-    if (cached && cached.expires > Date.now() + ACCESS_TOKEN_EXPIRY_SAFETY_MS) {
-      return cached.token;
-    }
-
-    const refreshed = await refreshTokens(this.#config(), refreshToken);
-    if (!refreshed) {
-      const callback = this.ctx.storage.kv.get<Fetcher<GatekeeperConnectCallback>>("callback");
-      callback?.credentialsExpired().catch(err =>
-        logger.warn("failed to notify credential expiry", {
-          event: "credentials.expiry.notify.failed", error: err,
-        }));
-      return null;
-    }
-    if (refreshed.refreshToken) {
-      this.ctx.storage.kv.put<string>("refreshToken", refreshed.refreshToken);
-    }
-    if (refreshed.scopes) {
-      this.ctx.storage.kv.put<string[]>("grantedScopes", refreshed.scopes);
-    }
-    const token: StoredAccessToken = {
-      token: refreshed.accessToken,
-      expires: Date.now() + refreshed.expiresIn * 1000,
-    };
-    this.ctx.storage.kv.put<StoredAccessToken>("accessToken", token);
-    return token.token;
+    return this.ctx.storage.kv.get<StoredCredentials>("credentials")?.apiToken ?? null;
   }
 
   async alarm(): Promise<void> {
-    // Drop the account if the flow never completed, or if this was a transient auth-only sign-in
-    // grant (used once to read the email for login).
-    if (!this.hasRefreshToken() || this.ctx.storage.kv.get<boolean>("ephemeral")) {
-      this.ctx.storage.deleteAll();
-    }
+    // Drop the account if the connect flow never completed.
+    if (!this.hasCredentials()) this.ctx.storage.deleteAll();
   }
 
   async revoke(): Promise<void> {
@@ -387,37 +367,40 @@ export class GatekeeperUserImpl extends WorkerEntrypoint<Env, GatekeeperUserImpl
   }
 
   async describe(): Promise<AccountDescription> {
-    const account = this.#account();
-    // Both reads start before either is awaited, and settle together so a failure in one cannot
-    // abandon the other as an unhandled rejection.
-    const [token, grantedScopes] = await Promise.all([
-      account.getAccessToken(), account.getGrantedScopes(),
-    ]);
-    const identity = token ? await fetchIdentity(token) : null;
+    const token = await this.#account().getAccessToken();
+    let displayName = "Cloudflare";
+    let uniqueName = "Cloudflare account";
+    if (token) {
+      try {
+        const accounts = await listAccounts(token);
+        if (accounts.length === 1) {
+          displayName = `Cloudflare (${accounts[0].accountName})`;
+          uniqueName = accounts[0].accountName;
+        } else if (accounts.length > 1) {
+          displayName = `Cloudflare (${accounts.length} accounts)`;
+          uniqueName = `Cloudflare (${accounts.length} accounts)`;
+        }
+      } catch {
+        // Fall back to defaults if enumeration fails.
+      }
+    }
     return {
-      displayName: identity?.displayName,
-      uniqueName: identity?.email,
+      displayName,
+      uniqueName,
       avatar: { url: CLOUDFLARE_LOGO_URL },
-      grantedResourceUrlPatterns: grantedObservabilityResourcePatterns(grantedScopes),
+      grantedResourceUrlPatterns: token ? ALL_RESOURCE_PATTERNS : [],
     };
   }
 
+  /** This gatekeeper connects via API token and does not provide sign-in. */
   async getAuthenticatedEmail(): Promise<string | null> {
-    const token = await this.#account().getAccessToken();
-    if (!token) return null;
-    const identity = await fetchIdentity(token);
-    return identity?.email ?? null;
+    return null;
   }
 
-  async ensureResources(resourceUrlPatterns: string[]): Promise<{url?: string}> {
-    const account = this.#account();
-    const grantedPatterns = new Set(grantedObservabilityResourcePatterns(await account.getGrantedScopes()));
-    if (resourceUrlPatterns.every(pattern => grantedPatterns.has(pattern))) return {};
-
-    const union = [...new Set([...grantedPatterns, ...resourceUrlPatterns])];
-    const initiationNonce = generateNonce();
-    await account.prepareReconnect(initiationNonce, persistentScopesForResources(union));
-    return { url: `${getBaseUrl(this.env)}/${this.ctx.props.userObjectId}/${initiationNonce}` };
+  async ensureResources(_resourceUrlPatterns: string[]): Promise<{url?: string}> {
+    // A connected API token carries its permissions up-front, so every supported resource is already
+    // grantable; there is no incremental consent step to run.
+    return {};
   }
 
   async getUsableAccessToken(): Promise<string | null> {
@@ -463,10 +446,9 @@ export class GatekeeperUserImpl extends WorkerEntrypoint<Env, GatekeeperUserImpl
   }
 
   async reconnect(): Promise<{ url: string }> {
-    const initiationNonce = generateNonce();
-    const scopes = await this.#account().getGrantedScopes();
-    await this.#account().prepareReconnect(initiationNonce, scopes);
-    return { url: `${getBaseUrl(this.env)}/${this.ctx.props.userObjectId}/${initiationNonce}` };
+    const nonce = generateNonce();
+    await this.#account().prepareReconnect(nonce);
+    return { url: `${getBaseUrl(this.env)}/${this.ctx.props.userObjectId}/${nonce}` };
   }
 
   @skipRpcValidation()

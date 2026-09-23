@@ -1,5 +1,6 @@
-// Thin client over the Cloudflare REST API used by the gatekeeper: resolve the account's identity
-// (email) and enumerate accounts. All calls use the user's OAuth access token.
+// Thin client over the Cloudflare REST API used by the gatekeeper: verify the connected API token
+// and enumerate the accounts it can reach. All calls use the user's Cloudflare API token as a
+// bearer credential (identically to how an OAuth access token was used before OWL-1618).
 
 import { VENDOR_ID } from "./vendor.js";
 import { obsContext } from "./observability.js";
@@ -44,30 +45,14 @@ async function cfGet<T>(token: string, path: string): Promise<T | null> {
   return (await cfRequest<T>(token, path))?.result ?? null;
 }
 
-export interface CloudflareIdentity {
-  /** Cloudflare user id (stable). */
-  id: string;
-  /** Account email — verified by Cloudflare, so safe to use as a sign-in identity. */
-  email: string;
-  displayName: string;
-}
-
 /**
- * Resolve the connected user's identity via the /user API (requires `user-details.read`). We use
- * this rather than an OIDC userinfo endpoint because the dashboard OAuth client isn't permitted the
- * `openid` scope. Returns null if the email is missing.
+ * Verify the API token is active by calling the token self-inspection endpoint. Any valid API token
+ * can verify itself regardless of its permissions, so this is the cheapest "is this key good?" check
+ * for the connect form. Returns true only when Cloudflare reports the token status as "active".
  */
-export async function fetchIdentity(token: string): Promise<CloudflareIdentity | null> {
-  const r = await cfGet<{ id?: string; email?: string; first_name?: string; last_name?: string }>(
-    token, "/user",
-  );
-  if (!r || !r.id || !r.email) return null;
-  const name = [r.first_name, r.last_name].filter(Boolean).join(" ").trim();
-  return {
-    id: String(r.id),
-    email: r.email,
-    displayName: name || r.email.split("@")[0],
-  };
+export async function verifyToken(token: string): Promise<boolean> {
+  const r = await cfGet<{ id?: string; status?: string }>(token, "/user/tokens/verify");
+  return r?.status === "active";
 }
 
 export interface CloudflareAccount {

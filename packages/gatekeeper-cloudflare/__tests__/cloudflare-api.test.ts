@@ -1,10 +1,28 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { listAccounts } from "../src/cloudflare-api";
+import { listAccounts, verifyToken } from "../src/cloudflare-api";
 
 const TOKEN = "test-token";
 
 afterEach(() => {
   vi.unstubAllGlobals();
+});
+
+it("accepts a token the verify endpoint reports as active", async () => {
+  vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
+    expect(String(input)).toContain("/user/tokens/verify");
+    return Response.json({ success: true, result: { id: "tok", status: "active" } });
+  }));
+  expect(await verifyToken(TOKEN)).toBe(true);
+});
+
+it("rejects an inactive token and a 401", async () => {
+  vi.stubGlobal("fetch", vi.fn(async () =>
+    Response.json({ success: true, result: { id: "tok", status: "disabled" } })));
+  expect(await verifyToken(TOKEN)).toBe(false);
+
+  vi.stubGlobal("fetch", vi.fn(async () =>
+    new Response("nope", { status: 401 })));
+  expect(await verifyToken(TOKEN)).toBe(false);
 });
 
 /** One `/accounts` page, shaped like Cloudflare's envelope. */

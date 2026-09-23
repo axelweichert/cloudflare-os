@@ -1,16 +1,13 @@
 # Gatekeeper Cloudflare
 
-This package provides Cloudflare OAuth integration for Gadgets. It serves three purposes:
+This package connects a Cloudflare account by **pasting an API token** (the same proven flow as
+`gatekeeper-unifi`), not by OAuth redirect. Cloudflare's self-managed OAuth does not expose the AI
+Gateway scopes this integration needs in its consent catalog, but the same capability exists as
+API-token permissions (see [Setup](#setting-up-the-api-token)). It serves two purposes:
 
-- **Sign-in:** when `cloudflare` is in the deployment's `AUTH_GATEKEEPERS` allowlist, "Continue with
-  Cloudflare" appears on the login page. The grant reads the account email (verified by Cloudflare,
-  via the `/user` API), which becomes the user's identity. Cloudflare sign-in also establishes the
-  persistent billing-only connection described below.
-- **AI Gateway billing:** when a user connects Cloudflare or signs in with it, the billing scopes are
-  requested and the connection persists. The Workshop then reads a usable access
-  token from it (`getUsableAccessToken`) to power the [AI Gateway billing](../../docs/ai-gateway-billing.md)
-  flow — reading the credit balance and routing BYOK inference through the account's default AI
-  Gateway.
+- **AI Gateway billing:** the Workshop reads a usable token from the connection
+  (`getUsableAccessToken`) to power the [AI Gateway billing](../../docs/ai-gateway-billing.md) flow —
+  reading the credit balance and routing BYOK inference through the account's default AI Gateway.
 - **Workers Observability:** gadgets can receive read-only access to logs, events, invocations,
   aggregate metrics, and traces either across an account or restricted to one Worker. Every result
   is authorized as an observation, and Worker bindings inject an immutable service filter and
@@ -18,11 +15,10 @@ This package provides Cloudflare OAuth integration for Gadgets. It serves three 
   their names, timing, services, and counts describe the whole cross-service trace; a Worker binding
   can still retrieve its own events for a known trace ID.
 
-Observability connections request `workers-observability.read`. The OAuth client must allow that
-scope or Cloudflare will omit/reject it. Existing billing-only connections can add the grant when the
-user first selects an observability resource. Cloudflare exposes account and Worker resource choices,
-but both map to this one indivisible OAuth scope; resource bindings provide the finer capability
-boundary after connection.
+A pasted API token carries all of its permissions up-front, so every supported resource (account and
+Worker observability) is grantable as soon as the account is connected — there is no incremental
+consent step. Cloudflare exposes account and Worker resource choices, but both are read via the one
+token; resource bindings provide the finer capability boundary after connection.
 
 Workers telemetry is retained by Cloudflare for at most seven days. Queries default to the last hour,
 and the Worker picker searches the full retention window. Suggested bindings are
@@ -84,8 +80,9 @@ page with no error. So discovery reports indexed names (`observability-discovery
 names a field — filters, `calculations`, `groupBys`, `listValues` — because copying a path out of a
 `listEvents` result is the obvious thing to do and used to fail silently.
 
-`openid` is intentionally **not** requested — the Cloudflare dashboard OAuth client isn't permitted
-that scope; identity comes from the `/user` API (`user-details.read`).
+Identity comes from `/accounts`, not `/user`: an API token cannot read `/user`, so the connected
+account's display name is derived from the account(s) the token can see (one account → its name;
+several → a count), exactly as `gatekeeper-unifi` names the console.
 
 ### Why an error's text never reaches the log
 
@@ -108,81 +105,43 @@ account picker's substring match also stays client-side: `name` is the only docu
 filter and whether it matches exactly or by substring is not specified, so pushing it down would trade
 a visible truncation for an invisible one.
 
-## Setting Up Cloudflare OAuth Credentials
+## Setting Up the API Token
 
-You need a Cloudflare dashboard OAuth client (client id + secret). The dashboard OAuth endpoints and
-scopes are hardcoded in `src/oauth.ts`, so you only configure the client id/secret and register the
-redirect URI. Ensure the client's scope allowlist includes `workers-observability.read` when this
-deployment offers Workers Observability resources.
+There is **no deployment-side configuration** — no OAuth client, no `CLIENT_ID`/`CLIENT_SECRET`, no
+registered redirect URI. Each user pastes their own Cloudflare API token into the connect form. The
+token is validated against `GET /user/tokens/verify` and stored encrypted in the connection's Durable
+Object.
 
-### Step 1: Register the redirect URI
+Create the token in the Cloudflare dashboard under **My Profile → API Tokens → Create Custom Token**
+with these permissions:
 
-The gatekeeper's OAuth redirect URI is:
+| Resource | Permission |
+| --- | --- |
+| Account → AI Gateway | Read |
+| Account → AI Gateway | Run |
+| Account → Account Settings | Read |
+| Account → Workers Observability | Read |
 
-```
-${BASE_URL}/oauth
-```
+Scope it to the account(s) you want to expose. `Account Settings → Read` is what lets the connector
+enumerate accounts (for the display name and the AI Gateway billing account selection); the AI
+Gateway and Workers Observability permissions back the two purposes above.
 
-where `BASE_URL` defaults to `http://localhost:8787/gatekeeper/cloudflare` in dev — i.e. the full
-redirect URI is:
+### Verify Setup
 
-```
-http://localhost:8787/gatekeeper/cloudflare/oauth
-```
-
-Register **exactly** this (replace the host with your `PUBLIC_BASE_URL` when not running locally) as
-an allowed/pre-registered redirect URL on the Cloudflare OAuth client. If it isn't registered you'll
-get an `invalid_request` error: _"the 'redirect_uri' parameter does not match any of the OAuth 2.0
-Client's pre-registered redirect urls."_
-
-### Step 2: Configure Your Local Environment
-
-Create a `.env` file in this package's directory (`packages/gatekeeper-cloudflare/.env`):
-
-```bash
-CLIENT_ID=your-client-id-here
-CLIENT_SECRET=your-client-secret-here
-```
-
-In local dev, `run-dev-server.ts` will also seed these from `CLOUDFLARE_OAUTH_CLIENT_ID` /
-`CLOUDFLARE_OAUTH_CLIENT_SECRET` if you'd rather set them in the root `.dev.vars`. A per-package
-`.env` takes precedence and keeps the credential with the gatekeeper that uses it.
-
-> **Note**: The `.env` file is gitignored and should never be committed.
-
-### Step 3: (Optional) Enable Cloudflare sign-in / billing
-
-To offer "Continue with Cloudflare" on the login page, add `cloudflare` to the deployment's
-`AUTH_GATEKEEPERS` allowlist (e.g. in the root `.dev.vars`):
-
-```
-AUTH_GATEKEEPERS=cloudflare,google,github
-```
-
-The order controls the order of the login buttons. For the AI Gateway billing / top-up flow, also
-set `ENABLE_CLOUDFLARE_LIMITS=true` (see [AI Gateway billing](../../docs/ai-gateway-billing.md)); a
-user enables billing by connecting Cloudflare, which requests the billing scopes
-(`offline_access aig.read aig.run user-details.read account-settings.read`). Connecting all
-Cloudflare gadget resources also requests `workers-observability.read`.
-
-### Step 4: Verify Setup
-
-1. Start the application in dev mode (see the root README.md).
-2. On the login page, click **Continue with Cloudflare**.
-3. A pop-up opens to the Cloudflare authorization page; approve it.
-4. The pop-up closes and you're signed in, identified by your Cloudflare account email.
-5. To use AI Gateway credits, open **Usage & billing** in settings and **Connect Cloudflare** (this
-   requests billing scopes only).
+1. Start the application in dev mode (see the root README.md), or use the live deployment.
+2. Open the **Cloudflare** gatekeeper tile and click **Connect**.
+3. The connect form opens (no OAuth redirect); paste your API token and submit.
+4. On success the tab closes and the tile is active. If the token is invalid the form re-renders with
+   an error and no state is stored.
 
 ## Troubleshooting
 
-### "redirect_uri ... does not match any of the ... pre-registered redirect urls"
+### "Cloudflare rejected the API token"
 
-The redirect URI isn't registered on the OAuth client. Register exactly
-`http://localhost:8787/gatekeeper/cloudflare/oauth` (or your `PUBLIC_BASE_URL` equivalent) — no
-trailing slash, `http` not `https` for localhost.
+`GET /user/tokens/verify` did not report the token as `active`. Confirm the token is enabled and
+copied correctly, then resubmit — the connect link stays valid until the nonce expires.
 
-### "Not configured" page during authorization
+### The tile activates but observability reads return 403
 
-`CLIENT_ID` / `CLIENT_SECRET` are missing. Ensure they're set (per-package `.env` or seeded from the
-root `.dev.vars`), then restart the dev server.
+The token is valid but missing a permission. Re-create it with all four permissions in the table
+above (in particular **Workers Observability → Read**) and reconnect.

@@ -254,6 +254,7 @@ const NO_DEFAULT_CRED_INPUTS = new Set([
   "gatekeeper-mcp",           // MCP OAuth uses dynamic client registration, not a static app
   "gatekeeper-mcp-portal",    // same MCP OAuth chain as gatekeeper-mcp
   "gatekeeper-unifi",         // users connect their own UniFi Site Manager API key in-app
+  "gatekeeper-cloudflare",    // users connect their own Cloudflare API token in-app (OWL-1618)
 ]);
 
 // Not installable on customer instances: Email Routing needs a zone, which workers.dev-hosted
