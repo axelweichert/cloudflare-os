@@ -43,10 +43,12 @@ describe('router fetch', () => {
       ASSETS: stubFetcher('assets'),
       GATEKEEPER_GOOGLE: stubFetcher('google'),
       GATEKEEPER_HOMEASSISTANT: stubFetcher('homeassistant'),
+      GATEKEEPER_UNIFI: stubFetcher('unifi'),
     });
     expect(await route(env, '/gatekeeper/google')).toBe('google');
     expect(await route(env, '/gatekeeper/google/oauth')).toBe('google');
     expect(await route(env, '/gatekeeper/homeassistant/foo')).toBe('homeassistant');
+    expect(await route(env, '/gatekeeper/unifi/foo')).toBe('unifi');
   });
 
   it('maps underscores in binding names to dashes in the path', async () => {
