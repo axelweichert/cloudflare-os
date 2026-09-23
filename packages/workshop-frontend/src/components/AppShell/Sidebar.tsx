@@ -9,6 +9,7 @@ import {
   SidebarSimple,
   SquaresFour,
   Stack,
+  WifiHigh,
 } from '@phosphor-icons/react'
 import { useSiteName } from '../../ServerConfigContext'
 import { useT } from '../../i18n/useT'
@@ -186,6 +187,12 @@ export default function Sidebar({
               to="/explore"
               label={t('sidebar.explore')}
               icon={<Compass size={14} weight="regular" />}
+              collapsed={collapsed}
+            />
+            <SidebarItem
+              to="/unifi"
+              label={t('sidebar.unifi')}
+              icon={<WifiHigh size={14} weight="regular" />}
               collapsed={collapsed}
             />
           </nav>
