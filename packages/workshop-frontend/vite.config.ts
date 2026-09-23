@@ -34,7 +34,17 @@ const runConfig = {
        * path `deploy` uses.
        */
       build: {
-        command: ['tsc', 'tsc -p tsconfig.vite.json', 'NODE_ENV=production vite build'],
+        // Post-build guard (assert-prod-bundle.mjs): a dev bundle inlines the
+        // `localhost:8787` backend fallback (main.tsx getBackendHost dev branch); a prod
+        // bundle never does. Fails the build if it leaks into dist/assets so a dev build
+        // can't be deployed as the router's ASSETS (the OWL-1619 regression). A `node`
+        // script, not inline shell -- vp's runner doesn't parse `;`/`if`/redirects.
+        command: [
+          'tsc',
+          'tsc -p tsconfig.vite.json',
+          'NODE_ENV=production vite build',
+          'node scripts/assert-prod-bundle.mjs',
+        ],
         dependsOn: ['clean:dist'],
         env: ['VITE_*'],
         input: [
