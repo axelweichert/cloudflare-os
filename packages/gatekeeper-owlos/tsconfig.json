@@ -5,9 +5,12 @@
     "lib": ["ESNext"],
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "jsx": "react",
+    "jsxFactory": "h",
     "types": ["./worker-configuration.d.ts"],
     "paths": {
-      "@gadgets/workshop-shared/*": ["../workshop-shared/src/*"]
+      "@gadgets/workshop-shared/*": ["../workshop-shared/src/*"],
+      "@gadgets/configurator-ui": ["../configurator-ui/src/index.ts"]
     }
   },
   "include": ["src"],

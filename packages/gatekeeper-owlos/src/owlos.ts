@@ -18,7 +18,12 @@ import {
 } from "@gadgets/workshop-shared/gatekeeper";
 import { OwlosClient, OwlosError, verifyCredentials, type OwlosCredentials } from "./owlos-api";
 import type { OwlosSession } from "./types";
+import type { OwlosWorkspaceConfiguratorRpc } from "./configurator/owlos-configurator-types";
 import TYPES_CODE from "./types.txt";
+// Generated from src/configurator/owlos-workspace-configurator-ui.tsx by
+// scripts/build-gatekeeper-configurator.ts — a real configurator module that wires the MessagePort
+// RPC runtime, so the connect iframe reports ready (unlike the old inline HTML string).
+import WORKSPACE_CONFIGURATOR_HTML from "./generated/owlos-workspace-configurator-ui.txt";
 
 // ---------------------------------------------------------------------------
 // Config & nonce helpers (identical shape to gk-unifi / gk-cloudflare)
@@ -470,17 +475,8 @@ export class OwlosVerifier extends WorkerEntrypoint<Env> implements GatekeeperUs
 // Resource configurator — the workspace has no user-selectable inputs; once connected the resource
 // URL is fully determined. Treated as untrusted, so it exposes nothing but the fixed instance URL.
 
-interface WorkspaceConfiguratorRpc {
-  resourceUrl(): Promise<string>;
-}
-
-const WORKSPACE_CONFIGURATOR_HTML = `<!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8"><title>owlOS Workspace</title>
-<style>body{font-family:system-ui,sans-serif;margin:0;padding:0.75rem;color:#333;font-size:0.9rem;}</style>
-</head><body>Connected owlOS workspace — read-only access to this instance.</body></html>`;
-
 @validateRpc()
-class WorkspaceConfiguratorUI extends RpcTarget implements WorkspaceConfiguratorRpc {
+class WorkspaceConfiguratorUI extends RpcTarget implements OwlosWorkspaceConfiguratorRpc {
   #instanceUrl: string;
   constructor(instanceUrl: string) {
     super();
