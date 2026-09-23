@@ -356,6 +356,40 @@ export const createAuthError = authErrors.create;
 /** Reads the machine-readable code from an authentication failure. */
 export const getAuthErrorCode = authErrors.getCode;
 
+/** One UniFi site, flattened for the /unifi dashboard. */
+export interface UnifiSiteView {
+  siteId: string;
+  hostId: string;
+  /** Display name: the site's meta name/desc, falling back to the site id. */
+  name: string;
+  /** The console (host) this site lives on. */
+  hostName?: string;
+  /** Whether the host is currently reachable by the UniFi cloud (derived from `isBlocked`). */
+  hostOnline: boolean;
+  /** Adopted devices on this site's host (cloud groups devices by host, not site). */
+  deviceTotal: number;
+  deviceOnline: number;
+  deviceOffline: number;
+  /** Rolled-up traffic-light status for the site. */
+  status: 'ok' | 'warning' | 'offline';
+  /** Best-effort WAN/ISP labels, surfaced only when the console reports them. */
+  wan?: string;
+  isp?: string;
+}
+
+/** Read-only inventory of the user's connected UniFi Site Manager account. */
+export interface UnifiInventory {
+  /** False when the user has no (valid) UniFi account connected. */
+  connected: boolean;
+  /** True when a UniFi account exists but its stored credentials have expired. */
+  credentialsExpired?: boolean;
+  /** Populated when the live read failed (e.g. the UniFi API rejected the key). */
+  error?: string;
+  /** Number of consoles (hosts) the account can see. */
+  hostCount: number;
+  sites: UnifiSiteView[];
+}
+
 /** Top-level API exposed to the user after they have authenticated. */
 export interface AuthenticatedApi extends RpcTarget {
   /** Get profile info for the user who is logged in. */
@@ -524,6 +558,14 @@ export interface AuthenticatedApi extends RpcTarget {
 
   /** List all third-party services that this account can connect to. */
   listGatekeeperVendors(filter?: GatekeeperVendorFilter): Promise<GatekeeperVendorInfo[]>;
+
+  /**
+   * Read-only inventory of the user's connected UniFi Site Manager account, for the /unifi
+   * dashboard: every site with a rolled-up status, device counts, and (where the console reports
+   * it) WAN/ISP. Opens a short-lived UniFi gatekeeper session server-side; never mutates anything.
+   * Returns `{connected: false}` when no UniFi account is connected.
+   */
+  getUnifiInventory(): Promise<UnifiInventory>;
 
   /**
    * Connect this account to a specific account on a third-party service. Returns the URL which
