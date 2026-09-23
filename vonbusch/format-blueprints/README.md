@@ -18,8 +18,11 @@ schon im `+`-Menü stehen, ohne dass jemand sie erst bauen muss.
 | Kunde anlegen | `owlos.kunde` | `WORKFLOW` (agentSpawner) + `owlos` (gatekeeper, spawnerOnly) | Kunde (Firma) in owlOS anlegen + Kundennummer vergeben |
 | Angebot anlegen | `owlos.angebot` | `WORKFLOW` (agentSpawner) + `owlos` (gatekeeper, spawnerOnly) | Angebot (Quote) in owlOS anlegen (Pflicht-Titel) + mit Kunde verknüpfen |
 | Rechnung anlegen | `owlos.rechnung` | `WORKFLOW` (agentSpawner) + `owlos` (gatekeeper, spawnerOnly) | Ausgangsrechnung (Faktura) in owlOS: Kopf + Positionen + Finalisieren |
+| Ansprechpartner anlegen | `owlos.kontakt` | `WORKFLOW` (agentSpawner) + `owlos` (gatekeeper, spawnerOnly) | Kontakt zu einer Firma in owlOS anlegen (Pflicht: Firma + Vor-/Nachname) |
+| Aktivität festhalten | `owlos.aktivitaet` | `WORKFLOW` (agentSpawner) + `owlos` (gatekeeper, spawnerOnly) | Aktivität (Anruf/Brief/Notiz …) in owlOS festhalten + mit Firma/Kontakt verknüpfen |
+| Opportunity anlegen | `owlos.opportunity` | `WORKFLOW` (agentSpawner) + `owlos` (gatekeeper, spawnerOnly) | Opportunity (owlOS: Deal) in der Pipeline anlegen + mit Firma verknüpfen |
 
-Die drei `owlos.*`-Blueprints (S2, OWL-1634) folgen exakt demselben Muster wie die von-Busch-
+Die sechs `owlos.*`-Blueprints (S2, OWL-1634/1657) folgen exakt demselben Muster wie die von-Busch-
 Blueprints, docken aber an den bestehenden **`owlos`**-Gatekeeper (Cloud-ERP) an. Die erlaubten
 owlOS-Endpunkte sind autoritativ in `packages/gatekeeper-owlos/S2-CONTRACT.md` festgelegt — der
 Prompt jedes Blueprints nennt nur diese Routen (RATEN VERBOTEN).

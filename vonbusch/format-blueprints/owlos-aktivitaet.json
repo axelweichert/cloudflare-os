@@ -1,0 +1,18 @@
+{
+  "$comment": "GENERIERT aus src/owlos-aktivitaet/blueprint.json durch build-blueprints.mjs — dort editieren, nicht hier.",
+  "blueprintId": "owlos.aktivitaet",
+  "title": "Aktivität festhalten",
+  "description": "owlOS-Workflow: hält eine Aktivität (Anruf, Brief, E-Mail, Notiz …) in der owlOS Cloud-ERP-Instanz fest und verknüpft sie mit Firma/Kontakt. Der Agent ermittelt den Inhaber, ordnet zu und legt die Aktivität approval-pflichtig an — statt jedes Mal denselben Prompt neu zu tippen.",
+  "output": {
+    "id": "workflow",
+    "noun": "Aktivität",
+    "plural": "Aktivitäten",
+    "icon": "listChecks"
+  },
+  "author": {
+    "type": "user",
+    "name": "CloudflareOS",
+    "id": "owlos@cloudflareos.weichert.at"
+  },
+  "revision": 1
+}

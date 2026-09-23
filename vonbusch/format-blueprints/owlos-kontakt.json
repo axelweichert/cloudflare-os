@@ -1,0 +1,18 @@
+{
+  "$comment": "GENERIERT aus src/owlos-kontakt/blueprint.json durch build-blueprints.mjs — dort editieren, nicht hier.",
+  "blueprintId": "owlos.kontakt",
+  "title": "Ansprechpartner anlegen",
+  "description": "owlOS-Workflow: legt einen Ansprechpartner (Kontakt) zu einer Firma in der owlOS Cloud-ERP-Instanz an. Der Agent ordnet den Kontakt einer bestehenden Firma zu, prüft auf Dubletten und legt ihn sonst approval-pflichtig an — statt jedes Mal denselben Prompt neu zu tippen.",
+  "output": {
+    "id": "workflow",
+    "noun": "Ansprechpartner",
+    "plural": "Ansprechpartner",
+    "icon": "flowArrow"
+  },
+  "author": {
+    "type": "user",
+    "name": "CloudflareOS",
+    "id": "owlos@cloudflareos.weichert.at"
+  },
+  "revision": 1
+}

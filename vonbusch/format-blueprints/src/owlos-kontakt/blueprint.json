@@ -1,0 +1,30 @@
+{
+  "blueprintId": "owlos.kontakt",
+  "version": 1,
+  "created": "2026-09-24T00:00:00.000Z",
+  "sidecar": {
+    "title": "Ansprechpartner anlegen",
+    "description": "owlOS-Workflow: legt einen Ansprechpartner (Kontakt) zu einer Firma in der owlOS Cloud-ERP-Instanz an. Der Agent ordnet den Kontakt einer bestehenden Firma zu, prüft auf Dubletten und legt ihn sonst approval-pflichtig an — statt jedes Mal denselben Prompt neu zu tippen.",
+    "output": { "id": "workflow", "noun": "Ansprechpartner", "plural": "Ansprechpartner", "icon": "flowArrow" },
+    "author": { "type": "user", "name": "CloudflareOS", "id": "owlos@cloudflareos.weichert.at" },
+    "revision": 1
+  },
+  "bindings": {
+    "WORKFLOW": {
+      "title": "Kontakt-Agent",
+      "description": "Der KI-Agent, der den Ansprechpartner in owlOS anlegt. Der Agent bekommt den owlOS-Gatekeeper in seine env; wählen Sie nur, mit welchem Modell er laufen soll.",
+      "type": "agentSpawner",
+      "env": {
+        "owlos": { "type": "binding", "name": "owlos" }
+      }
+    },
+    "owlos": {
+      "title": "owlOS Workspace",
+      "description": "Gatekeeper auf die verbundene owlOS Cloud-ERP-Instanz (Firmen, Kontakte, Aktivitäten, Deals). Reads direkt, Creates approval-pflichtig.",
+      "spawnerOnly": true,
+      "type": "gatekeeper",
+      "gatekeeperName": "owlos",
+      "typeUrlPattern": "https://*.owl-os.cloud/*"
+    }
+  }
+}
