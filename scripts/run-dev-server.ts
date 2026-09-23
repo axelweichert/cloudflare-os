@@ -383,7 +383,7 @@ function devBuildConfig(build: WranglerBuild | undefined, pkgDir: string): Wrang
 // Generate wrangler.dev.jsonc (dev-router with gatekeeper service bindings).
 // ---------------------------------------------------------------------------
 {
-  const srcPath = join(ROOT, "wrangler.jsonc");
+  const srcPath = join(ROOT, "wrangler.dev-base.jsonc");
   const config = parse(readFileSync(srcPath, "utf8"));
 
   config.services = config.services || [];
