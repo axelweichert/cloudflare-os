@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { OAuthError, OAuthErrorCode } from "@modelcontextprotocol/client";
 
-import { isCredentialRejection, revokeToken, safeOAuthError } from "../src/oauth.js";
+import {
+  isCredentialRejection, isRedirectUriRejection, revokeToken, safeOAuthError,
+} from "../src/oauth.js";
 import { safeServerText } from "../src/util.js";
 
 describe("isCredentialRejection", () => {
@@ -18,6 +20,22 @@ describe("isCredentialRejection", () => {
     expect(isCredentialRejection(
       new OAuthError(OAuthErrorCode.TemporarilyUnavailable, "try later"))).toBe(false);
     expect(isCredentialRejection(new Error("network error"))).toBe(false);
+  });
+});
+
+describe("isRedirectUriRejection", () => {
+  it("recognises the allowlist server's DCR rejection", () => {
+    expect(isRedirectUriRejection(new Error(
+      "invalid_client_metadata / redirect_uri is not allowed by the account configuration")))
+      .toBe(true);
+    expect(isRedirectUriRejection(new Error(
+      "Registration failed: redirect_uri is not allowed"))).toBe(true);
+    expect(isRedirectUriRejection("invalid_client_metadata")).toBe(true);
+  });
+
+  it("leaves unrelated failures for the normal error path", () => {
+    expect(isRedirectUriRejection(new Error("The grant has expired."))).toBe(false);
+    expect(isRedirectUriRejection(new Error("network error"))).toBe(false);
   });
 });
 

@@ -15,6 +15,7 @@
     "./html": "./src/html.ts",
     "./http": "./src/http.ts",
     "./log": "./src/log.ts",
+    "./oauth": "./src/oauth.ts",
     "./portal": "./src/portal.ts",
     "./schema-to-ts": "./src/schema-to-ts.ts",
     "./scope": "./src/scope.ts",
