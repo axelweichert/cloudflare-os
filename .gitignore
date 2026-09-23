@@ -27,7 +27,8 @@ packages/workshop-backend/src/generated/browser-export-page.js
 .dev.vars*
 
 # Site-specific deployment configs.
-wrangler.prod.jsonc
+# wrangler.prod.jsonc is committed (OWL-1626): it is the single source of truth the
+# Git-Connect Workers Build clones and deploys for the live `cloudflareos` router.
 wrangler.staging.jsonc
 
 # Site-specific dev server configs.
