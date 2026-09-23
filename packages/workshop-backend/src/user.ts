@@ -1,6 +1,6 @@
-import { RpcStub } from "capnweb";
-import { GadgetMetadataWithTimestamps, AiChatAuthorInfo, AiModelConfig, SUGGESTED_MODELS, CollaboratorRole, ConnectedAccountsSubscriber, ConnectedAccountsFilter, GatekeeperVendorFilter, GadgetMetadata, BlueprintMetadata, BlueprintLibrarySummary, BlueprintSource, BlueprintUserSummary, BLUEPRINT_SCREENSHOT_R2_PREFIX, GatekeeperVendorInfo, BlueprintOutput, OutputSummary, WorkpieceId, ListOutputsResult, AUTH_ERROR_CODES, createAuthError } from '@gadgets/workshop-shared/api';
-import { Gatekeeper, GatekeeperUser, GatekeeperUserVerifier, GatekeeperVendor, AccountDescription, VendorDescription, GatekeeperConnectCallback, SupportedResource, ResourceConfiguratorFrame, AppUiContext, GatekeeperUiFrame } from "@gadgets/workshop-shared/gatekeeper";
+import { RpcStub, RpcTarget } from "capnweb";
+import { GadgetMetadataWithTimestamps, AiChatAuthorInfo, AiModelConfig, SUGGESTED_MODELS, CollaboratorRole, ConnectedAccountsSubscriber, ConnectedAccountsFilter, GatekeeperVendorFilter, GadgetMetadata, BlueprintMetadata, BlueprintLibrarySummary, BlueprintSource, BlueprintUserSummary, BLUEPRINT_SCREENSHOT_R2_PREFIX, GatekeeperVendorInfo, BlueprintOutput, OutputSummary, WorkpieceId, ListOutputsResult, UnifiInventory, AUTH_ERROR_CODES, createAuthError } from '@gadgets/workshop-shared/api';
+import { Gatekeeper, GatekeeperUser, GatekeeperUserVerifier, GatekeeperVendor, AccountDescription, VendorDescription, GatekeeperConnectCallback, SupportedResource, ResourceConfiguratorFrame, AppUiContext, GatekeeperUiFrame, ObservationDescription } from "@gadgets/workshop-shared/gatekeeper";
 import { shouldAutoProvisionAccount, ambientGatekeeperMode } from "./provisioning-policy.js";
 import { CloudflareGatekeeperUser } from "@gadgets/workshop-shared/cloudflare-gatekeeper";
 import { DurableObject, WorkerEntrypoint } from "cloudflare:workers";
@@ -12,6 +12,7 @@ import type { AdminSettings } from "./admin-settings.js";
 import { isReservedBlueprintKey, readBlueprintKvRecord } from "./blueprint-archive.js";
 import { filterEnabledResources, isResourceDisabled, readAdminConfig } from "./admin-config.js";
 import { buildGatekeeperVendorMap } from "./auth/auth-vendors.js";
+import { shapeUnifiInventory } from "./unifi-inventory.js";
 
 const logger = createWorkshopLogger("workshop.user");
 
@@ -59,6 +60,26 @@ function areCredentialsValid(record: ConnectedAccountRecord): boolean {
   if (record.credentialExpiresAt && record.credentialExpiresAt.valueOf() < Date.now()) return false;
   return true;
 }
+
+// Any valid http(s) URL under the UniFi account resource pattern; the gatekeeper only checks the
+// scheme (see UnifiUserImpl.getGatekeeperClassFor) before binding the account's stored credentials.
+const UNIFI_RESOURCE_URL = "https://unifi.ui.com/";
+
+// ApprovalQueue handed to the UniFi gatekeeper session for a first-party dashboard read. The UniFi
+// gatekeeper is read-only and only ever calls authorizeObservation() on its session; the account
+// owner is reading their OWN connected resource through first-party UI, so there is no third-party
+// gadget/agent to gate — observations are always authorized (no audit entry). Actions and hooks
+// never fire on a read; if the gatekeeper ever called them, they throw rather than silently pass.
+class ReadOnlyApprovalQueue extends RpcTarget {
+  async authorizeObservation(_description: ObservationDescription): Promise<void> {}
+  async submitAction(): Promise<void> {
+    throw new Error("UniFi dashboard sessions are read-only.");
+  }
+  async bindHook(): Promise<void> {
+    throw new Error("UniFi dashboard sessions are read-only.");
+  }
+}
+
 
 /**
  * Vendor id of the Cloudflare gatekeeper (the suffix of GATEKEEPER_CLOUDFLARE, lowercased). The AI
@@ -1688,6 +1709,63 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
     }
 
     return {class: cls, vendorId: account.vendorId, typeUrlPattern: resource.urlPattern};
+  }
+
+  // First valid connected UniFi account, or (failing that) an expired one so the caller can surface
+  // a "reconnect" state. Uses the resilient id-scan (never .list()) so one corrupt record can't
+  // poison the lookup -- same reasoning as #findConnectedAccountByIdentity.
+  #findUnifiAccount(): ConnectedAccountRecord | undefined {
+    let next = this.storage.nextAccountId.get();
+    let expired: ConnectedAccountRecord | undefined;
+    for (let id = 0; id < next; id++) {
+      let rec: ConnectedAccountRecord | undefined;
+      try { rec = this.storage.connectedAccounts.get(id); } catch { continue; }
+      if (!rec || rec.vendorId.toLowerCase() !== "unifi") continue;
+      if (areCredentialsValid(rec)) return rec;
+      expired ??= rec;
+    }
+    return expired;
+  }
+
+  /**
+   * Read-only UniFi inventory for the /unifi dashboard. Opens a short-lived session on the account's
+   * UniFi gatekeeper (instantiated as a facet, the same primitive the overseer uses for bound
+   * gatekeepers) and rolls hosts/sites/devices into a flat, UI-friendly shape. Never mutates.
+   */
+  async getUnifiInventory(): Promise<UnifiInventory> {
+    let record = this.#findUnifiAccount();
+    if (!record) return {connected: false, hostCount: 0, sites: []};
+    if (!areCredentialsValid(record)) {
+      return {connected: true, credentialsExpired: true, hostCount: 0, sites: []};
+    }
+
+    let cls: unknown;
+    try {
+      ({class: cls} = await record.account.getGatekeeperClassFor(UNIFI_RESOURCE_URL));
+    } catch (err) {
+      return {connected: true, hostCount: 0, sites: [],
+              error: err instanceof Error ? err.message : String(err)};
+    }
+
+    // Keyed per account so reconnecting a different UniFi account doesn't reuse a stale facet.
+    let gk = this.ctx.facets.get<Gatekeeper<any>>(
+        `unifi-read-${record.id}`, () => ({class: cls as any}));
+
+    try {
+      // @ts-expect-error Cap'n Web cyclic type issue (mirrors OverseerImpl.openSession).
+      using session = await gk.startSession(new ReadOnlyApprovalQueue());
+      let [hosts, sites, deviceGroups] = await Promise.all([
+        Promise.resolve(session.listHosts()).catch(() => [] as any[]),   // Cloud-only; empty locally.
+        session.listSites(),
+        Promise.resolve(session.listDevices()).catch(() => [] as any[]),
+      ]);
+      return shapeUnifiInventory(hosts, sites, deviceGroups);
+    } catch (err) {
+      logger.warn("UniFi inventory read failed", {
+        event: "unifi.inventory.read.failed", accountId: record.id, error: err});
+      return {connected: true, hostCount: 0, sites: [],
+              error: err instanceof Error ? err.message : String(err)};
+    }
   }
 
   /**

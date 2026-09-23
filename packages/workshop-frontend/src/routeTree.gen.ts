@@ -19,6 +19,7 @@ import { Route as OutputsRouteImport } from './routes/outputs'
 import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as ProvidersRouteImport } from './routes/providers'
 import { Route as SignupRouteImport } from './routes/signup'
+import { Route as UnifiRouteImport } from './routes/unifi'
 import { Route as WorkspacesRouteImport } from './routes/workspaces'
 import { Route as BlueprintIdRouteImport } from './routes/blueprint.$id'
 import { Route as GadgetIdRouteImport } from './routes/gadget.$id'
@@ -75,6 +76,11 @@ const SignupRoute = SignupRouteImport.update({
   path: '/signup',
   getParentRoute: () => rootRouteImport,
 } as any)
+const UnifiRoute = UnifiRouteImport.update({
+  id: '/unifi',
+  path: '/unifi',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const WorkspacesRoute = WorkspacesRouteImport.update({
   id: '/workspaces',
   path: '/workspaces',
@@ -112,6 +118,7 @@ export interface FileRoutesByFullPath {
   '/profile': typeof ProfileRoute
   '/providers': typeof ProvidersRoute
   '/signup': typeof SignupRoute
+  '/unifi': typeof UnifiRoute
   '/workspaces': typeof WorkspacesRoute
   '/blueprint/$id': typeof BlueprintIdRoute
   '/gadget/$id': typeof GadgetIdRoute
@@ -129,6 +136,7 @@ export interface FileRoutesByTo {
   '/profile': typeof ProfileRoute
   '/providers': typeof ProvidersRoute
   '/signup': typeof SignupRoute
+  '/unifi': typeof UnifiRoute
   '/workspaces': typeof WorkspacesRoute
   '/blueprint/$id': typeof BlueprintIdRoute
   '/gadget/$id': typeof GadgetIdRoute
@@ -147,6 +155,7 @@ export interface FileRoutesById {
   '/profile': typeof ProfileRoute
   '/providers': typeof ProvidersRoute
   '/signup': typeof SignupRoute
+  '/unifi': typeof UnifiRoute
   '/workspaces': typeof WorkspacesRoute
   '/blueprint/$id': typeof BlueprintIdRoute
   '/gadget/$id': typeof GadgetIdRoute
@@ -166,6 +175,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/providers'
     | '/signup'
+    | '/unifi'
     | '/workspaces'
     | '/blueprint/$id'
     | '/gadget/$id'
@@ -183,6 +193,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/providers'
     | '/signup'
+    | '/unifi'
     | '/workspaces'
     | '/blueprint/$id'
     | '/gadget/$id'
@@ -200,6 +211,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/providers'
     | '/signup'
+    | '/unifi'
     | '/workspaces'
     | '/blueprint/$id'
     | '/gadget/$id'
@@ -218,6 +230,7 @@ export interface RootRouteChildren {
   ProfileRoute: typeof ProfileRoute
   ProvidersRoute: typeof ProvidersRoute
   SignupRoute: typeof SignupRoute
+  UnifiRoute: typeof UnifiRoute
   WorkspacesRoute: typeof WorkspacesRoute
   BlueprintIdRoute: typeof BlueprintIdRoute
   GadgetIdRoute: typeof GadgetIdRoute
@@ -297,6 +310,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SignupRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/unifi': {
+      id: '/unifi'
+      path: '/unifi'
+      fullPath: '/unifi'
+      preLoaderRoute: typeof UnifiRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/workspaces': {
       id: '/workspaces'
       path: '/workspaces'
@@ -346,6 +366,7 @@ const rootRouteChildren: RootRouteChildren = {
   ProfileRoute: ProfileRoute,
   ProvidersRoute: ProvidersRoute,
   SignupRoute: SignupRoute,
+  UnifiRoute: UnifiRoute,
   WorkspacesRoute: WorkspacesRoute,
   BlueprintIdRoute: BlueprintIdRoute,
   GadgetIdRoute: GadgetIdRoute,
