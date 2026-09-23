@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "echo \"run 'pnpm dev-server' in the root directory instead\" >&2 && exit 1",
     "deploy": "wrangler deploy",
-    "test": "node --import tsx --test src/owlos-store.test.ts",
-    "clean": "rm -rf dist src/generated"
+    "test": "node --experimental-strip-types --test src/owlos-api.test.ts",
+    "clean": "rm -rf dist .wrangler/validate"
   },
   "dependencies": {
     "@gadgets/workshop-shared": "workspace:*",
