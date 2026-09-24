@@ -23,29 +23,32 @@ Kunde: ${kunde}
 Positionen / Angaben:
 ${positionen}
 
-Dir steht owlOS über deine Umgebung als env.owlos zur Verfügung (der owlOS-Gatekeeper).
-Nutze ausschließlich diese Endpunkte — erfinde keine anderen Routen:
-  • GET  /api/faktura/outgoing                    — Ausgangsrechnungen lesen (direkt, kein Approval)
-  • POST /api/faktura/outgoing { doc_type, … }    — Rechnungskopf anlegen; doc_type ist standardmäßig
-                                                    "invoice" (Variante "credit_note") (approval-pflichtig)
-  • POST /api/faktura/outgoing/{id}/items         — Positionen zur Rechnung hinzufügen (approval-pflichtig)
-  • POST /api/faktura/outgoing/{id}/finalize      — Rechnung festschreiben/finalisieren (approval-pflichtig)
+Dir steht owlOS über deine Umgebung als env.owlos zur Verfügung (der owlOS-Gatekeeper). Rufe
+ausschließlich diese Methoden namentlich auf — konstruiere keine eigenen HTTP-Pfade:
+  • await env.owlos.listInvoices()                     — Ausgangsrechnungen lesen (direkt, kein Approval)
+  • await env.owlos.createInvoice({ doc_type, … })     — Rechnungskopf anlegen; doc_type standardmäßig
+                                                       "invoice" (Variante "credit_note") (approval-pflichtig)
+  • await env.owlos.addInvoiceItems(invoiceId, { … })  — Positionen zur Rechnung hinzufügen (approval-pflichtig)
+  • await env.owlos.finalizeInvoice(invoiceId)         — Rechnung festschreiben/finalisieren (approval-pflichtig)
+  • await env.owlos.listCompanies()                    — Kundenliste lesen, um die company_id zu ermitteln (direkt)
 
 Gehe strikt in dieser Reihenfolge vor:
-  1. Lies GET /api/faktura/outgoing, um dir einen Überblick zu verschaffen und erkennbare Dubletten
+  1. Rufe env.owlos.listInvoices() auf, um dir einen Überblick zu verschaffen und erkennbare Dubletten
      für Kunde "${kunde}" zu melden.
-  2. Lege den Rechnungskopf über POST /api/faktura/outgoing an (doc_type standardmäßig "invoice";
-     nutze "credit_note" nur, wenn ausdrücklich eine Gutschrift gewünscht ist). Verknüpfe den Kunden
-     nur mit einer eindeutig ermittelten ID — rate keine ID.
-  3. Füge die oben genannten Positionen über POST /api/faktura/outgoing/{id}/items hinzu. Übernimm
-     Mengen, Einzelpreise und Texte nur so, wie sie oben stehen — erfinde keine Beträge.
+  2. Lege den Rechnungskopf über env.owlos.createInvoice({ doc_type: "invoice", … }) an (nutze
+     "credit_note" nur, wenn ausdrücklich eine Gutschrift gewünscht ist). Ermittle die company_id des
+     Kunden vorab über env.owlos.listCompanies() und verknüpfe nur eine eindeutig ermittelte ID — rate
+     keine ID. Der Aufruf liefert { status: "pending_approval", actionId }.
+  3. Füge die oben genannten Positionen über env.owlos.addInvoiceItems(invoiceId, { … }) hinzu.
+     Übernimm Mengen, Einzelpreise und Texte nur so, wie sie oben stehen — erfinde keine Beträge.
   4. Prüfe die Rechnung und finalisiere sie erst nach Freigabe über
-     POST /api/faktura/outgoing/{id}/finalize.
+     env.owlos.finalizeInvoice(invoiceId).
 
 Fehlt ein von owlOS als Pflicht gefordertes Feld (z. B. Position ohne Preis oder Menge), frage
-gezielt nach — erfinde keine Werte. Reads (GET) laufen direkt; alle Creates und das Finalisieren
-(POST) sind approval-pflichtig — ein Mensch muss sie freigeben, schreibe nichts vorher. Antworte auf
-Deutsch und markiere jede Annahme ausdrücklich als Annahme.`;
+gezielt nach — erfinde keine Werte. Die list*-Methoden laufen direkt; alle create*/add*/finalize*-
+Methoden sind approval-pflichtig (sie liefern { status: "pending_approval" }) — ein Mensch muss sie
+freigeben, schreibe nichts vorher. Antworte auf Deutsch und markiere jede Annahme ausdrücklich als
+Annahme.`;
 }
 
 export class Gadget extends DurableObject {

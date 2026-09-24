@@ -22,25 +22,29 @@ Angebot (Quote) sauber an.
 Titel: ${titel}
 ${kunde ? `Kunde: ${kunde}` : "Kunde: (nicht angegeben)"}
 
-Dir steht owlOS über deine Umgebung als env.owlos zur Verfügung (der owlOS-Gatekeeper).
-Nutze ausschließlich diese Endpunkte — erfinde keine anderen Routen:
-  • GET   /api/erp/quotes                 — Angebotsliste lesen (direkt, kein Approval)
-  • POST  /api/erp/quotes { title }       — Angebot anlegen; "title" ist PFLICHT (approval-pflichtig)
-  • PATCH /api/erp/quotes/{id}            — Angebot ergänzen, u. a. "company_id" setzen (approval-pflichtig)
+Dir steht owlOS über deine Umgebung als env.owlos zur Verfügung (der owlOS-Gatekeeper). Rufe
+ausschließlich diese Methoden namentlich auf — konstruiere keine eigenen HTTP-Pfade:
+  • await env.owlos.listQuotes()                       — Angebotsliste lesen (direkt, kein Approval)
+  • await env.owlos.createQuote({ title })             — Angebot anlegen; "title" ist PFLICHT (approval-pflichtig)
+  • await env.owlos.updateQuote(quoteId, { company_id })
+                                                       — Angebot ergänzen, u. a. "company_id" setzen (approval-pflichtig)
+  • await env.owlos.listCompanies()                    — Kundenliste lesen, um eine company_id zu ermitteln (direkt)
 
 Gehe strikt in dieser Reihenfolge vor:
-  1. Lies GET /api/erp/quotes, um dir einen Überblick über bestehende Angebote zu verschaffen und
-     erkennbare Dubletten zum Titel "${titel}" zu melden.
-  2. Lege das Angebot über POST /api/erp/quotes mit { title: "${titel}" } an. Der Titel ist ein
-     owlOS-Pflichtfeld ("Titel ist Pflicht") — ohne Titel nicht anlegen.
-  3. Wenn ein Kunde genannt ist, ermittle dessen company_id (owlOS-Kundenkontext) und setze sie am
-     neuen Angebot über PATCH /api/erp/quotes/{id} ({ company_id }). Kennst du die company_id nicht
-     eindeutig, frage nach — rate keine ID.
+  1. Rufe env.owlos.listQuotes() auf, um dir einen Überblick über bestehende Angebote zu verschaffen
+     und erkennbare Dubletten zum Titel "${titel}" zu melden.
+  2. Lege das Angebot über env.owlos.createQuote({ title: "${titel}" }) an. Der Titel ist ein
+     owlOS-Pflichtfeld ("Titel ist Pflicht") — ohne Titel nicht anlegen. Der Aufruf liefert
+     { status: "pending_approval", actionId }: ein Mensch muss die Anlage erst freigeben.
+  3. Wenn ein Kunde genannt ist, ermittle dessen company_id über env.owlos.listCompanies() und setze
+     sie am neuen Angebot über env.owlos.updateQuote(quoteId, { company_id }). Kennst du die
+     company_id nicht eindeutig, frage nach — rate keine ID.
 
 Übernimm nur Feldwerte, die oben ausdrücklich genannt sind. Fehlt ein von owlOS als Pflicht
-gefordertes Feld, frage gezielt nach — erfinde keine Werte. Reads (GET) laufen direkt; alle Creates
-und Änderungen (POST/PATCH) sind approval-pflichtig — ein Mensch muss sie freigeben, schreibe nichts
-vorher. Antworte auf Deutsch und markiere jede Annahme ausdrücklich als Annahme.`;
+gefordertes Feld, frage gezielt nach — erfinde keine Werte. Die list*-Methoden laufen direkt; alle
+create*/update*-Methoden sind approval-pflichtig (sie liefern { status: "pending_approval" }) — ein
+Mensch muss sie freigeben, schreibe nichts vorher. Antworte auf Deutsch und markiere jede Annahme
+ausdrücklich als Annahme.`;
 }
 
 export class Gadget extends DurableObject {
