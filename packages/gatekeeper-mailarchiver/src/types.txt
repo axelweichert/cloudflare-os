@@ -11,7 +11,7 @@
 // actions, so every Session method is an observation.
 //
 // The shapes below are the camelCase structured views this connector maps the MailArchiver's
-// snake_case `/api/*` JSON into (see mailarchiver-api.ts); they are not raw HTTP responses.
+// snake_case `/api/*` JSON into; they are not raw HTTP responses.
 //
 // =====================================================================================
 // API CONVENTIONS
@@ -51,7 +51,7 @@ export interface MailboxSession {
   /**
    * Drill down the contact → year → month → day tree (`GET /api/tree/…`). `contact` is a
    * `Contact.address`; pass `year`/`month`/`day` (as strings, e.g. `"2026"`, `"09"`, `"25"`) to go
-   * deeper. The reached depth determines the returned {@link MailboxTreeLevel} variant: no year →
+   * deeper. The reached depth determines the returned `MailboxTreeLevel` variant: no year →
    * years, year only → months, year+month → days, year+month+day → the day's message summaries.
    */
   messages(

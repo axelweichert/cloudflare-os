@@ -1,0 +1,22 @@
+{
+  "name": "@gadgets/mailarchiver-gatekeeper",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "./src/mailarchiver.ts",
+  "scripts": {
+    "dev": "echo \"run 'pnpm dev-server' in the root directory instead\" >&2 && exit 1",
+    "deploy": "vp run --no-cache build:configurator && wrangler deploy",
+    "test": "node --experimental-strip-types --test src/mailarchiver-api.test.ts",
+    "clean": "rm -rf dist src/generated .wrangler/validate"
+  },
+  "dependencies": {
+    "@gadgets/configurator-ui": "workspace:*",
+    "@gadgets/workshop-shared": "workspace:*",
+    "capnweb": "catalog:",
+    "capnweb-validate": "catalog:"
+  },
+  "devDependencies": {
+    "typescript": "catalog:",
+    "wrangler": "catalog:"
+  }
+}
