@@ -68,6 +68,13 @@
     { "binding": "GATEKEEPER_MCP_PORTAL", "service": "cloudflareos-gk-mcp-portal" },
     { "binding": "GATEKEEPER_NOTION", "service": "cloudflareos-gk-notion" },
     { "binding": "GATEKEEPER_OWLOS", "service": "cloudflareos-gk-owlos" },
+    // OWL-1681: the backend reaches each gatekeeper through its `GatekeeperVendor` RPC entrypoint
+    // (describe/getSupportedResources), not its default fetch export. NOTE: this branch's base
+    // predates the OWL-1661 fix, so the other GK entries above are still missing `entrypoint` —
+    // the LIVE backend already carries it on all of them (set via script settings); re-add it here
+    // when this branch rebases onto the OWL-1661 fix.
+    { "binding": "GATEKEEPER_PROXMOX_BS", "service": "cloudflareos-gk-proxmox-bs", "entrypoint": "GatekeeperVendor" },
+    { "binding": "GATEKEEPER_PROXMOX_VE", "service": "cloudflareos-gk-proxmox-ve", "entrypoint": "GatekeeperVendor" },
     { "binding": "GATEKEEPER_SCHEDULER", "service": "cloudflareos-gk-scheduler" },
     { "binding": "GATEKEEPER_SLACK", "service": "cloudflareos-gk-slack" },
     { "binding": "GATEKEEPER_SPOTIFY", "service": "cloudflareos-gk-spotify" },

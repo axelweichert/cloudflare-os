@@ -36,6 +36,8 @@
     { "binding": "GATEKEEPER_MCP_PORTAL", "service": "cloudflareos-gk-mcp-portal" },
     { "binding": "GATEKEEPER_NOTION", "service": "cloudflareos-gk-notion" },
     { "binding": "GATEKEEPER_OWLOS", "service": "cloudflareos-gk-owlos" },
+    { "binding": "GATEKEEPER_PROXMOX_BS", "service": "cloudflareos-gk-proxmox-bs" },
+    { "binding": "GATEKEEPER_PROXMOX_VE", "service": "cloudflareos-gk-proxmox-ve" },
     { "binding": "GATEKEEPER_SCHEDULER", "service": "cloudflareos-gk-scheduler" },
     { "binding": "GATEKEEPER_SLACK", "service": "cloudflareos-gk-slack" },
     { "binding": "GATEKEEPER_SPOTIFY", "service": "cloudflareos-gk-spotify" },
