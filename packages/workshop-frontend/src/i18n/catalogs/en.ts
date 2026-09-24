@@ -1,4 +1,4 @@
-// owlOS i18n overlay — NOT present in upstream (see vonbusch/FORK-SYNC.md §12).
+// owlOS i18n overlay — NOT present in upstream (see owlos/FORK-SYNC.md §12).
 //
 // The English catalog is the SOURCE OF TRUTH for the key set: `TKey` is derived
 // from it, so every other catalog (de.ts) must supply exactly these keys or the
