@@ -12,11 +12,17 @@
   // WORKERS BUILDS DEPLOY COMMAND (OWL-1668) — the Git-connected Workers Builds project for the
   // backend MUST run exactly:
   //     npx wrangler deploy -c packages/workshop-backend/wrangler.prod.jsonc --keep-vars
-  // `--keep-vars` is NOT optional: this config intentionally omits the 7 plain_text vars + ADMINS
-  // json (their values are not committed), and a plain `wrangler deploy` treats config as the
+  // `--keep-vars` is NOT optional: this config intentionally omits the 7 plain_text vars (their
+  // values are instance-state, not committed), and a plain `wrangler deploy` treats config as the
   // complete var set and WIPES them (breaking BASE_URL etc. — the OWL-1600 localhost regression).
   // Secrets are never touched by deploy. There is no config-file equivalent of --keep-vars, so this
   // lives in the WB project's deploy command (a CIO/Board plumbing setting).
+  //
+  // ADMINS (OWL-1670) is the ONE exception: it IS committed below (the admin allowlist is not
+  // sensitive — just CF Access emails). It lived only as a live-injected var and drifted to the
+  // stale von-Busch identity, hiding the admin area from the board (OWL-1667/1669/1670). Committing
+  // it as SoT means every deploy re-applies the correct value; with --keep-vars, config vars are
+  // still applied (only vars ABSENT from config are preserved), so ADMINS can never drift again.
   //
   // Binding NAMES and service TARGETS are transcribed verbatim from the live worker settings
   // (GET /workers/scripts/cloudflareos-backend/settings) so a deploy cannot drop a binding.
@@ -43,6 +49,11 @@
     "global_fetch_strictly_public",
     "nodejs_compat"
   ],
+
+  // Admin allowlist (CF Access emails). Committed SoT — see header note (OWL-1670).
+  "vars": {
+    "ADMINS": ["axel@weichert.at"]
+  },
 
   "browser": { "binding": "BROWSER" },
   "ai": { "binding": "WORKERS_AI" },
