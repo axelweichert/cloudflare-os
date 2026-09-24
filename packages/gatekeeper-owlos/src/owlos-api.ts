@@ -159,11 +159,18 @@ export class OwlosClient {
       headers: this.#headers(hasBody),
       ...(hasBody ? { body: JSON.stringify(body) } : {}),
     });
-    if (status === 401 || status === 403) {
-      throw new OwlosError("owlOS credentials are no longer valid.");
-    }
     if (status < 200 || status >= 300) {
-      const detail = respBody?.error ?? respBody?.message;
+      // Log the exact owlOS response so a live approve (applyAction) leaves the real 4xx + body in
+      // Workers Logs / `wrangler tail` — the RPC boundary only surfaces a generic "Failed to approve
+      // action" toast, which hid the true cause in OWL-1671. Body is truncated to stay bounded.
+      const raw = typeof respBody === "string" ? respBody : JSON.stringify(respBody);
+      console.warn(`owlOS ${method} ${path} -> HTTP ${status} body=${(raw ?? "").slice(0, 800)}`);
+      if (status === 401 || status === 403) {
+        throw new OwlosError("owlOS credentials are no longer valid.");
+      }
+      // owlOS may report the reason under error/message or a bare string/field map — fall back to the
+      // whole body so the message is never empty (which is what made OWL-1671 undiagnosable).
+      const detail = respBody?.error ?? respBody?.message ?? (raw && raw !== "{}" ? raw.slice(0, 300) : "");
       throw new OwlosError(`owlOS ${method} ${path} returned HTTP ${status}${detail ? `: ${detail}` : "."}`);
     }
     return respBody ?? null;
