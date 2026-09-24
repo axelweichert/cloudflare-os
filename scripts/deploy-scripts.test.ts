@@ -62,3 +62,33 @@ describe("deploy scripts", () => {
     }
   });
 });
+
+// OWL-1661: the prod backend deploy config transcribed its GATEKEEPER_* service bindings without
+// `entrypoint: "GatekeeperVendor"`, so the backend called each gatekeeper's default export instead
+// of its GatekeeperVendor RPC entrypoint. describe()/getSupportedResources() then threw
+// `The RPC receiver does not implement the method "describe"` for 17 of 18 vendors — a live outage
+// invisible to types and review. The backend reaches every gatekeeper through this entrypoint (see
+// run-dev-server.ts and scripts/release/manifest-lib.ts), so the committed prod SoT must too.
+describe("prod backend gatekeeper bindings", () => {
+  // ponytail: strip only line-leading `//` comments, then JSON.parse. URLs (`https://`) live inside
+  // string values and are never line-leading, so they survive. Upgrade to a jsonc parser only if
+  // the config ever grows inline or block comments.
+  const configPath = join("packages", "workshop-backend", "wrangler.prod.jsonc");
+  const stripped = readFileSync(configPath, "utf8")
+    .split("\n")
+    .filter(line => !line.trimStart().startsWith("//"))
+    .join("\n");
+  const config = JSON.parse(stripped);
+
+  it("routes every GATEKEEPER_* service to the GatekeeperVendor entrypoint", () => {
+    const gatekeepers = (config.services ?? []).filter(
+      (s: { binding: string }) => s.binding.startsWith("GATEKEEPER_"));
+    assert.ok(gatekeepers.length >= 18, `expected >=18 gatekeeper services, got ${gatekeepers.length}`);
+    for (const svc of gatekeepers) {
+      assert.equal(
+        svc.entrypoint, "GatekeeperVendor",
+        `${svc.binding} -> ${svc.service} is missing entrypoint "GatekeeperVendor" ` +
+          "(would route describe() to the default export and drop the vendor -- OWL-1661).");
+    }
+  });
+});
