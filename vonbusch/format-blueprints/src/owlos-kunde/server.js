@@ -22,25 +22,27 @@ function buildPrompt({ firma, details }) {
 Firma: ${firma}
 ${details ? `Zusatzangaben: ${details}` : "Zusatzangaben: (keine)"}
 
-Dir steht owlOS über deine Umgebung als env.owlos zur Verfügung (der owlOS-Gatekeeper).
-Nutze ausschließlich diese Endpunkte — erfinde keine anderen Routen:
-  • GET  /api/companies                     — Kundenliste lesen (direkt, kein Approval)
-  • POST /api/companies { name, … }         — Kunde anlegen (approval-pflichtig)
-  • POST /api/companies/assign-kundennr      — Kundennummer vergeben (approval-pflichtig)
+Dir steht owlOS über deine Umgebung als env.owlos zur Verfügung (der owlOS-Gatekeeper). Rufe
+ausschließlich diese Methoden namentlich auf — konstruiere keine eigenen HTTP-Pfade:
+  • await env.owlos.listCompanies()                    — Kundenliste lesen (direkt, kein Approval)
+  • await env.owlos.createCompany({ name })            — Kunde anlegen (approval-pflichtig)
+  • await env.owlos.assignCustomerNumber({ company_id })
+                                                       — Kundennummer vergeben (approval-pflichtig)
 
 Gehe strikt in dieser Reihenfolge vor:
-  1. Lies GET /api/companies und prüfe, ob "${firma}" (oder ein sehr ähnlicher Name) schon
+  1. Rufe env.owlos.listCompanies() auf und prüfe, ob "${firma}" (oder ein sehr ähnlicher Name) schon
      existiert. Wenn ja, melde den Treffer und lege NICHTS doppelt an — frage nach, ob trotzdem
      ein neuer Datensatz gewünscht ist.
-  2. Sonst lege den Kunden über POST /api/companies mit mindestens { name: "${firma}" } an.
-     Übernimm weitere Felder nur, wenn sie oben ausdrücklich genannt sind. Fehlt ein von owlOS
-     als Pflicht gefordertes Feld, frage gezielt nach — erfinde keine Werte.
-  3. Vergib anschließend über POST /api/companies/assign-kundennr eine Kundennummer für den neuen
-     Datensatz.
+  2. Sonst lege den Kunden über env.owlos.createCompany({ name: "${firma}" }) an. Übernimm weitere
+     Felder nur, wenn sie oben ausdrücklich genannt sind. Fehlt ein von owlOS als Pflicht gefordertes
+     Feld, frage gezielt nach — erfinde keine Werte. Der Aufruf liefert { status: "pending_approval",
+     actionId }: ein Mensch muss die Anlage erst freigeben.
+  3. Vergib anschließend über env.owlos.assignCustomerNumber({ company_id }) eine Kundennummer für den
+     neuen Datensatz (company_id aus dem angelegten Kunden).
 
-Reads (GET) laufen direkt; alle Creates (POST) sind approval-pflichtig — ein Mensch muss sie
-freigeben, schreibe nichts vorher. Antworte auf Deutsch und markiere jede Annahme ausdrücklich
-als Annahme.`;
+Die list*-Methoden laufen direkt; alle create*/assign*-Methoden sind approval-pflichtig (sie liefern
+{ status: "pending_approval" }) — ein Mensch muss sie freigeben, schreibe nichts vorher. Antworte auf
+Deutsch und markiere jede Annahme ausdrücklich als Annahme.`;
 }
 
 export class Gadget extends DurableObject {
