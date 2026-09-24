@@ -9,18 +9,31 @@
   // hand-assembling bindings (fragile — see OWL-1613 "Binding-Clobber-Falle"). This file replaces
   // that: `wrangler deploy -c wrangler.prod.jsonc --keep-vars` reproduces the live binding set.
   //
+  // WORKERS BUILDS DEPLOY COMMAND (OWL-1668) — the Git-connected Workers Builds project for the
+  // backend MUST run exactly:
+  //     npx wrangler deploy -c packages/workshop-backend/wrangler.prod.jsonc --keep-vars
+  // `--keep-vars` is NOT optional: this config intentionally omits the 7 plain_text vars + ADMINS
+  // json (their values are not committed), and a plain `wrangler deploy` treats config as the
+  // complete var set and WIPES them (breaking BASE_URL etc. — the OWL-1600 localhost regression).
+  // Secrets are never touched by deploy. There is no config-file equivalent of --keep-vars, so this
+  // lives in the WB project's deploy command (a CIO/Board plumbing setting).
+  //
   // Binding NAMES and service TARGETS are transcribed verbatim from the live worker settings
   // (GET /workers/scripts/cloudflareos-backend/settings) so a deploy cannot drop a binding.
-  // `--keep-vars` on deploy preserves the 7 plain_text vars + ADMINS json + all secrets, which are
-  // therefore intentionally NOT listed here (their full values are not committed to the repo).
   //
   // Dev is a separate base: wrangler.dev.jsonc (workshop-backend) + run-dev-server.ts. Never use
   // this file for dev.
   "name": "cloudflareos-backend",
   "account_id": "6b9b3fa0e9f6be87faf7ca1b212641a3",
   "main": ".wrangler/validate/src/server.ts",
+  // Generate the fork's bundled format blueprints before the worker build. `src/generated/
+  // format-blueprints.ts` is gitignored, so a fresh Workers Builds checkout has no copy; without
+  // this step the capnweb-validate build of server.ts (which imports that module) fails. Baking
+  // FORMAT_BLUEPRINTS_DIR in here means a bare `wrangler deploy` reproduces the full blueprint set
+  // with no manual pre-step (was the manual half of the OWL-1656 deploy recipe).
+  // NOTE (OWL-1665 coupling): if vonbusch/ is renamed to owlos/, update this path.
   "build": {
-    "command": "pnpm run build:worker",
+    "command": "FORMAT_BLUEPRINTS_DIR=../../vonbusch/format-blueprints node scripts/build-format-blueprints.mjs && pnpm run build:worker",
     "watch_dir": "src"
   },
   "compatibility_date": "2026-02-02",
@@ -55,25 +68,31 @@
     { "binding": "LOADER" }
   ],
 
+  // GATEKEEPER_* services MUST carry `entrypoint: "GatekeeperVendor"` — the backend calls each
+  // gatekeeper's GatekeeperVendor RPC entrypoint (describe/getSupportedResources), NOT its default
+  // export. Omitting it routes the RPC to the default export and throws `The RPC receiver does not
+  // implement the method "describe"` for every vendor whose default export isn't the
+  // GatekeeperVendor class — the OWL-1661 live outage (VERBUNDEN collapsed 14 -> 1). Same shape
+  // run-dev-server.ts (dev) generates. gatekeeper-context additionally needs its sharingDomain prop.
   "services": [
-    { "binding": "GATEKEEPER_CLOUDFLARE", "service": "cloudflareos-gk-cloudflare" },
-    { "binding": "GATEKEEPER_CONFLUENCE", "service": "cloudflareos-gk-confluence" },
-    { "binding": "GATEKEEPER_CONTEXT", "service": "cloudflareos-gk-context" },
-    { "binding": "GATEKEEPER_EMAIL", "service": "cloudflareos-gk-email" },
-    { "binding": "GATEKEEPER_GITHUB", "service": "cloudflareos-gk-github" },
-    { "binding": "GATEKEEPER_GOOGLE", "service": "cloudflareos-gk-google" },
-    { "binding": "GATEKEEPER_HOMEASSISTANT", "service": "cloudflareos-gk-homeassistant" },
-    { "binding": "GATEKEEPER_LINEAR", "service": "cloudflareos-gk-linear" },
-    { "binding": "GATEKEEPER_MCP", "service": "cloudflareos-gk-mcp" },
-    { "binding": "GATEKEEPER_MCP_PORTAL", "service": "cloudflareos-gk-mcp-portal" },
-    { "binding": "GATEKEEPER_NOTION", "service": "cloudflareos-gk-notion" },
-    { "binding": "GATEKEEPER_OWLOS", "service": "cloudflareos-gk-owlos" },
-    { "binding": "GATEKEEPER_SCHEDULER", "service": "cloudflareos-gk-scheduler" },
-    { "binding": "GATEKEEPER_SLACK", "service": "cloudflareos-gk-slack" },
-    { "binding": "GATEKEEPER_SPOTIFY", "service": "cloudflareos-gk-spotify" },
-    { "binding": "GATEKEEPER_SUPABASE", "service": "cloudflareos-gk-supabase" },
-    { "binding": "GATEKEEPER_UNIFI", "service": "cloudflareos-gk-unifi" },
-    { "binding": "GATEKEEPER_ZOOMINFO", "service": "cloudflareos-gk-zoominfo" }
+    { "binding": "GATEKEEPER_CLOUDFLARE", "service": "cloudflareos-gk-cloudflare", "entrypoint": "GatekeeperVendor" },
+    { "binding": "GATEKEEPER_CONFLUENCE", "service": "cloudflareos-gk-confluence", "entrypoint": "GatekeeperVendor" },
+    { "binding": "GATEKEEPER_CONTEXT", "service": "cloudflareos-gk-context", "entrypoint": "GatekeeperVendor", "props": { "sharingDomain": "https://cloudflareos.weichert.at" } },
+    { "binding": "GATEKEEPER_EMAIL", "service": "cloudflareos-gk-email", "entrypoint": "GatekeeperVendor" },
+    { "binding": "GATEKEEPER_GITHUB", "service": "cloudflareos-gk-github", "entrypoint": "GatekeeperVendor" },
+    { "binding": "GATEKEEPER_GOOGLE", "service": "cloudflareos-gk-google", "entrypoint": "GatekeeperVendor" },
+    { "binding": "GATEKEEPER_HOMEASSISTANT", "service": "cloudflareos-gk-homeassistant", "entrypoint": "GatekeeperVendor" },
+    { "binding": "GATEKEEPER_LINEAR", "service": "cloudflareos-gk-linear", "entrypoint": "GatekeeperVendor" },
+    { "binding": "GATEKEEPER_MCP", "service": "cloudflareos-gk-mcp", "entrypoint": "GatekeeperVendor" },
+    { "binding": "GATEKEEPER_MCP_PORTAL", "service": "cloudflareos-gk-mcp-portal", "entrypoint": "GatekeeperVendor" },
+    { "binding": "GATEKEEPER_NOTION", "service": "cloudflareos-gk-notion", "entrypoint": "GatekeeperVendor" },
+    { "binding": "GATEKEEPER_OWLOS", "service": "cloudflareos-gk-owlos", "entrypoint": "GatekeeperVendor" },
+    { "binding": "GATEKEEPER_SCHEDULER", "service": "cloudflareos-gk-scheduler", "entrypoint": "GatekeeperVendor" },
+    { "binding": "GATEKEEPER_SLACK", "service": "cloudflareos-gk-slack", "entrypoint": "GatekeeperVendor" },
+    { "binding": "GATEKEEPER_SPOTIFY", "service": "cloudflareos-gk-spotify", "entrypoint": "GatekeeperVendor" },
+    { "binding": "GATEKEEPER_SUPABASE", "service": "cloudflareos-gk-supabase", "entrypoint": "GatekeeperVendor" },
+    { "binding": "GATEKEEPER_UNIFI", "service": "cloudflareos-gk-unifi", "entrypoint": "GatekeeperVendor" },
+    { "binding": "GATEKEEPER_ZOOMINFO", "service": "cloudflareos-gk-zoominfo", "entrypoint": "GatekeeperVendor" }
   ],
 
   "observability": {
