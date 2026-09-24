@@ -55,25 +55,30 @@
     { "binding": "LOADER" }
   ],
 
+  // entrypoint "GatekeeperVendor" MUST be on every GK binding — a deploy without it strips the
+  // live entrypoint and severs Backend→Vendor RPC (OWL-1661 outage). PROXMOX_VE/BS were wired live
+  // (OWL-1681) and must stay in the SoT or a deploy drops them (OWL-1702).
   "services": [
-    { "binding": "GATEKEEPER_CLOUDFLARE", "service": "cloudflareos-gk-cloudflare" },
-    { "binding": "GATEKEEPER_CONFLUENCE", "service": "cloudflareos-gk-confluence" },
-    { "binding": "GATEKEEPER_CONTEXT", "service": "cloudflareos-gk-context" },
-    { "binding": "GATEKEEPER_EMAIL", "service": "cloudflareos-gk-email" },
-    { "binding": "GATEKEEPER_GITHUB", "service": "cloudflareos-gk-github" },
-    { "binding": "GATEKEEPER_GOOGLE", "service": "cloudflareos-gk-google" },
-    { "binding": "GATEKEEPER_HOMEASSISTANT", "service": "cloudflareos-gk-homeassistant" },
-    { "binding": "GATEKEEPER_LINEAR", "service": "cloudflareos-gk-linear" },
-    { "binding": "GATEKEEPER_MCP", "service": "cloudflareos-gk-mcp" },
-    { "binding": "GATEKEEPER_MCP_PORTAL", "service": "cloudflareos-gk-mcp-portal" },
-    { "binding": "GATEKEEPER_NOTION", "service": "cloudflareos-gk-notion" },
-    { "binding": "GATEKEEPER_OWLOS", "service": "cloudflareos-gk-owlos" },
-    { "binding": "GATEKEEPER_SCHEDULER", "service": "cloudflareos-gk-scheduler" },
-    { "binding": "GATEKEEPER_SLACK", "service": "cloudflareos-gk-slack" },
-    { "binding": "GATEKEEPER_SPOTIFY", "service": "cloudflareos-gk-spotify" },
-    { "binding": "GATEKEEPER_SUPABASE", "service": "cloudflareos-gk-supabase" },
-    { "binding": "GATEKEEPER_UNIFI", "service": "cloudflareos-gk-unifi" },
-    { "binding": "GATEKEEPER_ZOOMINFO", "service": "cloudflareos-gk-zoominfo" }
+    { "binding": "GATEKEEPER_CLOUDFLARE", "service": "cloudflareos-gk-cloudflare", "entrypoint": "GatekeeperVendor" },
+    { "binding": "GATEKEEPER_CONFLUENCE", "service": "cloudflareos-gk-confluence", "entrypoint": "GatekeeperVendor" },
+    { "binding": "GATEKEEPER_CONTEXT", "service": "cloudflareos-gk-context", "entrypoint": "GatekeeperVendor" },
+    { "binding": "GATEKEEPER_EMAIL", "service": "cloudflareos-gk-email", "entrypoint": "GatekeeperVendor" },
+    { "binding": "GATEKEEPER_GITHUB", "service": "cloudflareos-gk-github", "entrypoint": "GatekeeperVendor" },
+    { "binding": "GATEKEEPER_GOOGLE", "service": "cloudflareos-gk-google", "entrypoint": "GatekeeperVendor" },
+    { "binding": "GATEKEEPER_HOMEASSISTANT", "service": "cloudflareos-gk-homeassistant", "entrypoint": "GatekeeperVendor" },
+    { "binding": "GATEKEEPER_LINEAR", "service": "cloudflareos-gk-linear", "entrypoint": "GatekeeperVendor" },
+    { "binding": "GATEKEEPER_MCP", "service": "cloudflareos-gk-mcp", "entrypoint": "GatekeeperVendor" },
+    { "binding": "GATEKEEPER_MCP_PORTAL", "service": "cloudflareos-gk-mcp-portal", "entrypoint": "GatekeeperVendor" },
+    { "binding": "GATEKEEPER_NOTION", "service": "cloudflareos-gk-notion", "entrypoint": "GatekeeperVendor" },
+    { "binding": "GATEKEEPER_OWLOS", "service": "cloudflareos-gk-owlos", "entrypoint": "GatekeeperVendor" },
+    { "binding": "GATEKEEPER_PROXMOX_BS", "service": "cloudflareos-gk-proxmox-bs", "entrypoint": "GatekeeperVendor" },
+    { "binding": "GATEKEEPER_PROXMOX_VE", "service": "cloudflareos-gk-proxmox-ve", "entrypoint": "GatekeeperVendor" },
+    { "binding": "GATEKEEPER_SCHEDULER", "service": "cloudflareos-gk-scheduler", "entrypoint": "GatekeeperVendor" },
+    { "binding": "GATEKEEPER_SLACK", "service": "cloudflareos-gk-slack", "entrypoint": "GatekeeperVendor" },
+    { "binding": "GATEKEEPER_SPOTIFY", "service": "cloudflareos-gk-spotify", "entrypoint": "GatekeeperVendor" },
+    { "binding": "GATEKEEPER_SUPABASE", "service": "cloudflareos-gk-supabase", "entrypoint": "GatekeeperVendor" },
+    { "binding": "GATEKEEPER_UNIFI", "service": "cloudflareos-gk-unifi", "entrypoint": "GatekeeperVendor" },
+    { "binding": "GATEKEEPER_ZOOMINFO", "service": "cloudflareos-gk-zoominfo", "entrypoint": "GatekeeperVendor" }
   ],
 
   "observability": {
