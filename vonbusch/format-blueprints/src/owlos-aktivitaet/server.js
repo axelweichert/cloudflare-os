@@ -25,35 +25,36 @@ Text/Notiz: ${text || "(kein)"}
 Firma: ${firma || "(keine)"}
 Kontakt: ${kontakt || "(keiner)"}
 
-Dir steht owlOS über deine Umgebung als env.owlos zur Verfügung (der owlOS-Gatekeeper).
-Nutze ausschließlich diese Endpunkte — erfinde keine anderen Routen und keine anderen Feldnamen:
-  • GET  /api/auth/me                                — eingeloggten Nutzer + dessen id ermitteln (owner_id)
-  • GET  /api/companies                             — Firma auflösen (company_id) (direkt)
-  • GET  /api/contacts?company_id={id} | ?search=   — Kontakt auflösen (contact_id) (direkt)
-  • GET  /api/activities?company_id= | ?contact_id= — vorhandene Aktivitäten lesen (direkt)
-  • POST /api/activities { type, subject, body, company_id, contact_id, owner_id, status:"open" }
-                                                     — Aktivität anlegen (approval-pflichtig)
-  • PATCH /api/activities/{id}/status               — Status ändern (open/done) (approval-pflichtig)
+Dir steht owlOS über deine Umgebung als env.owlos zur Verfügung (der owlOS-Gatekeeper). Rufe
+ausschließlich diese Methoden namentlich auf — konstruiere keine eigenen HTTP-Pfade und erfinde
+keine anderen Feldnamen:
+  • await env.owlos.me()                                     — eingeloggten Nutzer + dessen id ermitteln (owner_id)
+  • await env.owlos.listCompanies()                          — Firma auflösen (company_id) (direkt)
+  • await env.owlos.listContacts({ company_id }) | ({ search }) — Kontakt auflösen (contact_id) (direkt)
+  • await env.owlos.listActivities({ company_id }) | ({ contact_id }) — vorhandene Aktivitäten lesen (direkt)
+  • await env.owlos.createActivity({ type, subject, body, company_id, contact_id, owner_id, status:"open" })
+                                                             — Aktivität anlegen (approval-pflichtig)
+  • await env.owlos.setActivityStatus(activityId, { status }) — Status ändern (open/done) (approval-pflichtig)
 
 Gültige Typ-Werte (aus owlOS): "Brief", "E-Mail", "Angebot", "Auftrag", "Auftragsbestätigung",
 "Rechnung", "Lieferschein", "Gutschrift", "Mahnung", "Vertrag", "Korrespondenz", "Notiz",
 "Sonstige". Ordne den oben genannten Typ dem passenden Wert zu; ist keiner genannt, nimm "Notiz".
 
 Gehe strikt in dieser Reihenfolge vor:
-  1. Lies GET /api/auth/me und nimm die id des eingeloggten Nutzers als owner_id. Ohne owner_id
+  1. Rufe env.owlos.me() auf und nimm die id des eingeloggten Nutzers als owner_id. Ohne owner_id
      lässt owlOS keine Aktivität zu ("Inhaber fehlt") — fehlt sie, melde das und lege NICHTS an.
-  2. Falls eine Firma/ein Kontakt genannt ist, löse sie über GET /api/companies bzw.
-     GET /api/contacts zu company_id/contact_id auf. Findest du sie nicht eindeutig, frage nach —
-     verknüpfe nichts auf Verdacht (setze das jeweilige Feld sonst auf null).
-  3. Lege die Aktivität über POST /api/activities an, mit exakt:
+  2. Falls eine Firma/ein Kontakt genannt ist, löse sie über env.owlos.listCompanies() bzw.
+     env.owlos.listContacts({ … }) zu company_id/contact_id auf. Findest du sie nicht eindeutig,
+     frage nach — verknüpfe nichts auf Verdacht (setze das jeweilige Feld sonst auf null).
+  3. Lege die Aktivität über env.owlos.createActivity({ … }) an, mit exakt:
      { type: <gültiger Typ>, subject: "${betreff}", body: ${text ? `"${text}"` : `""`},
        company_id: <id oder null>, contact_id: <id oder null>, owner_id: <deine id>,
        status: "open" }. subject (Betreff) ist Pflicht ("Betreff ist Pflicht") — fehlt er, frage
-     nach, erfinde nichts.
+     nach, erfinde nichts. Der Aufruf liefert { status: "pending_approval", actionId }.
 
-Reads (GET) laufen direkt; alle Creates/Änderungen (POST/PATCH) sind approval-pflichtig — ein
-Mensch muss sie freigeben, schreibe nichts vorher. Antworte auf Deutsch und markiere jede Annahme
-ausdrücklich als Annahme.`;
+Die list*/me-Methoden laufen direkt; alle create*/set*-Methoden sind approval-pflichtig (sie liefern
+{ status: "pending_approval" }) — ein Mensch muss sie freigeben, schreibe nichts vorher. Antworte auf
+Deutsch und markiere jede Annahme ausdrücklich als Annahme.`;
 }
 
 export class Gadget extends DurableObject {
