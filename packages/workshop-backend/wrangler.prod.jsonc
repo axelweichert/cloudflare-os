@@ -1,0 +1,85 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+
+  // PRODUCTION config for the live `cloudflareos-backend` worker in the Weichert.at account
+  // (6b9b3fa0e9f6be87faf7ca1b212641a3). Committed single source of truth for the prod backend's
+  // full binding set, mirroring what OWL-1626/1644 did for the router (wrangler.jsonc at repo
+  // root). The upstream ships a gadgets-internal `generate-wrangler-prod.js` that fabricates this
+  // at deploy time; that script is not in this fork, so prod backend deploys had been done by
+  // hand-assembling bindings (fragile — see OWL-1613 "Binding-Clobber-Falle"). This file replaces
+  // that: `wrangler deploy -c wrangler.prod.jsonc --keep-vars` reproduces the live binding set.
+  //
+  // Binding NAMES and service TARGETS are transcribed verbatim from the live worker settings
+  // (GET /workers/scripts/cloudflareos-backend/settings) so a deploy cannot drop a binding.
+  // `--keep-vars` on deploy preserves the 7 plain_text vars + ADMINS json + all secrets, which are
+  // therefore intentionally NOT listed here (their full values are not committed to the repo).
+  //
+  // Dev is a separate base: wrangler.dev.jsonc (workshop-backend) + run-dev-server.ts. Never use
+  // this file for dev.
+  "name": "cloudflareos-backend",
+  "account_id": "6b9b3fa0e9f6be87faf7ca1b212641a3",
+  "main": ".wrangler/validate/src/server.ts",
+  "build": {
+    "command": "pnpm run build:worker",
+    "watch_dir": "src"
+  },
+  "compatibility_date": "2026-02-02",
+  "compatibility_flags": [
+    "allow_irrevocable_stub_storage",
+    "enhanced_error_serialization",
+    "global_fetch_strictly_public",
+    "nodejs_compat"
+  ],
+
+  "browser": { "binding": "BROWSER" },
+  "ai": { "binding": "WORKERS_AI" },
+
+  // Match the committed dev migrations exactly. v0-v2 are already applied to the live worker, so a
+  // deploy carrying the same tags runs no migration and leaves DO state (UserDurableObject,
+  // OverseerDurableObject, AdminSettings, PendingLogin) untouched.
+  "migrations": [
+    { "tag": "v0", "new_sqlite_classes": ["UserDurableObject", "OverseerDurableObject"] },
+    { "tag": "v1", "new_sqlite_classes": ["AdminSettings"] },
+    { "tag": "v2", "new_sqlite_classes": ["PendingLogin"] }
+  ],
+
+  // Live namespace/bucket IDs (not the dev preview_id aliases).
+  "kv_namespaces": [
+    { "binding": "BLUEPRINTS", "id": "b2400e8ff63245b292cf0fd8fc588c58" },
+    { "binding": "AVATARS", "id": "7d88ce067df840af91d07af60fec8ebf" }
+  ],
+  "r2_buckets": [
+    { "binding": "BLUEPRINT_CONTENT", "bucket_name": "cloudflareos-blueprint-content" }
+  ],
+  "worker_loaders": [
+    { "binding": "LOADER" }
+  ],
+
+  "services": [
+    { "binding": "GATEKEEPER_CLOUDFLARE", "service": "cloudflareos-gk-cloudflare" },
+    { "binding": "GATEKEEPER_CONFLUENCE", "service": "cloudflareos-gk-confluence" },
+    { "binding": "GATEKEEPER_CONTEXT", "service": "cloudflareos-gk-context" },
+    { "binding": "GATEKEEPER_EMAIL", "service": "cloudflareos-gk-email" },
+    { "binding": "GATEKEEPER_GITHUB", "service": "cloudflareos-gk-github" },
+    { "binding": "GATEKEEPER_GOOGLE", "service": "cloudflareos-gk-google" },
+    { "binding": "GATEKEEPER_HOMEASSISTANT", "service": "cloudflareos-gk-homeassistant" },
+    { "binding": "GATEKEEPER_LINEAR", "service": "cloudflareos-gk-linear" },
+    { "binding": "GATEKEEPER_MCP", "service": "cloudflareos-gk-mcp" },
+    { "binding": "GATEKEEPER_MCP_PORTAL", "service": "cloudflareos-gk-mcp-portal" },
+    { "binding": "GATEKEEPER_NOTION", "service": "cloudflareos-gk-notion" },
+    { "binding": "GATEKEEPER_OWLOS", "service": "cloudflareos-gk-owlos" },
+    { "binding": "GATEKEEPER_SCHEDULER", "service": "cloudflareos-gk-scheduler" },
+    { "binding": "GATEKEEPER_SLACK", "service": "cloudflareos-gk-slack" },
+    { "binding": "GATEKEEPER_SPOTIFY", "service": "cloudflareos-gk-spotify" },
+    { "binding": "GATEKEEPER_SUPABASE", "service": "cloudflareos-gk-supabase" },
+    { "binding": "GATEKEEPER_UNIFI", "service": "cloudflareos-gk-unifi" },
+    { "binding": "GATEKEEPER_ZOOMINFO", "service": "cloudflareos-gk-zoominfo" }
+  ],
+
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1,
+    "logs": { "invocation_logs": false },
+    "traces": { "enabled": true, "head_sampling_rate": 0.5 }
+  }
+}
