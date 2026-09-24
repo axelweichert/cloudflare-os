@@ -15,6 +15,17 @@ schon im `+`-Menü stehen, ohne dass jemand sie erst bauen muss.
 | --- | --- | --- | --- |
 | Angebot erstellen | `vonbusch.angebot` | `WORKFLOW` (agentSpawner) + `crm`, `preise` (gatekeeper, spawnerOnly) | Kundenanfrage → kalkulierter Angebotsentwurf als CRM-Aktivität |
 | Lead qualifizieren | `vonbusch.lead` | `WORKFLOW` (agentSpawner) + `crm` (gatekeeper, spawnerOnly) | Lead nach BANT bewerten, Score + nächster Schritt als CRM-Aktivität |
+| Kunde anlegen | `owlos.kunde` | `WORKFLOW` (agentSpawner) + `owlos` (gatekeeper, spawnerOnly) | Kunde (Firma) in owlOS anlegen + Kundennummer vergeben |
+| Angebot anlegen | `owlos.angebot` | `WORKFLOW` (agentSpawner) + `owlos` (gatekeeper, spawnerOnly) | Angebot (Quote) in owlOS anlegen (Pflicht-Titel) + mit Kunde verknüpfen |
+| Rechnung anlegen | `owlos.rechnung` | `WORKFLOW` (agentSpawner) + `owlos` (gatekeeper, spawnerOnly) | Ausgangsrechnung (Faktura) in owlOS: Kopf + Positionen + Finalisieren |
+| Ansprechpartner anlegen | `owlos.kontakt` | `WORKFLOW` (agentSpawner) + `owlos` (gatekeeper, spawnerOnly) | Kontakt zu einer Firma in owlOS anlegen (Pflicht: Firma + Vor-/Nachname) |
+| Aktivität festhalten | `owlos.aktivitaet` | `WORKFLOW` (agentSpawner) + `owlos` (gatekeeper, spawnerOnly) | Aktivität (Anruf/Brief/Notiz …) in owlOS festhalten + mit Firma/Kontakt verknüpfen |
+| Opportunity anlegen | `owlos.opportunity` | `WORKFLOW` (agentSpawner) + `owlos` (gatekeeper, spawnerOnly) | Opportunity (owlOS: Deal) in der Pipeline anlegen + mit Firma verknüpfen |
+
+Die sechs `owlos.*`-Blueprints (S2, OWL-1634/1657) folgen exakt demselben Muster wie die von-Busch-
+Blueprints, docken aber an den bestehenden **`owlos`**-Gatekeeper (Cloud-ERP) an. Die erlaubten
+owlOS-Endpunkte sind autoritativ in `packages/gatekeeper-owlos/S2-CONTRACT.md` festgelegt — der
+Prompt jedes Blueprints nennt nur diese Routen (RATEN VERBOTEN).
 
 Der Quellcode jedes Gadgets (inkl. des load-bearing Workflow-Prompts) liegt lesbar unter
 `src/<name>/`; das binäre `.gadget`-Archiv wird daraus **deterministisch** gebaut.

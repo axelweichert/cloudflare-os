@@ -1,0 +1,18 @@
+{
+  "$comment": "GENERIERT aus src/owlos-kunde/blueprint.json durch build-blueprints.mjs — dort editieren, nicht hier.",
+  "blueprintId": "owlos.kunde",
+  "title": "Kunde anlegen",
+  "description": "owlOS-Workflow: legt einen neuen Kunden (Firma) in der owlOS Cloud-ERP-Instanz an. Der Agent prüft zuerst, ob die Firma schon existiert, legt sie sonst approval-pflichtig an und vergibt eine Kundennummer — statt jedes Mal denselben Prompt neu zu tippen.",
+  "output": {
+    "id": "workflow",
+    "noun": "Kunde",
+    "plural": "Kunden",
+    "icon": "flowArrow"
+  },
+  "author": {
+    "type": "user",
+    "name": "CloudflareOS",
+    "id": "owlos@cloudflareos.weichert.at"
+  },
+  "revision": 1
+}

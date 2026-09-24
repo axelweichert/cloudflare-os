@@ -1,0 +1,18 @@
+{
+  "$comment": "GENERIERT aus src/owlos-angebot/blueprint.json durch build-blueprints.mjs — dort editieren, nicht hier.",
+  "blueprintId": "owlos.angebot",
+  "title": "Angebot anlegen",
+  "description": "owlOS-Workflow: legt ein neues Angebot (Quote) in der owlOS Cloud-ERP-Instanz an. Der Agent liest bestehende Angebote, legt das Angebot mit Pflicht-Titel approval-pflichtig an und verknüpft es mit dem Kunden — statt jedes Mal denselben Prompt neu zu tippen.",
+  "output": {
+    "id": "workflow",
+    "noun": "Angebot",
+    "plural": "Angebote",
+    "icon": "flowArrow"
+  },
+  "author": {
+    "type": "user",
+    "name": "CloudflareOS",
+    "id": "owlos@cloudflareos.weichert.at"
+  },
+  "revision": 1
+}

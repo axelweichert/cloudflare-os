@@ -1,0 +1,30 @@
+{
+  "blueprintId": "owlos.aktivitaet",
+  "version": 1,
+  "created": "2026-09-24T00:00:00.000Z",
+  "sidecar": {
+    "title": "Aktivität festhalten",
+    "description": "owlOS-Workflow: hält eine Aktivität (Anruf, Brief, E-Mail, Notiz …) in der owlOS Cloud-ERP-Instanz fest und verknüpft sie mit Firma/Kontakt. Der Agent ermittelt den Inhaber, ordnet zu und legt die Aktivität approval-pflichtig an — statt jedes Mal denselben Prompt neu zu tippen.",
+    "output": { "id": "workflow", "noun": "Aktivität", "plural": "Aktivitäten", "icon": "listChecks" },
+    "author": { "type": "user", "name": "CloudflareOS", "id": "owlos@cloudflareos.weichert.at" },
+    "revision": 1
+  },
+  "bindings": {
+    "WORKFLOW": {
+      "title": "Aktivitäten-Agent",
+      "description": "Der KI-Agent, der die Aktivität in owlOS anlegt. Der Agent bekommt den owlOS-Gatekeeper in seine env; wählen Sie nur, mit welchem Modell er laufen soll.",
+      "type": "agentSpawner",
+      "env": {
+        "owlos": { "type": "binding", "name": "owlos" }
+      }
+    },
+    "owlos": {
+      "title": "owlOS Workspace",
+      "description": "Gatekeeper auf die verbundene owlOS Cloud-ERP-Instanz (Firmen, Kontakte, Aktivitäten, Deals). Reads direkt, Creates approval-pflichtig.",
+      "spawnerOnly": true,
+      "type": "gatekeeper",
+      "gatekeeperName": "owlos",
+      "typeUrlPattern": "https://*.owl-os.cloud/*"
+    }
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "blueprintId": "owlos.rechnung",
+  "version": 1,
+  "created": "2026-09-24T00:00:00.000Z",
+  "sidecar": {
+    "title": "Rechnung anlegen",
+    "description": "owlOS-Workflow: legt eine neue Ausgangsrechnung (Faktura) in der owlOS Cloud-ERP-Instanz an. Der Agent liest bestehende Ausgangsbelege, legt den Rechnungskopf approval-pflichtig an, ergänzt Positionen und finalisiert die Rechnung — statt jedes Mal denselben Prompt neu zu tippen.",
+    "output": { "id": "workflow", "noun": "Rechnung", "plural": "Rechnungen", "icon": "flowArrow" },
+    "author": { "type": "user", "name": "CloudflareOS", "id": "owlos@cloudflareos.weichert.at" },
+    "revision": 1
+  },
+  "bindings": {
+    "WORKFLOW": {
+      "title": "Rechnungs-Agent",
+      "description": "Der KI-Agent, der die Ausgangsrechnung in owlOS anlegt. Der Agent bekommt den owlOS-Gatekeeper in seine env; wählen Sie nur, mit welchem Modell er laufen soll.",
+      "type": "agentSpawner",
+      "env": {
+        "owlos": { "type": "binding", "name": "owlos" }
+      }
+    },
+    "owlos": {
+      "title": "owlOS Workspace",
+      "description": "Gatekeeper auf die verbundene owlOS Cloud-ERP-Instanz (Kunden, Angebote, Rechnungen). Reads direkt, Creates approval-pflichtig.",
+      "spawnerOnly": true,
+      "type": "gatekeeper",
+      "gatekeeperName": "owlos",
+      "typeUrlPattern": "https://*.owl-os.cloud/*"
+    }
+  }
+}

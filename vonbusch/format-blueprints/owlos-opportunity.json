@@ -1,0 +1,18 @@
+{
+  "$comment": "GENERIERT aus src/owlos-opportunity/blueprint.json durch build-blueprints.mjs — dort editieren, nicht hier.",
+  "blueprintId": "owlos.opportunity",
+  "title": "Opportunity anlegen",
+  "description": "owlOS-Workflow: legt eine Opportunity (owlOS nennt sie Deal) in der Vertriebs-Pipeline der owlOS Cloud-ERP-Instanz an, verknüpft sie mit einer Firma und setzt Stufe/Wert. Der Agent ermittelt den Inhaber, ordnet zu und legt den Deal approval-pflichtig an — statt jedes Mal denselben Prompt neu zu tippen.",
+  "output": {
+    "id": "workflow",
+    "noun": "Opportunity",
+    "plural": "Opportunities",
+    "icon": "kanban"
+  },
+  "author": {
+    "type": "user",
+    "name": "CloudflareOS",
+    "id": "owlos@cloudflareos.weichert.at"
+  },
+  "revision": 1
+}
