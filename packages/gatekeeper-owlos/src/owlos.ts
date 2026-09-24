@@ -680,9 +680,14 @@ class OwlosSessionImpl extends RpcTarget implements OwlosSession {
   async createQuote(fields: Record<string, unknown>): Promise<PendingResult> {
     const title = typeof fields?.title === "string" ? fields.title.trim() : "";
     if (!title) throw new OwlosError('owlOS requires a quote title ("Titel ist Pflicht").');
-    return await this.#write("POST", "/api/erp/quotes", { ...fields, title }, {
+    // owlOS rejects a create without `status`: the live SPA's own create POST sends
+    // {title, status:"quote_draft"} (verified in the public bundle index-BISW9feO.js, v0.32.84).
+    // A {title}-only body 400s and surfaced as the generic "Failed to approve action" (OWL-1671).
+    // Default status here (caller may override); company_id is still set afterward via updateQuote.
+    const body = { status: "quote_draft", ...fields, title };
+    return await this.#write("POST", "/api/erp/quotes", body, {
       title: `Create owlOS quote "${title}"`,
-      description: `Create a new quote in owlOS (\`POST /api/erp/quotes\`) with:\n\n\`\`\`json\n${JSON.stringify({ ...fields, title }, null, 2)}\n\`\`\``,
+      description: `Create a new quote in owlOS (\`POST /api/erp/quotes\`) with:\n\n\`\`\`json\n${JSON.stringify(body, null, 2)}\n\`\`\``,
     });
   }
 
