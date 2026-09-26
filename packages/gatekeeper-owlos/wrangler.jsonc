@@ -1,6 +1,9 @@
 {
-  "name": "cloudflareos-gk-owlos",
-  "account_id": "6b9b3fa0e9f6be87faf7ca1b212641a3",
+  // Base/dev name matches the package directory, per the convention every other gatekeeper
+  // follows (scripts/preview/staging-config.ts enforces name === dir). The prod worker name
+  // (cloudflareos-gk-owlos, bound as GATEKEEPER_OWLOS in the root wrangler.jsonc) and account
+  // are supplied at deploy time, like the other cloudflareos-gk-* workers — not committed here.
+  "name": "gatekeeper-owlos",
   "main": ".wrangler/validate/src/owlos.ts",
   "vars": {
     "BASE_URL": "https://cloudflareos.weichert.at/gatekeeper/owlos"
