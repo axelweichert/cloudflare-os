@@ -1357,7 +1357,27 @@ export async function runAgent(
   }
   if (checkpoint?.proposedChange) applyReplayedChange(checkpoint.proposedChange, false);
 
-  for (let msg of chatMessages) {
+  // Whether a tool call in the assistant message at `index` saw content the user later reverted.
+  // The message's own status covers a revert that reaches back over the whole step. But a step's
+  // edits land in a "changes" message written after its tool-call message, with any action,
+  // useGadget or connectionRequest records of the step in between, and a revert of just the step
+  // starts there, leaving the tool-call message unmarked. So the step's changes message is found
+  // past those records and checked too. The search stops at the next assistant message or at a
+  // user's own changes: a step that made no edits has no changes message, and a later one must not
+  // be mistaken for it.
+  let sawRevertedContent = (index: number): boolean => {
+    if (chatMessageStatus.get(chatMessages[index].sequence) === "reverted") return true;
+    for (let i = index + 1; i < chatMessages.length; i++) {
+      let m = chatMessages[i];
+      if (m.type === "changes" && m.author.type === "agent") {
+        return chatMessageStatus.get(m.sequence) === "reverted";
+      }
+      if (m.type === "message" || m.type === "changes") return false;
+    }
+    return false;
+  };
+
+  for (let [msgIndex, msg] of chatMessages.entries()) {
     let modelMessageStart = modelMessages.length;
     let msgTimestamp = msg.timestamp.getTime();
     switch (msg.type) {
@@ -1513,7 +1533,7 @@ export async function runAgent(
                 // Note that if we get here, we know the tool succeeded originally, so for many
                 // branches below we can just return success unconditionally.
                 case "readFile": {
-                  if (chatMessageStatus.get(msg.sequence) === "reverted") {
+                  if (sawRevertedContent(msgIndex)) {
                     // It would be a total waste of tokens to actually include this file
                     // content in the chat history since it contains changes that were later
                     // reverted -- not to mention a waste of resources to compute the content
