@@ -49,13 +49,13 @@ describe("validateWebFetchUrl", () => {
   });
 
   it("rejects malformed URLs", () => {
-    expect(() => validateWebFetchUrl("not a url")).toThrow(/Invalid URL/);
-    expect(() => validateWebFetchUrl("")).toThrow(/Invalid URL/);
+    expect(() => validateWebFetchUrl("not a url")).toThrow(/Ungültige URL/);
+    expect(() => validateWebFetchUrl("")).toThrow(/Ungültige URL/);
   });
 
   it("rejects URLs with embedded credentials", () => {
     expect(() => validateWebFetchUrl("https://user:pass@example.com/")).toThrow(
-      /credentials/,
+      /Zugangsdaten/,
     );
   });
 
