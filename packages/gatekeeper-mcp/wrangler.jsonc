@@ -30,7 +30,9 @@
   ],
   "vars": {
     // Set to "true" to permit http:// and private-network endpoints. Local development only.
-    "MCP_ALLOW_INSECURE": "false"
+    "MCP_ALLOW_INSECURE": "false",
+    // Prod: oeffentliche Origin des NFR-OS-Shell-Routers (VON-2205); sonst localhost:8787-Fallback.
+    "BASE_URL": "https://cloudflareos.vonbusch.app/gatekeeper/mcp"
   },
   "observability": {
     "enabled": true,

@@ -7,6 +7,12 @@
   },
   "compatibility_date": "2026-02-02",
   "compatibility_flags": ["allow_irrevocable_stub_storage"],
+  // Prod: oeffentliche Origin des NFR-OS-Shell-Routers (cloudflareos.vonbusch.app).
+  // Ohne diese Var faellt der Gatekeeper auf http://localhost:8787 zurueck und der
+  // Connect-/OAuth-Link zeigt ins Leere (VON-2205).
+  "vars": {
+    "BASE_URL": "https://cloudflareos.vonbusch.app/gatekeeper/confluence"
+  },
   "rules": [
     { "type": "Text", "globs": ["**/*.txt", "**/*.svg"], "fallthrough": false }
   ],

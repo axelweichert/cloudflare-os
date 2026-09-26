@@ -3,7 +3,7 @@
   "account_id": "6d2a1d5945f8b63047a1d59a9f94de21",
   "main": ".wrangler/validate/src/proxmox.ts",
   "vars": {
-    "BASE_URL": "https://cloudflareos.weichert.at/gatekeeper/proxmox-bs"
+    "BASE_URL": "https://cloudflareos.vonbusch.app/gatekeeper/proxmox-bs"
   },
   "build": {
     "command": "pnpm exec capnweb-validate build --out .wrangler/validate",
