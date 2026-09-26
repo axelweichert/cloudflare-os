@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { Dialog, Select, Loader, Text, useKumoToastManager } from '@cloudflare/kumo'
 import { Warning, Plus, ArrowClockwise, CheckCircle } from '@phosphor-icons/react'
 import { RpcStub } from 'capnweb'
@@ -90,13 +90,14 @@ export default function ObserverConfigModal({
   // observer binding needs.
   const [vendorsById, setVendorsById] = useState<Map<string, GatekeeperVendorInfo>>(new Map())
   const [vendorsReady, setVendorsReady] = useState(false)
+  // The flow being started, by vendorId (connect) or accountId (re-authenticate, grant). Held only
+  // while the request that starts it is in flight, not until the account arrives: a popup flow can
+  // end without adding one (abandoned, refused by the provider, or an account the user already has),
+  // and waiting on it would strand the dialog with every way forward disabled. The result arrives
+  // through the accounts subscription whenever the flow does complete.
   const [connecting, setConnecting] = useState<string | null>(null)
   const [reconnecting, setReconnecting] = useState<number | null>(null)
   const [granting, setGranting] = useState<number | null>(null)
-
-  // The subscriber closure (created once) reads the in-flight connect target through this ref so it
-  // can clear it when the freshly-connected account arrives.
-  const connectingRef = useRef<string | null>(null)
 
   // ── subscribe to the user's connected accounts ────────────────────────────────
   useEffect(() => {
@@ -110,15 +111,6 @@ export default function ObserverConfigModal({
           next.set(id, { id, description, vendor, vendorId, supportedResources, credentialsValid })
           return next
         })
-        if (credentialsValid) {
-          setReconnecting(r => (r === id ? null : r))
-          setGranting(g => (g === id ? null : g))
-          // If we were waiting on a connect for this vendor, it's done.
-          if (connectingRef.current === vendorId) {
-            connectingRef.current = null
-            setConnecting(null)
-          }
-        }
       },
       remove(id) {
         if (cancelled) return
@@ -203,7 +195,6 @@ export default function ObserverConfigModal({
   // ── connect / reconnect handlers ──────────────────────────────────────────────
   const handleConnect = async (need: ObserverBindingNeed) => {
     const { vendorId } = need
-    connectingRef.current = vendorId
     setConnecting(vendorId)
     try {
       const vendor = vendorsById.get(vendorId)
@@ -220,7 +211,7 @@ export default function ObserverConfigModal({
     } catch (err) {
       console.error('Failed to initiate connection:', err)
       toasts.add({ title: 'Verbindungsvorgang konnte nicht gestartet werden', variant: 'error' })
-      connectingRef.current = null
+    } finally {
       setConnecting(null)
     }
   }
@@ -228,12 +219,13 @@ export default function ObserverConfigModal({
   const handleReconnect = async (accountId: number) => {
     setReconnecting(accountId)
     try {
+      // The popup redeems the ticket itself; the restored account arrives through the subscription.
       const { url } = await authenticatedApi.reconnectAccount(accountId)
       window.open(url, '_blank', 'noopener,noreferrer')
-      // Subscription fires add() with credentialsValid:true on completion, clearing `reconnecting`.
     } catch (err) {
       console.error('Failed to initiate reconnection:', err)
       toasts.add({ title: 'Erneute Authentifizierung konnte nicht gestartet werden', variant: 'error' })
+    } finally {
       setReconnecting(null)
     }
   }
@@ -271,11 +263,11 @@ export default function ObserverConfigModal({
           })
           return next
         })
-        setGranting(null)
       }
     } catch (err) {
       console.error('Failed to request additional access:', err)
       toasts.add({ title: 'Zusätzlicher Zugriff konnte nicht angefordert werden', variant: 'error' })
+    } finally {
       setGranting(null)
     }
   }
@@ -396,7 +388,9 @@ export default function ObserverConfigModal({
                               {accountLabel(matching[0], matching[0].id)}
                             </div>
                           </div>
-                          {accountSatisfies(need, matching[0]) && (
+                          {/* Nie für das Konto, dessen Verifizierung gerade abgelehnt wurde, egal was es sonst gewährt bekommen hat. */}
+                          {accountSatisfies(need, matching[0]) &&
+                            matching[0].id !== need.failure?.accountId && (
                             <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-kumo-success">
                               <CheckCircle size={15} weight="fill" /> Bereit
                             </span>
@@ -456,10 +450,14 @@ export default function ObserverConfigModal({
                           type="button"
                           onClick={() => handleReconnect(chosen.id)}
                           disabled={reconnecting === chosen.id}
-                          className="flex items-center gap-1.5 text-xs text-kumo-warning hover:underline disabled:opacity-60"
+                          className={chosen.credentialsValid
+                            ? 'flex items-center gap-1 text-xs text-kumo-subtle hover:text-kumo-default disabled:opacity-60 self-start'
+                            : 'flex items-center gap-1.5 text-xs text-kumo-warning hover:underline disabled:opacity-60'}
                         >
                           {reconnecting === chosen.id ? (
                             <ArrowClockwise size={12} className="animate-spin" />
+                          ) : chosen.credentialsValid ? (
+                            <ArrowClockwise size={12} />
                           ) : (
                             <Warning size={12} />
                           )}
