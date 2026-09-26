@@ -647,6 +647,68 @@
         "BASE_URL": "$PUBLIC_BASE_URL/gatekeeper/notion"
       }
     },
+    "gatekeeper-owlos": {
+      "bindings": [
+        {
+          "name": "CLIENT_ID",
+          "text": "$SECRET(CLIENT_ID)",
+          "type": "secret_text"
+        },
+        {
+          "name": "CLIENT_SECRET",
+          "text": "$SECRET(CLIENT_SECRET)",
+          "type": "secret_text"
+        }
+      ],
+      "compatibilityDate": "2026-02-02",
+      "compatibilityFlags": [
+        "allow_irrevocable_stub_storage"
+      ],
+      "inputs": [
+        {
+          "kind": "secret",
+          "label": "OAuth client ID",
+          "name": "CLIENT_ID"
+        },
+        {
+          "kind": "secret",
+          "label": "OAuth client secret",
+          "name": "CLIENT_SECRET"
+        }
+      ],
+      "installable": true,
+      "kind": "gatekeeper",
+      "mainModule": "owlos.js",
+      "migrations": [
+        {
+          "new_sqlite_classes": [
+            "UserAccount",
+            "OwlosGatekeeperImpl"
+          ],
+          "tag": "v0"
+        }
+      ],
+      "modules": [
+        {
+          "name": "owlos.js",
+          "r2Key": "blobs/modules/a929ab89868a24bf0ca930b62df7f448bd66a2948662703dd3be3ab3c5f5c9bc",
+          "sha256": "a929ab89868a24bf0ca930b62df7f448bd66a2948662703dd3be3ab3c5f5c9bc",
+          "size": 58,
+          "type": "esm"
+        }
+      ],
+      "observability": {
+        "enabled": true,
+        "head_sampling_rate": 1,
+        "logs": {
+          "invocation_logs": false
+        }
+      },
+      "shortName": "owlos",
+      "vars": {
+        "BASE_URL": "$PUBLIC_BASE_URL/gatekeeper/owlos"
+      }
+    },
     "gatekeeper-scheduler": {
       "bindings": [],
       "compatibilityDate": "2026-02-02",
