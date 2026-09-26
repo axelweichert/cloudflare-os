@@ -27,8 +27,8 @@ describe("site logo validation", () => {
   it("rejects the wrong format, oversized data, and dangerous dimensions", () => {
     expect(() => validateSiteLogo(new Uint8Array())).toThrow("PNG");
     expect(() => validateSiteLogo(new Uint8Array([0xff, 0xd8, 0xff]))).toThrow("PNG");
-    expect(() => validateSiteLogo(png(MAX_SITE_LOGO_DIMENSION + 1))).toThrow("dimensions");
-    expect(() => validateSiteLogo(png(1, 1, MAX_SITE_LOGO_BYTES + 1))).toThrow("too large");
+    expect(() => validateSiteLogo(png(MAX_SITE_LOGO_DIMENSION + 1))).toThrow("Abmessungen");
+    expect(() => validateSiteLogo(png(1, 1, MAX_SITE_LOGO_BYTES + 1))).toThrow("zu groß");
   });
 });
 

@@ -212,14 +212,14 @@ describe("addCollaborator", () => {
   it("refuses to add the owner", () => {
     let { mgr } = makeManager();
     expect(() => mgr.addCollaborator({ caller: owner, profile: profile(OWNER), role: "build" }))
-        .toThrow(/owner/);
+        .toThrow(/Eigentümer/);
   });
 
   it("forbids granting a role higher than the caller's own", () => {
     let { storage, mgr } = makeManager();
     seedCollaborator(storage, "a", [userEdge(OWNER, "use")]);
     expect(() => mgr.addCollaborator({ caller: collab("a"), profile: profile("b"), role: "build" }))
-        .toThrow(/higher than your own/);
+        .toThrow(/höhere Rolle/);
     // Granting an equal-or-lower role is fine.
     expect(() => mgr.addCollaborator({ caller: collab("a"), profile: profile("b"), role: "use" }))
         .not.toThrow();
@@ -421,12 +421,12 @@ describe("removeCollaborator", () => {
   it("forbids a non-owner from removing a user they didn't add", () => {
     let { storage, mgr } = makeManager();
     seedCollaborator(storage, "t", [userEdge(OWNER)]);
-    expect(() => mgr.removeCollaborator(collab("a"), "t", [])).toThrow(/only remove users/);
+    expect(() => mgr.removeCollaborator(collab("a"), "t", [])).toThrow(/nur Nutzer entfernen/);
   });
 
   it("throws when the target is not a collaborator", () => {
     let { mgr } = makeManager();
-    expect(() => mgr.removeCollaborator(owner, "ghost", [])).toThrow(/not a collaborator/);
+    expect(() => mgr.removeCollaborator(owner, "ghost", [])).toThrow(/kein Mitarbeiter/);
   });
 });
 
@@ -479,7 +479,7 @@ describe("revokeShareLink", () => {
   it("forbids a non-owner from revoking a link they didn't create", () => {
     let { storage, mgr } = makeManager();
     seedLink(storage, "k1", OWNER);
-    expect(() => mgr.revokeShareLink(collab("a"), "k1", [])).toThrow(/only revoke/);
+    expect(() => mgr.revokeShareLink(collab("a"), "k1", [])).toThrow(/nur Freigabe-Links widerrufen/);
   });
 });
 
@@ -499,7 +499,7 @@ describe("createShareLink", () => {
     let { storage, mgr } = makeManager();
     seedCollaborator(storage, "a", [userEdge(OWNER, "use")]);
     expect(() => mgr.createShareLink({ caller: collab("a"), role: "build" }))
-        .rejects.toThrow(/higher than your own/);
+        .rejects.toThrow(/höhere Rolle/);
   });
 });
 
@@ -550,7 +550,7 @@ describe("newShareLinkKey", () => {
     seedLink(storage, "k1", OWNER);
     seedCollaborator(storage, "a", [userEdge(OWNER, "build")]);
     expect(mgr.newShareLinkKey({ caller: collab("a"), linkId: "k1" }))
-        .rejects.toThrow(/only copy/);
+        .rejects.toThrow(/nur Freigabe-Links kopieren/);
   });
 
   it("forbids copying a link that now grants a higher role than the caller's own", () => {
@@ -559,7 +559,7 @@ describe("newShareLinkKey", () => {
     seedLink(storage, "k1", "a", "build");
     seedCollaborator(storage, "a", [userEdge(OWNER, "use")]);
     expect(mgr.newShareLinkKey({ caller: collab("a"), linkId: "k1" }))
-        .rejects.toThrow(/higher than your own/);
+        .rejects.toThrow(/höhere Rolle/);
   });
 
   it("cannot manage a link through the id of one of its copies", async () => {
@@ -572,9 +572,9 @@ describe("newShareLinkKey", () => {
     // silent no-op: redemption resolves the copy through to the link, which would go untouched.
     let aliasId = [...storage.shareKeys.list()].find(r => r.alias !== undefined)!.id;
     expect(mgr.listShareLinkRecords().map(r => r.id)).toEqual([linkId]);
-    expect(mgr.newShareLinkKey({ caller: owner, linkId: aliasId })).rejects.toThrow(/not found/);
-    expect(() => mgr.updateShareLink(owner, aliasId, "x")).toThrow(/not found/);
-    expect(() => mgr.revokeShareLink(owner, aliasId, [])).toThrow(/not found/);
+    expect(mgr.newShareLinkKey({ caller: owner, linkId: aliasId })).rejects.toThrow(/nicht gefunden/);
+    expect(() => mgr.updateShareLink(owner, aliasId, "x")).toThrow(/nicht gefunden/);
+    expect(() => mgr.revokeShareLink(owner, aliasId, [])).toThrow(/nicht gefunden/);
   });
 
 });
@@ -640,6 +640,6 @@ describe("updateShareLink", () => {
   it("non-owner cannot edit a link they didn't create", () => {
     let { storage, mgr } = makeManager();
     seedLink(storage, "k1", OWNER);
-    expect(() => mgr.updateShareLink(collab("a"), "k1", "x")).toThrow(/only edit/);
+    expect(() => mgr.updateShareLink(collab("a"), "k1", "x")).toThrow(/nur Freigabe-Links bearbeiten/);
   });
 });
