@@ -431,6 +431,33 @@ Die eigentliche Übernahme läuft ausschließlich über den Overlay-Re-apply-Upg
 - **Read-only bestätigt:** nur `git fetch upstream` (öffentliches `cloudflare/cloudflare-os`),
   lesende Diffs. Kein Deploy, kein Token, keine fremde `account_id`.
 
+### Sync 2026-09-26 — `[currency-sync:91c06bc6]` (OWL-1715 / Eltern OWL-1714)
+
+- **Drift:** 4 kritische Commits `f961c844..004ab773` (die Betreff-Heuristik flaggt
+  in diesem Bereich **genau** diese 4; die übrigen 15 Commits sind Features). Pin
+  von `f961c844` → **`004ab773`** (= `upstream/main` HEAD am 2026-09-26) fortgeschrieben.
+- **Integrationsmethode:** CTO-Auftrag war **selektive Übernahme**. Mechanisches
+  `git cherry-pick -x` ist auf dieser Snapshot-Topologie N/A (disjunkte Historie →
+  Massenkonflikte, Fremd-Architektur würde injiziert). Stattdessen **semantischer
+  Port** des jeweiligen Produktiv-Fixes auf unsere abweichende Fassung, jeder Commit
+  trägt `(cherry picked semantically from <sha>)`. DE-Overlay unberührt gehalten,
+  Fork-Guard nach jedem Schritt grün (15 Marker).
+
+  | Upstream-Commit | Übernahme | Fork-Commit / Begründung |
+  |---|---|---|
+  | `6f7617ad7` #522 revert-elision readFile same-step | **(a) Übernommen** | `0df04139`. Unser `agent.ts` (`runAgent`/`stampedReadBase`) hatte denselben Bug (readFile-Revert-Check las nur den Tool-Call-Message-Status). Helper `sawRevertedContent(index)` ergänzt, Replay-Loop enumeriert. `#513`-Un-Marking war bei uns nie vorhanden. tsc=0, 38 Agent-Tests grün. |
+  | `77205134d` #559 shared-workspace stuck (OWL-1666-Klasse) | **(a) Übernommen** | `061f289e`. `ObserverConfigModal.tsx` (DE): Connect/Reconnect/Grant räumen In-Flight-State jetzt im `finally` → Dialog strandet nicht mehr bei abgebrochenem Popup. „Bereit"-Badge weg fürs gerade gescheiterte Konto; Reconnect-Button entschärft bei gültigen Creds. tsc=0, 8 Component-Tests grün. |
+  | `a43210a79` #566 failed MCP approval stuck (OWL-1672-Klasse) | **(a) Übernommen** | `41df05b6`. `action-store.ts` deckte sich exakt mit Upstream-Basis → `reject()` akzeptiert jetzt `failed`-Records (setzt `retryable=0`, statt Discard zu verweigern und den Chat zu blockieren). 2 Regressionstests portiert, 22 grün. |
+  | `91c06bc67` #571 user-directory test timeout | **⛔ N/A** | `UserDirectoryDurableObject` (src **und** Test) existiert im Snapshot **nicht** → nichts zu patchen, kein Drift. Reiner Test-Timing-Fix ohne Produktivwirkung. |
+
+- **Naht-Check:** keiner der 4 Commits berührt `scripts/release/manifest-lib.ts`,
+  `golden-manifest.json` oder `packages/router/__tests__/router.test.ts`. Nähte unverändert.
+- **Erwartung:** nächster wöchentlicher `currency-check.sh` meldet `0 kritischer Drift`
+  (Bereich `004ab773..upstream/main` leer, solange kein neuer Upstream-Commit landet).
+- **Read-only bestätigt:** nur `git fetch upstream` (öffentliches `cloudflare/cloudflare-os`).
+  Deploy ausschließlich auf unseren `cloudflareos`-Worker (Weichert.at-Account); vor
+  Deploy `account_id` geprüft. Kein Token-Antrag, keine fremde `account_id` (OWL-1434).
+
 ---
 
 ## 11. Vendorierte Upstream-Pakete (OWL-1583, 2026-09-22)
