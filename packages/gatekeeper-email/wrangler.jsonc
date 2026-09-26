@@ -7,6 +7,11 @@
   },
   "compatibility_date": "2026-02-02",
   "compatibility_flags": ["allow_irrevocable_stub_storage", "nodejs_als"],
+  // Prod: eigener Worker im NFR-Account; BASE_URL = Identifier-Schema fuer Mailbox-Ressourcen
+  // (Backend<->Gatekeeper laeuft ueber Service-Binding GATEKEEPER_EMAIL, nicht ueber diese URL).
+  "vars": {
+    "BASE_URL": "https://gatekeeper-email.vonbusch.workers.dev"
+  },
   "rules": [
     { "type": "Text", "globs": ["**/*.txt", "**/*.svg"], "fallthrough": false }
   ],
