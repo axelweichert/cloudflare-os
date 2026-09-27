@@ -14,8 +14,13 @@
     "BASE_URL": "https://cloudflareos.vonbusch.app/gatekeeper/vonbusch-robomon"
   },
   "migrations": [
+    // v0 was already applied by the old scaffold with class "RobomonGatekeeper".
+    // We keep the tag so CF does not try to re-apply it.
+    { "tag": "v0" },
+    // v1 removes the old class and creates the classes used by this implementation.
     {
-      "tag": "v0",
+      "tag": "v1",
+      "deleted_classes": ["RobomonGatekeeper"],
       "new_sqlite_classes": ["UserAccount", "RoboMonGatekeeperImpl"]
     }
   ],
