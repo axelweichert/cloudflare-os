@@ -212,9 +212,23 @@ export default {
     if (relPath === "/oauth") {
       const error = url.searchParams.get("error");
       if (error) {
+        // Microsoft appends error/error_description when authorization fails AFTER a matched
+        // redirect_uri (a redirect_uri mismatch never reaches this callback — it stops on
+        // Microsoft's own page). Surface the exact AADSTS reason so the failure is diagnosable
+        // instead of a generic dead-end; log it too (this worker's OAuth path is otherwise silent).
+        const description = url.searchParams.get("error_description") ?? "";
+        console.error(`M365 OAuth callback error: ${error} — ${description}`);
+        const safe = (s: string) => s.replace(/[<>&]/g, c => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c]!));
         return new Response(
-          "Microsoft authorization failed or was denied. Please restart the connection flow from Cloudflare OS.",
-          { status: 400, headers: { "Content-Type": "text/plain; charset=utf-8" } },
+          `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Authorization Failed</title></head>` +
+          `<body style="font-family: system-ui, -apple-system, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #f5f5f5;">` +
+          `<div style="max-width: 560px; padding: 2rem; background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">` +
+          `<h1 style="color: #d40000; font-size: 1.4rem; margin: 0 0 1rem 0;">Microsoft authorization failed</h1>` +
+          `<p style="color: #555; line-height: 1.6; margin: 0 0 1rem 0;">Microsoft returned an error instead of completing the connection. Please restart the connection flow from Cloudflare OS.</p>` +
+          `<p style="color: #333; margin: 0 0 0.25rem 0;"><strong>Error:</strong> <code>${safe(error)}</code></p>` +
+          (description ? `<p style="color: #333; margin: 0;"><strong>Details:</strong> ${safe(description)}</p>` : "") +
+          `</div></body></html>`,
+          { status: 400, headers: { "Content-Type": "text/html; charset=utf-8" } },
         );
       }
 
