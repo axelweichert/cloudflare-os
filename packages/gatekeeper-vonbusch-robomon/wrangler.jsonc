@@ -1,0 +1,27 @@
+{
+  "name": "gatekeeper-vonbusch-robomon",
+  "main": ".wrangler/validate/src/robomon.ts",
+  "build": {
+    "command": "pnpm exec capnweb-validate build --out .wrangler/validate",
+    "watch_dir": "src"
+  },
+  "compatibility_date": "2026-02-02",
+  "compatibility_flags": ["allow_irrevocable_stub_storage"],
+  // Prod: oeffentliche Origin des NFR-OS-Shell-Routers (cloudflareos.vonbusch.app).
+  // Ohne diese Var faellt der Gatekeeper auf http://localhost:8787 zurueck und der
+  // Connect-Link zeigt ins Leere (VON-2205-Muster: Backend-Binding + BASE_URL).
+  "vars": {
+    "BASE_URL": "https://cloudflareos.vonbusch.app/gatekeeper/vonbusch-robomon"
+  },
+  "migrations": [
+    {
+      "tag": "v0",
+      "new_sqlite_classes": ["UserAccount", "RoboMonGatekeeperImpl"]
+    }
+  ],
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1,
+    "logs": { "invocation_logs": false }
+  }
+}
