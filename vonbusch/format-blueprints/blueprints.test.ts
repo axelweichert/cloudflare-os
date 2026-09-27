@@ -76,9 +76,6 @@ for (const name of names) {
       assert.equal(files[f], await readFile(join(dir, f), "utf8"), `${f} weicht ab`);
     }
 
-    // --- Gadget-Code nutzt den agentSpawner tatsächlich ---
-    assert.match(files["server.js"], /env\.WORKFLOW\.spawn\(/, "server.js ruft env.WORKFLOW.spawn nicht");
-
     // --- Sidecar-Regeln (Spiegel von build-format-blueprints.mjs) ---
     assert.equal(sidecar.blueprintId, manifest.blueprintId);
     assert.match(sidecar.blueprintId, /^[a-zA-Z0-9._-]+$/);
@@ -87,19 +84,37 @@ for (const name of names) {
     assert.ok(OUTPUT_ICONS.includes(sidecar.output.icon), `icon ${sidecar.output.icon} unbekannt`);
     assert.ok(sidecar.output.id && sidecar.output.noun && sidecar.output.plural, "output vollständig");
 
-    // --- Bindings: agentSpawner + spawnerOnly-Gatekeeper, env verweist nur auf Deklariertes ---
+    // --- Bindings stimmen mit dem Manifest überein ---
     const bindings = metadata.bindings;
     assert.deepEqual(bindings, manifest.bindings, "Archiv-Bindings != Manifest");
+
     const spawners = Object.entries(bindings).filter(([, b]: any) => b.type === "agentSpawner");
-    assert.equal(spawners.length, 1, "genau ein agentSpawner-Binding erwartet");
-    const [, spawner]: any = spawners[0];
-    for (const [envName, target] of Object.entries(spawner.env) as any) {
-      assert.equal(target.type, "binding", `env.${envName}: nur binding-Targets unterstützt`);
-      const ref = bindings[target.name];
-      assert.ok(ref, `env.${envName} verweist auf unbekanntes Binding ${target.name}`);
-      assert.equal(ref.type, "gatekeeper", `${target.name} muss ein gatekeeper sein`);
-      assert.equal(ref.spawnerOnly, true, `${target.name} sollte spawnerOnly sein`);
-      assert.ok(ref.gatekeeperName, `${target.name} braucht einen gatekeeperName`);
+
+    if (spawners.length > 0) {
+      // Workflow-Blueprint: genau ein agentSpawner, dessen env nur auf deklarierte,
+      // spawnerOnly-Gatekeeper-Bindings verweist, und dessen server.js den Spawner nutzt.
+      assert.equal(spawners.length, 1, "höchstens ein agentSpawner-Binding erwartet");
+      assert.match(files["server.js"], /env\.WORKFLOW\.spawn\(/, "server.js ruft env.WORKFLOW.spawn nicht");
+      const [, spawner]: any = spawners[0];
+      for (const [envName, target] of Object.entries(spawner.env) as any) {
+        assert.equal(target.type, "binding", `env.${envName}: nur binding-Targets unterstützt`);
+        const ref = bindings[target.name];
+        assert.ok(ref, `env.${envName} verweist auf unbekanntes Binding ${target.name}`);
+        assert.equal(ref.type, "gatekeeper", `${target.name} muss ein gatekeeper sein`);
+        assert.equal(ref.spawnerOnly, true, `${target.name} sollte spawnerOnly sein`);
+        assert.ok(ref.gatekeeperName, `${target.name} braucht einen gatekeeperName`);
+      }
+    } else {
+      // Read-only Display-Blueprint: bindet mindestens einen Gatekeeper DIREKT (nicht spawnerOnly)
+      // und liest ihn im server.js über env.<name>.* aus.
+      const gatekeepers = Object.entries(bindings).filter(([, b]: any) => b.type === "gatekeeper");
+      assert.ok(gatekeepers.length >= 1, "Display-Blueprint braucht mindestens ein Gatekeeper-Binding");
+      for (const [bindName, gk] of gatekeepers as any) {
+        assert.ok(gk.gatekeeperName, `${bindName} braucht einen gatekeeperName`);
+        assert.notEqual(gk.spawnerOnly, true, `${bindName}: direkt gebundener Gatekeeper darf nicht spawnerOnly sein`);
+        assert.match(files["server.js"], new RegExp(`env\\.${bindName}\\b`),
+          `server.js liest env.${bindName} nicht`);
+      }
     }
   });
 }

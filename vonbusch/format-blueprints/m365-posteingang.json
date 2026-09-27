@@ -1,0 +1,18 @@
+{
+  "$comment": "GENERIERT aus src/m365-posteingang/blueprint.json durch build-blueprints.mjs — dort editieren, nicht hier.",
+  "blueprintId": "m365.posteingang",
+  "title": "Microsoft 365 Überblick",
+  "description": "Read-only Dashboard über das verbundene Microsoft-365-Konto: Outlook-Posteingang, anstehende Termine und Microsoft-To-Do-Aufgaben auf einen Blick — ohne jeden Schreibzugriff.",
+  "output": {
+    "id": "app",
+    "noun": "Überblick",
+    "plural": "Überblicke",
+    "icon": "appWindow"
+  },
+  "author": {
+    "type": "user",
+    "name": "CloudflareOS",
+    "id": "owlos@cloudflareos.weichert.at"
+  },
+  "revision": 1
+}

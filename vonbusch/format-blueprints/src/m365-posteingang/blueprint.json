@@ -1,0 +1,21 @@
+{
+  "blueprintId": "m365.posteingang",
+  "version": 1,
+  "created": "2026-09-27T00:00:00.000Z",
+  "sidecar": {
+    "title": "Microsoft 365 Überblick",
+    "description": "Read-only Dashboard über das verbundene Microsoft-365-Konto: Outlook-Posteingang, anstehende Termine und Microsoft-To-Do-Aufgaben auf einen Blick — ohne jeden Schreibzugriff.",
+    "output": { "id": "app", "noun": "Überblick", "plural": "Überblicke", "icon": "appWindow" },
+    "author": { "type": "user", "name": "CloudflareOS", "id": "owlos@cloudflareos.weichert.at" },
+    "revision": 1
+  },
+  "bindings": {
+    "m365": {
+      "title": "Microsoft 365 Konto",
+      "description": "Gatekeeper auf das verbundene Microsoft-365-Konto (Outlook Mail, Kalender, Microsoft To Do). Nur Lesen — dieses Gadget schreibt nichts.",
+      "type": "gatekeeper",
+      "gatekeeperName": "m365",
+      "typeUrlPattern": "https://*"
+    }
+  }
+}
