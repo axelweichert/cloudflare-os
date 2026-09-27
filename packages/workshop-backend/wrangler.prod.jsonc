@@ -64,6 +64,10 @@
     { "binding": "GATEKEEPER_GOOGLE", "service": "cloudflareos-gk-google" },
     { "binding": "GATEKEEPER_HOMEASSISTANT", "service": "cloudflareos-gk-homeassistant" },
     { "binding": "GATEKEEPER_LINEAR", "service": "cloudflareos-gk-linear" },
+    // entrypoint pin per OWL-1723 (GatekeeperVendor) so a backend deploy cannot rewire this GK to
+    // the fetch export and drop it from the connected set. The remaining bindings get the same pin
+    // from OWL-1723 (PR #25); this line carries it up front.
+    { "binding": "GATEKEEPER_M365", "service": "cloudflareos-gk-m365", "entrypoint": "GatekeeperVendor" },
     { "binding": "GATEKEEPER_MCP", "service": "cloudflareos-gk-mcp" },
     { "binding": "GATEKEEPER_MCP_PORTAL", "service": "cloudflareos-gk-mcp-portal" },
     { "binding": "GATEKEEPER_NOTION", "service": "cloudflareos-gk-notion" },
