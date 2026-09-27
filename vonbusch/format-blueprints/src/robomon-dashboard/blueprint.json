@@ -1,0 +1,30 @@
+{
+  "blueprintId": "vonbusch.robomon-dashboard",
+  "version": 1,
+  "created": "2026-09-27T00:00:00.000Z",
+  "sidecar": {
+    "title": "RoboMon Fleet Dashboard",
+    "description": "Read-only fleet dashboard showing robot status, alert centre, task queue (tickets), maintenance/wear, and automation rules from the von Busch RoboMon fleet.",
+    "output": {
+      "id": "dashboard",
+      "noun": "Dashboard",
+      "plural": "Dashboards",
+      "icon": "chartBar"
+    },
+    "author": {
+      "type": "user",
+      "name": "von Busch Digital",
+      "id": "cto@vonbusch.digital"
+    },
+    "revision": 1
+  },
+  "bindings": {
+    "ROBOMON": {
+      "title": "RoboMon Fleet (von Busch)",
+      "description": "Connect the von Busch RoboMon gatekeeper to display live fleet status, alerts, tickets, maintenance, and automation data.",
+      "type": "gatekeeper",
+      "gatekeeperName": "vonbusch-robomon",
+      "typeUrlPattern": "https://robomon.vonbusch.app/*"
+    }
+  }
+}

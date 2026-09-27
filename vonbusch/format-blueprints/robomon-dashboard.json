@@ -1,0 +1,18 @@
+{
+  "$comment": "GENERIERT aus src/robomon-dashboard/blueprint.json durch build-blueprints.mjs — dort editieren, nicht hier.",
+  "blueprintId": "vonbusch.robomon-dashboard",
+  "title": "RoboMon Fleet Dashboard",
+  "description": "Read-only fleet dashboard showing robot status, alert centre, task queue (tickets), maintenance/wear, and automation rules from the von Busch RoboMon fleet.",
+  "output": {
+    "id": "dashboard",
+    "noun": "Dashboard",
+    "plural": "Dashboards",
+    "icon": "chartBar"
+  },
+  "author": {
+    "type": "user",
+    "name": "von Busch Digital",
+    "id": "cto@vonbusch.digital"
+  },
+  "revision": 1
+}
