@@ -458,6 +458,18 @@ Die eigentliche Übernahme läuft ausschließlich über den Overlay-Re-apply-Upg
   Deploy ausschließlich auf unseren `cloudflareos`-Worker (Weichert.at-Account); vor
   Deploy `account_id` geprüft. Kein Token-Antrag, keine fremde `account_id` (OWL-1434).
 
+### Triage 2026-09-28 — kein kritischer Drift (OWL-1731, Routine `currency-check.sh`)
+
+- **Stand:** Pin `004ab773` → `upstream/main` HEAD `32ce1526`. Fork 0 voraus, 1 zurück.
+- **Drift:** genau **1** neuer Upstream-Commit seit Pin: `32ce1526` #572
+  „AI provider UI improvements" — Kategorie **(c)** (UI/Refactor, 15 Dateien,
+  berührt DE-Fläche → Konflikt erwartbar). **0 kritische / Security-Commits.**
+- **Entscheidung:** kein Sync-Issue (idempotent, `--dry-run`-Kriterium erfüllt).
+  #572 ist ein reines UI-Feature ohne Produktivfix → nur registriert, nicht übernommen.
+  Pin bleibt auf `004ab773`; keine Fortschreibung nötig, solange kein kritischer Commit folgt.
+- **Read-only bestätigt:** nur `git fetch upstream` (öffentliches `cloudflare/cloudflare-os`).
+  Kein Deploy, kein Token, keine fremde `account_id` (OWL-1434).
+
 ---
 
 ## 11. Vendorierte Upstream-Pakete (OWL-1583, 2026-09-22)
