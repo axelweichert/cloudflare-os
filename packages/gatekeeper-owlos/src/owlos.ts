@@ -3,10 +3,12 @@ import { skipRpcValidation, validateRpc } from "capnweb-validate";
 import {
   stripTrailingSlashes,
   type AccountDescription,
+  type ActionDescription,
   type ActionKind,
   type ApprovalQueue,
   type AvatarImage,
   type Gatekeeper,
+  type ObservationDescription,
   type GatekeeperConnectCallback,
   type GatekeeperUser,
   type GatekeeperUserVerifier,
@@ -16,7 +18,7 @@ import {
   type SupportedResource,
   type VendorDescription,
 } from "@gadgets/workshop-shared/gatekeeper";
-import { OwlosClient, OwlosError, verifyCredentials, type OwlosCredentials } from "./owlos-api";
+import { OwlosClient, OwlosError, verifyCredentials, type HttpMethod, type OwlosCredentials } from "./owlos-api";
 import type { OwlosSession } from "./types";
 import type { OwlosWorkspaceConfiguratorRpc } from "./configurator/owlos-configurator-types";
 import TYPES_CODE from "./types.txt";
@@ -532,21 +534,55 @@ export class OwlosGatekeeperImpl
   }
 
   async getAutoApprovableActions(): Promise<ActionKind[]> {
+    // Every write (create/patch/finalize) requires manual approval — nothing auto-approves.
     return [];
   }
 
   async startSession(approvalQueue: RpcStub<ApprovalQueue>): Promise<OwlosSession> {
     const creds = await this.#getCreds();
-    return new OwlosSessionImpl(creds, approvalQueue.dup());
+    return new OwlosSessionImpl(this, creds, approvalQueue.dup());
   }
 
-  // Read-only in S1: no actions are ever submitted.
-  async applyAction(actionId: number): Promise<void> {
-    throw new Error(`No queued owlOS action exists with id ${actionId}; this gatekeeper is read-only.`);
+  // -------------------------------------------------------------------------
+  // Action queue (S2). Writes are deferred: the session enqueues the concrete HTTP request here and
+  // submits it for approval; owlOS is only touched in applyAction, once a human approves. Reads stay
+  // direct (see OwlosSessionImpl), so a pending write is not reflected until it is applied — hence
+  // awaitDecision is set on every submission so the agent pauses rather than reading a stale world.
+
+  #nextActionId(): number {
+    const value = (this.ctx.storage.kv.get<number>("actionCounter") ?? 0) + 1;
+    this.ctx.storage.kv.put("actionCounter", value);
+    return value;
   }
-  async rejectAction(_actionId: number): Promise<void> {}
+
+  /** Called by the session for every write. Stores the request and submits it for approval. */
+  async enqueueAction(
+    approvalQueue: RpcStub<ApprovalQueue>,
+    request: StoredOwlosAction["request"],
+    description: ActionDescription,
+  ): Promise<{ status: "pending_approval"; actionId: number }> {
+    const actionId = this.#nextActionId();
+    this.ctx.storage.kv.put<StoredOwlosAction>(`action:${actionId}`, { id: actionId, request });
+    await approvalQueue.submitAction(actionId, description);
+    return { status: "pending_approval", actionId };
+  }
+
+  async applyAction(actionId: number): Promise<void> {
+    const action = this.ctx.storage.kv.get<StoredOwlosAction>(`action:${actionId}`);
+    if (!action) throw new Error(`No queued owlOS action exists with id ${actionId}.`);
+    const client = new OwlosClient(await this.#getCreds());
+    await client.request(action.request.method, action.request.path, action.request.body);
+    this.ctx.storage.kv.delete(`action:${actionId}`);
+  }
+
+  async rejectAction(actionId: number): Promise<void> {
+    this.ctx.storage.kv.delete(`action:${actionId}`);
+  }
+
   async revertAction(_actionId: number): Promise<void> {
-    throw new Error("This gatekeeper is read-only; there is nothing to revert.");
+    // owlOS has no generic undo; every submitted action declares implementsRevert:false, so the
+    // overseer never offers a revert and never calls this.
+    throw new Error("owlOS actions cannot be reverted automatically.");
   }
 
   // Low-stakes observer strategy (see OwlosUserImpl.getVerifier): any collaborator may observe.
@@ -554,16 +590,40 @@ export class OwlosGatekeeperImpl
   async removeObserver(_id: string): Promise<void> {}
 }
 
+// A write request the session queued for approval; applyAction replays it against owlOS verbatim.
+interface StoredOwlosAction {
+  id: number;
+  request: { method: HttpMethod; path: string; body?: unknown };
+}
+
+const PENDING = "pending_approval" as const;
+type PendingResult = { status: typeof PENDING; actionId: number };
+
+/** Build a `?a=b&c=d` query string from defined string/number filters (undefined keys dropped). */
+function query(filter?: Record<string, string | number | undefined>): string {
+  if (!filter) return "";
+  const params = new URLSearchParams();
+  for (const [k, v] of Object.entries(filter)) {
+    if (v !== undefined && v !== "") params.set(k, String(v));
+  }
+  const s = params.toString();
+  return s ? `?${s}` : "";
+}
+
 // ---------------------------------------------------------------------------
-// Session — whole-workspace, read-only.
+// Session — whole-workspace. Reads run directly (authorized + audited via authorizeObservation, like
+// me()); writes are queued through the gatekeeper's approval queue and only hit owlOS once approved
+// (see OwlosGatekeeperImpl.enqueueAction/applyAction). Routes are exactly the ones in S2-CONTRACT.md.
 
 class OwlosSessionImpl extends RpcTarget implements OwlosSession {
+  #gk: OwlosGatekeeperImpl;
   #client: OwlosClient;
   #approvalQueue: RpcStub<ApprovalQueue>;
   #disposed = false;
 
-  constructor(creds: OwlosCredentials, approvalQueue: RpcStub<ApprovalQueue>) {
+  constructor(gk: OwlosGatekeeperImpl, creds: OwlosCredentials, approvalQueue: RpcStub<ApprovalQueue>) {
     super();
+    this.#gk = gk;
     this.#client = new OwlosClient(creds);
     this.#approvalQueue = approvalQueue;
   }
@@ -578,12 +638,179 @@ class OwlosSessionImpl extends RpcTarget implements OwlosSession {
     }
   }
 
+  /** Run a direct read, then authorize+audit it. `title`/`description` describe the observation. */
+  async #read(path: string, obs: ObservationDescription): Promise<any> {
+    const data = await this.#client.request("GET", path);
+    await this.#approvalQueue.authorizeObservation(obs);
+    return data;
+  }
+
+  /** Queue a write for human approval. It touches owlOS only after approval (applyAction). */
+  async #write(
+    method: HttpMethod,
+    path: string,
+    body: unknown,
+    action: Pick<ActionDescription, "title" | "description">,
+  ): Promise<PendingResult> {
+    return await this.#gk.enqueueAction(this.#approvalQueue, { method, path, body }, {
+      ...action,
+      implementsRevert: false,
+      awaitDecision: true,
+    });
+  }
+
+  // ---- identity -----------------------------------------------------------
+
   async me(): Promise<Record<string, unknown>> {
-    const identity = await this.#client.me();
-    await this.#approvalQueue.authorizeObservation({
+    return (await this.#read("/api/auth/me", {
       title: "Read owlOS workspace identity",
       description: "Fetched the authenticated owlOS workspace identity (`GET /api/auth/me`).",
+    })) as Record<string, unknown>;
+  }
+
+  // ---- Angebot (quote) ----------------------------------------------------
+
+  async listQuotes(): Promise<unknown> {
+    return await this.#read("/api/erp/quotes", {
+      title: "List owlOS quotes",
+      description: "Listed the workspace's quotes/offers (`GET /api/erp/quotes`).",
     });
-    return identity;
+  }
+
+  async createQuote(fields: Record<string, unknown>): Promise<PendingResult> {
+    const title = typeof fields?.title === "string" ? fields.title.trim() : "";
+    if (!title) throw new OwlosError('owlOS requires a quote title ("Titel ist Pflicht").');
+    return await this.#write("POST", "/api/erp/quotes", { ...fields, title }, {
+      title: `Create owlOS quote "${title}"`,
+      description: `Create a new quote in owlOS (\`POST /api/erp/quotes\`) with:\n\n\`\`\`json\n${JSON.stringify({ ...fields, title }, null, 2)}\n\`\`\``,
+    });
+  }
+
+  async updateQuote(quoteId: string, fields: Record<string, unknown>): Promise<PendingResult> {
+    const path = `/api/erp/quotes/${encodeURIComponent(quoteId)}`;
+    return await this.#write("PATCH", path, fields, {
+      title: `Update owlOS quote ${quoteId}`,
+      description: `Update quote \`${quoteId}\` (\`PATCH ${path}\`) with:\n\n\`\`\`json\n${JSON.stringify(fields, null, 2)}\n\`\`\``,
+    });
+  }
+
+  // ---- Kunde (company) ----------------------------------------------------
+
+  async listCompanies(): Promise<unknown> {
+    return await this.#read("/api/companies", {
+      title: "List owlOS companies",
+      description: "Listed the workspace's customers/companies (`GET /api/companies`).",
+    });
+  }
+
+  async createCompany(fields: Record<string, unknown>): Promise<PendingResult> {
+    const name = typeof fields?.name === "string" ? fields.name.trim() : "";
+    if (!name) throw new OwlosError("owlOS requires a company name.");
+    return await this.#write("POST", "/api/companies", { ...fields, name }, {
+      title: `Create owlOS company "${name}"`,
+      description: `Create a new company in owlOS (\`POST /api/companies\`) with:\n\n\`\`\`json\n${JSON.stringify({ ...fields, name }, null, 2)}\n\`\`\``,
+    });
+  }
+
+  async assignCustomerNumber(fields: Record<string, unknown>): Promise<PendingResult> {
+    return await this.#write("POST", "/api/companies/assign-kundennr", fields, {
+      title: "Assign owlOS customer number",
+      description: `Assign a customer number (\`POST /api/companies/assign-kundennr\`) with:\n\n\`\`\`json\n${JSON.stringify(fields, null, 2)}\n\`\`\``,
+    });
+  }
+
+  // ---- Rechnung (outgoing invoice) ----------------------------------------
+
+  async listInvoices(): Promise<unknown> {
+    return await this.#read("/api/faktura/outgoing", {
+      title: "List owlOS outgoing invoices",
+      description: "Listed the workspace's outgoing invoices (`GET /api/faktura/outgoing`).",
+    });
+  }
+
+  async createInvoice(fields: Record<string, unknown>): Promise<PendingResult> {
+    return await this.#write("POST", "/api/faktura/outgoing", fields, {
+      title: "Create owlOS outgoing invoice",
+      description: `Create an outgoing invoice header (\`POST /api/faktura/outgoing\`) with:\n\n\`\`\`json\n${JSON.stringify(fields, null, 2)}\n\`\`\``,
+    });
+  }
+
+  async addInvoiceItems(invoiceId: string, fields: Record<string, unknown>): Promise<PendingResult> {
+    const path = `/api/faktura/outgoing/${encodeURIComponent(invoiceId)}/items`;
+    return await this.#write("POST", path, fields, {
+      title: `Add items to owlOS invoice ${invoiceId}`,
+      description: `Add line items to invoice \`${invoiceId}\` (\`POST ${path}\`) with:\n\n\`\`\`json\n${JSON.stringify(fields, null, 2)}\n\`\`\``,
+    });
+  }
+
+  async finalizeInvoice(invoiceId: string): Promise<PendingResult> {
+    const path = `/api/faktura/outgoing/${encodeURIComponent(invoiceId)}/finalize`;
+    return await this.#write("POST", path, {}, {
+      title: `Finalize owlOS invoice ${invoiceId}`,
+      description: `Finalize (commit) invoice \`${invoiceId}\` (\`POST ${path}\`). This is irreversible in owlOS.`,
+    });
+  }
+
+  // ---- Ansprechpartner (contact) ------------------------------------------
+
+  async listContacts(filter?: Record<string, string | number>): Promise<unknown> {
+    return await this.#read(`/api/contacts${query(filter)}`, {
+      title: "List owlOS contacts",
+      description: "Listed the workspace's contacts (`GET /api/contacts`).",
+    });
+  }
+
+  async createContact(fields: Record<string, unknown>): Promise<PendingResult> {
+    return await this.#write("POST", "/api/contacts", fields, {
+      title: "Create owlOS contact",
+      description: `Create a new contact in owlOS (\`POST /api/contacts\`) with:\n\n\`\`\`json\n${JSON.stringify(fields, null, 2)}\n\`\`\``,
+    });
+  }
+
+  async mergeContacts(fields: Record<string, unknown>): Promise<PendingResult> {
+    return await this.#write("POST", "/api/contacts/merge", fields, {
+      title: "Merge owlOS contacts",
+      description: `Merge duplicate contacts (\`POST /api/contacts/merge\`) with:\n\n\`\`\`json\n${JSON.stringify(fields, null, 2)}\n\`\`\``,
+    });
+  }
+
+  // ---- Aktivität (activity) -----------------------------------------------
+
+  async listActivities(filter?: Record<string, string | number>): Promise<unknown> {
+    return await this.#read(`/api/activities${query(filter)}`, {
+      title: "List owlOS activities",
+      description: "Listed the workspace's activities (`GET /api/activities`).",
+    });
+  }
+
+  async createActivity(fields: Record<string, unknown>): Promise<PendingResult> {
+    return await this.#write("POST", "/api/activities", fields, {
+      title: "Create owlOS activity",
+      description: `Create a new activity in owlOS (\`POST /api/activities\`) with:\n\n\`\`\`json\n${JSON.stringify(fields, null, 2)}\n\`\`\``,
+    });
+  }
+
+  async setActivityStatus(activityId: string, fields: Record<string, unknown>): Promise<PendingResult> {
+    const path = `/api/activities/${encodeURIComponent(activityId)}/status`;
+    return await this.#write("PATCH", path, fields, {
+      title: `Set owlOS activity ${activityId} status`,
+      description: `Change the status of activity \`${activityId}\` (\`PATCH ${path}\`) with:\n\n\`\`\`json\n${JSON.stringify(fields, null, 2)}\n\`\`\``,
+    });
+  }
+
+  // ---- Opportunity (deal) -------------------------------------------------
+
+  async listDeals(filter?: Record<string, string | number>): Promise<unknown> {
+    return await this.#read(`/api/deals${query(filter)}`, {
+      title: "List owlOS deals",
+      description: "Listed the workspace's deals/opportunities (`GET /api/deals`).",
+    });
+  }
+
+  async createDeal(fields: Record<string, unknown>): Promise<PendingResult> {
+    return await this.#write("POST", "/api/deals", fields, {
+      title: "Create owlOS deal",
+      description: `Create a new deal/opportunity in owlOS (\`POST /api/deals\`) with:\n\n\`\`\`json\n${JSON.stringify(fields, null, 2)}\n\`\`\``,
+    });
   }
 }
