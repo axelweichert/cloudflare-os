@@ -60,6 +60,7 @@
     { "binding": "GATEKEEPER_CONFLUENCE", "service": "cloudflareos-gk-confluence" },
     { "binding": "GATEKEEPER_CONTEXT", "service": "cloudflareos-gk-context" },
     { "binding": "GATEKEEPER_EMAIL", "service": "cloudflareos-gk-email" },
+    { "binding": "GATEKEEPER_ETSY", "service": "cloudflareos-gk-etsy" },
     { "binding": "GATEKEEPER_GITHUB", "service": "cloudflareos-gk-github" },
     { "binding": "GATEKEEPER_GOOGLE", "service": "cloudflareos-gk-google" },
     { "binding": "GATEKEEPER_HOMEASSISTANT", "service": "cloudflareos-gk-homeassistant" },

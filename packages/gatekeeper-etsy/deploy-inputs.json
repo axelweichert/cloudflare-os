@@ -1,0 +1,23 @@
+[
+  {
+    "name": "ETSY_KEYSTRING",
+    "kind": "secret",
+    "label": "Etsy app API key (keystring)",
+    "consoleUrl": "https://www.etsy.com/developers/your-apps",
+    "setupSteps": [
+      "In the Etsy Developers portal, open your app and copy its keystring (API key).",
+      "This value is sent as the `x-api-key` header and used as the OAuth client id (PKCE public client).",
+      "Set the app's OAuth callback / redirect URI to the redirect URI below."
+    ],
+    "redirectUriTemplate": "{PUBLIC_BASE_URL}/gatekeeper/etsy/oauth"
+  },
+  {
+    "name": "ETSY_SHARED_SECRET",
+    "kind": "secret",
+    "label": "Etsy shared secret (optional)",
+    "setupSteps": [
+      "Optional: copy the shared secret from the same Etsy app.",
+      "Not required by the v3 PKCE public-client flow; stored for completeness / future use."
+    ]
+  }
+]
