@@ -1,5 +1,5 @@
 {
-  "name": "cloudflareos-gk-etsy",
+  "name": "gatekeeper-etsy",
   "main": ".wrangler/validate/src/etsy.ts",
   "build": {
     "command": "pnpm exec capnweb-validate build --out .wrangler/validate",
