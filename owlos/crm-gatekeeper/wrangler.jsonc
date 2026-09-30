@@ -16,7 +16,7 @@
     ]
   },
   "migrations": [
-    { "tag": "v1", "new_classes": ["CrmGatekeeper"] }
+    { "tag": "v1", "new_sqlite_classes": ["CrmGatekeeper"] }
   ],
   "d1_databases": [
     {

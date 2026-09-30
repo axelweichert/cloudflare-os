@@ -10,7 +10,7 @@
     ]
   },
   "migrations": [
-    { "tag": "v1", "new_classes": ["MailboxPinSession"] }
+    { "tag": "v1", "new_sqlite_classes": ["MailboxPinSession"] }
   ],
   "vars": {
     // Overrides koennen via CLI-Flag oder .dev.vars gesetzt werden.

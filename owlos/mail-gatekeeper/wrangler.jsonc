@@ -12,7 +12,7 @@
     ]
   },
   "migrations": [
-    { "tag": "v1", "new_classes": ["MailGatekeeper"] }
+    { "tag": "v1", "new_sqlite_classes": ["MailGatekeeper"] }
   ],
   // Ausgehende Mail über CF Email Service. Absender muss auf vonbusch.app onboardet sein.
   // Kein allowed_destination_addresses → unrestricted binding (beliebige Empfänger, wie printgemein).
