@@ -221,6 +221,80 @@
         "BASE_URL": "$PUBLIC_BASE_URL/gatekeeper/email"
       }
     },
+    "gatekeeper-etsy": {
+      "bindings": [
+        {
+          "name": "ETSY_KEYSTRING",
+          "text": "$SECRET(ETSY_KEYSTRING)",
+          "type": "secret_text"
+        },
+        {
+          "name": "ETSY_SHARED_SECRET",
+          "text": "$SECRET(ETSY_SHARED_SECRET)",
+          "type": "secret_text"
+        }
+      ],
+      "compatibilityDate": "2026-02-02",
+      "compatibilityFlags": [
+        "allow_irrevocable_stub_storage",
+        "nodejs_als"
+      ],
+      "inputs": [
+        {
+          "consoleUrl": "https://www.etsy.com/developers/your-apps",
+          "kind": "secret",
+          "label": "Etsy app API key (keystring)",
+          "name": "ETSY_KEYSTRING",
+          "redirectUriTemplate": "{PUBLIC_BASE_URL}/gatekeeper/etsy/oauth",
+          "setupSteps": [
+            "In the Etsy Developers portal, open your app and copy its keystring (API key).",
+            "This value is sent as the `x-api-key` header and used as the OAuth client id (PKCE public client).",
+            "Set the app's OAuth callback / redirect URI to the redirect URI below."
+          ]
+        },
+        {
+          "kind": "secret",
+          "label": "Etsy shared secret (optional)",
+          "name": "ETSY_SHARED_SECRET",
+          "setupSteps": [
+            "Optional: copy the shared secret from the same Etsy app.",
+            "Not required by the v3 PKCE public-client flow; stored for completeness / future use."
+          ]
+        }
+      ],
+      "installable": true,
+      "kind": "gatekeeper",
+      "mainModule": "etsy.js",
+      "migrations": [
+        {
+          "new_sqlite_classes": [
+            "UserAccount",
+            "EtsyGatekeeperImpl"
+          ],
+          "tag": "v0"
+        }
+      ],
+      "modules": [
+        {
+          "name": "etsy.js",
+          "r2Key": "blobs/modules/004cfd7ebdd23d9ba708d4900762b4ab75344ca741e8a4bf10aa2bf32c4c7340",
+          "sha256": "004cfd7ebdd23d9ba708d4900762b4ab75344ca741e8a4bf10aa2bf32c4c7340",
+          "size": 57,
+          "type": "esm"
+        }
+      ],
+      "observability": {
+        "enabled": true,
+        "head_sampling_rate": 1,
+        "logs": {
+          "invocation_logs": false
+        }
+      },
+      "shortName": "etsy",
+      "vars": {
+        "BASE_URL": "$PUBLIC_BASE_URL/gatekeeper/etsy"
+      }
+    },
     "gatekeeper-github": {
       "bindings": [
         {

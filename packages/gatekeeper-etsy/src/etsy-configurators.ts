@@ -50,7 +50,7 @@ export class EtsyShopConfiguratorUI extends RpcTarget implements EtsyShopConfigu
     shopNames.set(this, shopName);
   }
 
-  // This gatekeeper is scoped to a single shop, so the picker offers exactly that shop.
+  /** This gatekeeper is scoped to a single shop, so the picker offers exactly that shop. */
   async listShops(_query: string): Promise<ConfiguratorOption[]> {
     const shopName = shopNameFor(this);
     try {
