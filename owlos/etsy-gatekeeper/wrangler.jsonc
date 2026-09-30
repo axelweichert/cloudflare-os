@@ -31,6 +31,8 @@
     // Nicht geheime Konfiguration. Shop-ID beim Wiring auf die echte numerische Shop-ID setzen.
     "ETSY_API_BASE": "https://openapi.etsy.com",
     "ETSY_TOKEN_ENDPOINT": "https://api.etsy.com/v3/public/oauth/token",
+    // Etsys Authorize-Seite (Nutzer-Zustimmung) fuer /oauth/start. Getrennt vom Token-Endpoint.
+    "ETSY_AUTHORIZE_ENDPOINT": "https://www.etsy.com/oauth/connect",
     "ETSY_SHOP_ID": "REPLACE_WITH_SHOP_ID"
   }
   // Secrets (NICHT ins Repo — per `wrangler secret put` setzen):

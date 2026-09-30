@@ -10,8 +10,10 @@
 //   GET  /api/queue[?status=...]   — JSON-Liste der Schreib-Vorschlaege
 //   POST /api/queue/:id/approve    — freigeben → Etsy-Write ausfuehren
 //   POST /api/queue/:id/reject     — ablehnen
-//   POST /api/token/seed           — initialen OAuth-Refresh-Token setzen (Wiring, CF Access)
+//   POST /api/token/seed           — initialen OAuth-Refresh-Token setzen (manueller Fallback, CF Access)
 //   GET  /api/token/status         — Token-Status (vorhanden? Ablauf?) ohne Geheimnisse
+//   GET  /oauth/start              — PKCE-Authorize-Flow starten → 302 auf Etsys Authorize-URL (CF Access)
+//   GET  /oauth/callback           — Etsy-Redirect: state pruefen, Code tauschen, Token ins KV (CF Access)
 //
 // Bindings (wrangler.jsonc):
 //   ETSY_TOKENS      KV  (haelt den rotierenden OAuth-Token-Satz)
@@ -30,12 +32,23 @@ import { EtsyApiClient, type EtsyStore, EtsyRateLimitError } from "./etsy-client
 import { KvTokenStore, TokenManager, type KvLike } from "./token-store.ts";
 import { handleMcpMessage, type McpContext } from "./mcp-server.ts";
 import { renderQueuePage } from "./ui.ts";
+import {
+  KvOAuthStateStore,
+  startAuthorize,
+  completeCallback,
+  DEFAULT_AUTHORIZE_ENDPOINT,
+  ETSY_SCOPES,
+  type OAuthKv,
+  type OAuthStateStore,
+} from "./oauth.ts";
 
 type Env = {
-  ETSY_TOKENS: KvLike;
+  ETSY_TOKENS: KvLike & OAuthKv;
   EtsyGatekeeper: DurableObjectNamespace<EtsyGatekeeper>;
   ETSY_API_BASE?: string;
   ETSY_TOKEN_ENDPOINT?: string;
+  /** Etsys Authorize-Seite (Nutzer-Zustimmung); Default siehe oauth.ts. */
+  ETSY_AUTHORIZE_ENDPOINT?: string;
   ETSY_SHOP_ID?: string;
   ETSY_KEYSTRING?: string;
   ETSY_SHARED_SECRET?: string;
@@ -70,6 +83,7 @@ export class EtsyGatekeeper extends DurableObject<Env> {
   private queue: WriteApprovalQueue;
   private tokens: TokenManager;
   private etsy: EtsyStore;
+  private oauthState: OAuthStateStore;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -79,6 +93,7 @@ export class EtsyGatekeeper extends DurableObject<Env> {
       clientId: env.ETSY_KEYSTRING ?? "",
       seedRefreshToken: env.ETSY_SEED_REFRESH_TOKEN,
     });
+    this.oauthState = new KvOAuthStateStore(env.ETSY_TOKENS);
     this.etsy = new EtsyApiClient({
       apiBase: env.ETSY_API_BASE ?? DEFAULT_API_BASE,
       keystring: env.ETSY_KEYSTRING ?? "",
@@ -121,6 +136,13 @@ export class EtsyGatekeeper extends DurableObject<Env> {
     }
     if (path === "/api/token/status" && request.method === "GET") {
       return this.handleTokenStatus();
+    }
+
+    if (path === "/oauth/start" && request.method === "GET") {
+      return this.handleOAuthStart(request);
+    }
+    if (path === "/oauth/callback" && request.method === "GET") {
+      return this.handleOAuthCallback(request);
     }
 
     return new Response("Not Found", { status: 404 });
@@ -197,6 +219,50 @@ export class EtsyGatekeeper extends DurableObject<Env> {
     } catch (e) {
       return json({ ok: false, message: e instanceof Error ? e.message : String(e) }, 502);
     }
+  }
+
+  /**
+   * Wiring: GET /oauth/start — PKCE-Authorize-Flow anstossen. Hinter CF Access (Mensch).
+   * redirect_uri wird aus dem Request-Origin abgeleitet → keine separate Config, immer die
+   * echte Callback-URL dieses Workers.
+   */
+  private async handleOAuthStart(request: Request): Promise<Response> {
+    const clientId = this.env.ETSY_KEYSTRING ?? "";
+    if (!clientId) {
+      return new Response(
+        "ETSY_KEYSTRING (OAuth client_id) ist nicht konfiguriert — erst beim Wiring setzen.",
+        { status: 500, headers: { "Content-Type": "text/plain; charset=utf-8" } },
+      );
+    }
+    const url = new URL(request.url);
+    const redirectUri = `${url.origin}/oauth/callback`;
+    const { location } = await startAuthorize({
+      clientId,
+      authorizeEndpoint: this.env.ETSY_AUTHORIZE_ENDPOINT ?? DEFAULT_AUTHORIZE_ENDPOINT,
+      redirectUri,
+      scopes: ETSY_SCOPES,
+      stateStore: this.oauthState,
+    });
+    return new Response(null, { status: 302, headers: { Location: location } });
+  }
+
+  /**
+   * Wiring: GET /oauth/callback — state pruefen, Code+Verifier gegen den Token-Endpoint tauschen,
+   * Refresh-Token via TokenManager/KvTokenStore ins KV. Hinter CF Access (Mensch).
+   */
+  private async handleOAuthCallback(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+    const redirectUri = `${url.origin}/oauth/callback`;
+    const { status, html } = await completeCallback({
+      params: url.searchParams,
+      redirectUri,
+      stateStore: this.oauthState,
+      exchange: (args) => this.tokens.exchangeAuthorizationCode(args),
+    });
+    return new Response(html, {
+      status,
+      headers: { "Content-Type": "text/html; charset=utf-8" },
+    });
   }
 
   /** Token-Status ohne Geheimnisse — nur ob vorhanden und wann der Access-Token ablaeuft. */

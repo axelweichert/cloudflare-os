@@ -105,13 +105,38 @@ export class TokenManager {
     return this.inflight;
   }
 
+  /**
+   * Tauscht einen Authorization-Code (PKCE) gegen Tokens und persistiert das Ergebnis —
+   * genau derselbe Endpoint/dieselbe Persistenz wie beim Refresh, nur mit
+   * grant_type=authorization_code + redirect_uri + code_verifier. Kein Single-Flight noetig:
+   * der Callback ist ein einmaliger Vorgang.
+   */
+  async exchangeAuthorizationCode(args: {
+    code: string;
+    codeVerifier: string;
+    redirectUri: string;
+  }): Promise<StoredToken> {
+    const body = new URLSearchParams({
+      grant_type: "authorization_code",
+      client_id: this.config.clientId,
+      redirect_uri: args.redirectUri,
+      code: args.code,
+      code_verifier: args.codeVerifier,
+    });
+    return this.requestToken(body);
+  }
+
   private async doRefresh(refreshToken: string): Promise<StoredToken> {
     const body = new URLSearchParams({
       grant_type: "refresh_token",
       client_id: this.config.clientId,
       refresh_token: refreshToken,
     });
+    return this.requestToken(body);
+  }
 
+  /** Gemeinsamer Kern: POST an den Token-Endpoint, Antwort validieren, StoredToken persistieren. */
+  private async requestToken(body: URLSearchParams): Promise<StoredToken> {
     let resp: Response;
     try {
       resp = await this.fetchImpl(this.config.tokenEndpoint, {

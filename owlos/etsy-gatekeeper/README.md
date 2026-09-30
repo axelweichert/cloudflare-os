@@ -70,13 +70,32 @@ lokale Ergänzung wäre. (Ebenso bewusst weggelassen: Array-Felder `tags`/`mater
 | `/api/queue[?status=]` | GET | Mensch | JSON-Liste der Schreib-Vorschläge |
 | `/api/queue/:id/approve` | POST | Mensch | freigeben → Etsy PATCH/PUT ausführen |
 | `/api/queue/:id/reject` | POST | Mensch | ablehnen |
-| `/api/token/seed` | POST | Mensch | initialen OAuth-Refresh-Token setzen (Wiring) |
+| `/api/token/seed` | POST | Mensch | initialen OAuth-Refresh-Token setzen (manueller Fallback) |
 | `/api/token/status` | GET | Mensch | Token-Status ohne Geheimnisse (vorhanden? Ablauf?) |
+| `/oauth/start` | GET | Mensch | PKCE-Authorize-Flow starten → 302 auf Etsys „Erlauben"-Seite |
+| `/oauth/callback` | GET | Mensch (Redirect) | Etsy-Redirect: `state` prüfen, Code tauschen, Token ins KV |
 
 Agenten-Identität aus `X-Agent-Id` (Fallback CF-Access-Email). Freigebender Mensch aus
-`Cf-Access-Authenticated-User-Email`. **CF Access vor `/` und `/api/*` ist die einzige menschliche
-Boundary — bei Deploy zwingend konfigurieren.** Agenten an `/mcp` werden zusätzlich über den internen
-`API_KEY` authentifiziert.
+`Cf-Access-Authenticated-User-Email`. **CF Access vor `/`, `/api/*` UND `/oauth/*` ist die einzige
+menschliche Boundary — bei Deploy zwingend konfigurieren.** `/oauth/start` + `/oauth/callback` sind
+ein **Wiring-Werkzeug für einen Menschen** (Shop-Inhaberin klickt „Erlauben"), kein öffentlicher
+Endpunkt. Agenten an `/mcp` werden zusätzlich über den internen `API_KEY` authentifiziert.
+
+### OAuth-Authorize-Flow (PKCE, `/oauth/start` + `/oauth/callback`)
+
+Bequemer Weg zum initialen (rotierenden) Refresh-Token statt manuellem `/api/token/seed`:
+
+- **`/oauth/start`** erzeugt ein PKCE-Paar (`code_verifier` kryptografisch zufällig, `code_challenge =
+  base64url(SHA-256(verifier))`, `S256`), legt `code_verifier` + `state` **serverseitig im KV** ab
+  (kurzlebig, TTL) und leitet per 302 auf Etsys Authorize-Seite mit exakt den abgenommenen Scopes um:
+  `shops_r listings_r transactions_r listings_w transactions_w`.
+- **`/oauth/callback`** prüft `state` (CSRF), tauscht Code + `code_verifier` gegen den Token-Endpoint
+  und persistiert den Refresh-Token über denselben `TokenManager`/`KvTokenStore` wie der Refresh-Pfad.
+- **Einmal-Charakter:** nach dem Tausch ist der `state` verbraucht; ein zweiter Callback schlägt fehl.
+- **Kein Geheimnis** (`code_verifier`, Code, Token) landet je in URL oder Log.
+
+`code_verifier`/`state` teilen sich das KV `ETSY_TOKENS` (eigener Key-Präfix `oauth:txn:`); es braucht
+**kein zusätzliches Binding**.
 
 ## Sicherheitsmodell
 
@@ -96,9 +115,11 @@ Boundary — bei Deploy zwingend konfigurieren.** Agenten an `/mcp` werden zusä
 npx tsx --test owlos/etsy-gatekeeper/write-queue.test.ts \
                 owlos/etsy-gatekeeper/token-store.test.ts \
                 owlos/etsy-gatekeeper/etsy-client.test.ts \
-                owlos/etsy-gatekeeper/mcp-server.test.ts
-# 50 Tests: Statemachine, Feld-Allowlist/Enum, Token-Refresh+Rotation+Single-Flight,
-#           429-Handling, Write-Erzeugung (Fake-fetch), MCP-Flow. KEIN Netzzugriff.
+                owlos/etsy-gatekeeper/mcp-server.test.ts \
+                owlos/etsy-gatekeeper/oauth.test.ts
+# 65 Tests: Statemachine, Feld-Allowlist/Enum, Token-Refresh+Rotation+Single-Flight,
+#           429-Handling, Write-Erzeugung (Fake-fetch), MCP-Flow,
+#           OAuth-Authorize-Flow (PKCE-S256, state-CSRF + Einmal, Token-Tausch). KEIN Netzzugriff.
 ```
 
 ## Deploy (CEO-Wiring-Gate)
@@ -121,19 +142,39 @@ Vor `wrangler deploy` müssen gesetzt werden:
    # initialer Refresh-Token — Variante A (Secret) ODER Variante B (Seed-Route, siehe unten):
    wrangler secret put ETSY_SEED_REFRESH_TOKEN   # optional
    ```
-5. **OAuth-Grant** aus dem Etsy-Account der Shop-Inhaberin einholen (Authorization-Code-Flow mit PKCE,
-   siehe Etsy Authentication-Guide) → Refresh-Token. Minimale **Scopes**:
+5. **OAuth-Grant** aus dem Etsy-Account der Shop-Inhaberin einholen (Authorization-Code-Flow mit PKCE)
+   → Refresh-Token. Der Worker bringt den Flow als `/oauth/start` + `/oauth/callback` mit (siehe unten).
+   Minimale **Scopes** (exakt diese, im Worker fest verdrahtet):
    - Lesen: `shops_r`, `listings_r`, `transactions_r`
    - Schreiben (nur soweit nötig): `listings_w` (Listing-State/Titel/…), `transactions_w` (Bestellstatus)
-6. **CF Access** vor `/` und `/api/*` (menschliche Freigabe-Boundary).
+6. **CF Access** vor `/`, `/api/*` **und `/oauth/*`** (menschliche Boundary — auch der Authorize-Flow).
 
 ```bash
 npx wrangler deploy -c owlos/etsy-gatekeeper/wrangler.jsonc
 ```
 
-Nach dem Deploy den initialen Refresh-Token setzen (falls nicht als Secret): hinter CF Access
-`POST /api/token/seed` mit `{"refreshToken":"<rotierender-refresh-token>"}`. Danach lebt der (rotierende)
-Token im KV; `GET /api/token/status` zeigt den Ablauf ohne Geheimnisse.
+#### Callback-URL bei Etsy eintragen
+
+Bei der Etsy-App-Registrierung ist eine **Redirect-URI** Pflicht. Sie hat exakt diese Form:
+
+```
+https://<worker-host>/oauth/callback
+```
+
+`<worker-host>` ist der öffentliche Host dieses Workers hinter CF Access (Custom-Domain oder
+`gatekeeper-etsy.<subdomain>.workers.dev`) — genau der Host, unter dem `/` (die Freigabe-UI) läuft.
+Die exakte URL steht erst nach dem Deploy fest und wird vom Board bei Etsy hinterlegt.
+
+#### Ablauf (initiale Verbindung)
+
+1. Worker **deployen** (Schritte 1–6 oben), CF Access aktiv.
+2. **Callback-URL** `https://<worker-host>/oauth/callback` in der Etsy-App als Redirect-URI eintragen.
+3. `https://<worker-host>/oauth/start` **im Browser öffnen** (CF-Access-Login) → 302 zu Etsy.
+4. **Shop-Inhaberin klickt „Erlauben"** → Etsy leitet auf `/oauth/callback` zurück, der Worker tauscht
+   den Code und legt den (rotierenden) Refresh-Token ins KV. Erfolgsseite = **fertig**.
+
+`GET /api/token/status` zeigt danach den Ablauf ohne Geheimnisse. **Manueller Fallback** (bleibt
+erhalten): hinter CF Access `POST /api/token/seed` mit `{"refreshToken":"<rotierender-refresh-token>"}`.
 
 ## Board-Abhängigkeit (blockiert NICHT den Bau)
 
