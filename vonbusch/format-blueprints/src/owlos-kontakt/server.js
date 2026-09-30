@@ -26,32 +26,34 @@ E-Mail: ${email || "(keine)"}
 Telefon: ${telefon || "(keine)"}
 Position: ${position || "(keine)"}
 
-Dir steht owlOS über deine Umgebung als env.owlos zur Verfügung (der owlOS-Gatekeeper).
-Nutze ausschließlich diese Endpunkte — erfinde keine anderen Routen und keine anderen Feldnamen:
-  • GET  /api/companies                              — Firmenliste lesen (direkt, kein Approval)
-  • GET  /api/contacts?company_id={id}               — vorhandene Kontakte der Firma lesen (direkt)
-  • GET  /api/contacts?search={text}                 — nach Namen suchen (direkt)
-  • POST /api/contacts { company_id, first_name, last_name, email, phone, position,
-                         status:"prospect", is_decision_maker:0 }  — Kontakt anlegen (approval-pflichtig)
-  • POST /api/contacts/merge                         — Dubletten zusammenführen (approval-pflichtig)
+Dir steht owlOS über deine Umgebung als env.owlos zur Verfügung (der owlOS-Gatekeeper). Rufe
+ausschließlich diese Methoden namentlich auf — konstruiere keine eigenen HTTP-Pfade und erfinde
+keine anderen Feldnamen:
+  • await env.owlos.listCompanies()                          — Firmenliste lesen (direkt, kein Approval)
+  • await env.owlos.listContacts({ company_id })             — vorhandene Kontakte der Firma lesen (direkt)
+  • await env.owlos.listContacts({ search })                 — nach Namen suchen (direkt)
+  • await env.owlos.createContact({ company_id, first_name, last_name, email, phone, position,
+                                    status:"prospect", is_decision_maker:0 })  — Kontakt anlegen (approval-pflichtig)
+  • await env.owlos.mergeContacts({ … })                     — Dubletten zusammenführen (approval-pflichtig)
 
 Gehe strikt in dieser Reihenfolge vor:
-  1. Lies GET /api/companies und finde die Firma "${firma}". Nimm ihre id als company_id. Existiert
-     die Firma nicht eindeutig, melde das und lege NICHTS an — frage nach der richtigen Firma
-     (ein Kontakt ohne company_id ist bei owlOS ungültig: "Firma Pflicht").
-  2. Lies GET /api/contacts?company_id={company_id} und prüfe, ob "${vorname} ${nachname}" (oder
+  1. Rufe env.owlos.listCompanies() auf und finde die Firma "${firma}". Nimm ihre id als company_id.
+     Existiert die Firma nicht eindeutig, melde das und lege NICHTS an — frage nach der richtigen
+     Firma (ein Kontakt ohne company_id ist bei owlOS ungültig: "Firma Pflicht").
+  2. Rufe env.owlos.listContacts({ company_id }) auf und prüfe, ob "${vorname} ${nachname}" (oder
      sehr ähnlich) dort schon existiert. Wenn ja, melde den Treffer und lege NICHTS doppelt an —
      frage nach, ob trotzdem ein neuer Datensatz oder ein Merge gewünscht ist.
-  3. Sonst lege den Kontakt über POST /api/contacts an, mit exakt:
+  3. Sonst lege den Kontakt über env.owlos.createContact({ … }) an, mit exakt:
      { company_id: <die gefundene id>, first_name: "${vorname}", last_name: "${nachname}",
        email: ${email ? `"${email}"` : "null"}, phone: ${telefon ? `"${telefon}"` : "null"},
        position: ${position ? `"${position}"` : "null"}, status: "prospect", is_decision_maker: 0 }.
      Übernimm keine weiteren Felder. first_name und last_name sind Pflicht ("Vor- und Nachname sind
-     Pflicht") — fehlt eines, frage nach, erfinde nichts.
+     Pflicht") — fehlt eines, frage nach, erfinde nichts. Der Aufruf liefert { status:
+     "pending_approval", actionId }.
 
-Reads (GET) laufen direkt; alle Creates (POST) sind approval-pflichtig — ein Mensch muss sie
-freigeben, schreibe nichts vorher. Antworte auf Deutsch und markiere jede Annahme ausdrücklich
-als Annahme.`;
+Die list*-Methoden laufen direkt; alle create*/merge*-Methoden sind approval-pflichtig (sie liefern
+{ status: "pending_approval" }) — ein Mensch muss sie freigeben, schreibe nichts vorher. Antworte auf
+Deutsch und markiere jede Annahme ausdrücklich als Annahme.`;
 }
 
 export class Gadget extends DurableObject {
