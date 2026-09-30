@@ -1,4 +1,4 @@
-import { AUTH_ERROR_MESSAGES, getAuthErrorCode } from '@gadgets/workshop-shared/api'
+import { AUTH_ERROR_CODES, AUTH_ERROR_MESSAGES, getAuthErrorCode } from '@gadgets/workshop-shared/api'
 import { reportIssue } from './errorReporting'
 
 // Classifies errors surfaced through capnweb RPC. The backend runs with
@@ -84,6 +84,65 @@ export function isTransientRpcError(err: unknown): boolean {
   return cls === 'do-reset' || cls === 'connection'
 }
 
+// --- Cloudflare Access re-authentication ------------------------------------------------------
+//
+// Behind Cloudflare Access, an expired session makes the backend reject `authenticateFromCfAccess`
+// with NOT_AUTHENTICATED_WITH_ACCESS (see workshop-backend server.ts). The SPA is already loaded,
+// so the failure surfaces as a background RPC rejection and the routes paint a dead "something went
+// wrong" box. Access can only re-establish the session on a top-level navigation it is allowed to
+// answer with its cross-origin 302 to the login page — a background fetch/WebSocket can neither
+// follow that 302 nor read it. So on this specific error we reload the page: with a live session
+// it's a normal reload, with an expired one Access sends the user through login and back here.
+
+/** Whether the app is served behind Cloudflare Access (mirrors useAuth's CF_ACCESS_MODE). Read
+ * lazily so tests can toggle it with `vi.stubEnv`; Vite still inlines the literal at build time. */
+const isCfAccessMode = () => import.meta.env.VITE_CF_ACCESS_MODE === 'true'
+
+/** True when `err` is the "Cloudflare Access session is gone" failure — by code, or by the message
+ * fallback for errors that lost their code in transit. */
+export function isAccessSessionExpiredError(err: unknown): boolean {
+  if (getAuthErrorCode(err) === AUTH_ERROR_CODES.notAuthenticatedWithAccess) return true
+  return messageOf(err).includes(AUTH_ERROR_MESSAGES[AUTH_ERROR_CODES.notAuthenticatedWithAccess])
+}
+
+// A reload only cures an *expired* session; if Access itself is failing, reloading would loop. So
+// we allow at most one re-auth navigation per cooldown window, tracked in sessionStorage (per tab,
+// cleared when the tab closes) so it survives the reload we're about to trigger.
+const ACCESS_REAUTH_KEY = 'cfAccessReauthAt'
+const ACCESS_REAUTH_COOLDOWN_MS = 15_000
+
+/** The full-page navigation, indirected so tests can observe it without jsdom navigation. */
+export const accessLogin = {
+  reload: () => window.location.reload(),
+}
+
+function reauthGuardTripped(now: number): boolean {
+  try {
+    const last = Number(sessionStorage.getItem(ACCESS_REAUTH_KEY))
+    if (Number.isFinite(last) && last > 0 && now - last < ACCESS_REAUTH_COOLDOWN_MS) return true
+    sessionStorage.setItem(ACCESS_REAUTH_KEY, String(now))
+  } catch {
+    // No sessionStorage (private mode / non-browser): fall through and still attempt the reload.
+  }
+  return false
+}
+
+/**
+ * If we're behind Cloudflare Access and `err` says the session expired, trigger a full-page
+ * navigation so the browser follows Access's 302 to login and rebuilds the session — instead of
+ * leaving a dead error box. Returns true when it initiated the navigation, so callers can skip
+ * their own error UI. No-op (returns false) outside Access mode, for other errors, or when the
+ * loop guard has already fired a reload within the cooldown window.
+ */
+export function redirectToAccessLoginIfSessionExpired(
+  err: unknown, now: number = Date.now(),
+): boolean {
+  if (!isCfAccessMode() || !isAccessSessionExpiredError(err)) return false
+  if (reauthGuardTripped(now)) return false
+  accessLogin.reload()
+  return true
+}
+
 /**
  * Logs an RPC failure: quietly for transient errors (a retry or reconnect is expected to cure
  * them), loudly otherwise. Returns true when transient so call sites can skip their toasts.
@@ -98,6 +157,9 @@ export function logRpcFailure(
   const transient = cls === 'do-reset' || cls === 'connection'
   if (transient) console.debug(message, err)
   else console.error(message, err)
+  // Recover an expired Cloudflare Access session from the common failure sink, so every route that
+  // logs an RPC failure sends the user through Access re-login instead of a dead error box.
+  redirectToAccessLoginIfSessionExpired(err)
   return transient
 }
 
