@@ -12,7 +12,7 @@
   // source of truth for the prod worker's identity, assets and full service-binding set — it
   // replaces the fragile manual bindings-preserving Settings-PATCH.
   //
-  // Binding NAMES mirror wrangler.dev.jsonc (WORKSHOP_BACKEND + 18 GATEKEEPER_*). The `service`
+  // Binding NAMES mirror wrangler.dev.jsonc (WORKSHOP_BACKEND + 19 GATEKEEPER_*). The `service`
   // TARGETS are the actual worker names deployed in Weichert.at (`cloudflareos-backend`,
   // `cloudflareos-gk-*`) — NOT the unprefixed dev names (`workshop-backend`, `gatekeeper-*`),
   // which do not exist in this account and are exactly what caused
@@ -32,6 +32,7 @@
     { "binding": "GATEKEEPER_GOOGLE", "service": "cloudflareos-gk-google" },
     { "binding": "GATEKEEPER_HOMEASSISTANT", "service": "cloudflareos-gk-homeassistant" },
     { "binding": "GATEKEEPER_LINEAR", "service": "cloudflareos-gk-linear" },
+    { "binding": "GATEKEEPER_M365", "service": "cloudflareos-gk-m365" },
     { "binding": "GATEKEEPER_MCP", "service": "cloudflareos-gk-mcp" },
     { "binding": "GATEKEEPER_MCP_PORTAL", "service": "cloudflareos-gk-mcp-portal" },
     { "binding": "GATEKEEPER_NOTION", "service": "cloudflareos-gk-notion" },

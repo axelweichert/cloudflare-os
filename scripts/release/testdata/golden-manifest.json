@@ -492,6 +492,68 @@
         "BASE_URL": "$PUBLIC_BASE_URL/gatekeeper/linear"
       }
     },
+    "gatekeeper-m365": {
+      "bindings": [
+        {
+          "name": "CLIENT_ID",
+          "text": "$SECRET(CLIENT_ID)",
+          "type": "secret_text"
+        },
+        {
+          "name": "CLIENT_SECRET",
+          "text": "$SECRET(CLIENT_SECRET)",
+          "type": "secret_text"
+        }
+      ],
+      "compatibilityDate": "2026-02-02",
+      "compatibilityFlags": [
+        "allow_irrevocable_stub_storage"
+      ],
+      "inputs": [
+        {
+          "kind": "secret",
+          "label": "OAuth client ID",
+          "name": "CLIENT_ID"
+        },
+        {
+          "kind": "secret",
+          "label": "OAuth client secret",
+          "name": "CLIENT_SECRET"
+        }
+      ],
+      "installable": true,
+      "kind": "gatekeeper",
+      "mainModule": "m365.js",
+      "migrations": [
+        {
+          "new_sqlite_classes": [
+            "UserAccount",
+            "M365GatekeeperImpl"
+          ],
+          "tag": "v0"
+        }
+      ],
+      "modules": [
+        {
+          "name": "m365.js",
+          "r2Key": "blobs/modules/8dfc8beace1c5c2f675f3fbf9273c799166245fa49751c472514b69198c682f5",
+          "sha256": "8dfc8beace1c5c2f675f3fbf9273c799166245fa49751c472514b69198c682f5",
+          "size": 57,
+          "type": "esm"
+        }
+      ],
+      "observability": {
+        "enabled": true,
+        "head_sampling_rate": 1,
+        "logs": {
+          "invocation_logs": false
+        }
+      },
+      "shortName": "m365",
+      "vars": {
+        "BASE_URL": "$PUBLIC_BASE_URL/gatekeeper/m365"
+      }
+    },
     "gatekeeper-mcp": {
       "bindings": [],
       "compatibilityDate": "2026-02-02",
