@@ -43,7 +43,7 @@ describe("UserDurableObject.getVerifier", () => {
     const { user, verifierRequests } = makeUserWithAccount("linear");
 
     await expect(user.getVerifier(7, "notion")).rejects.toThrow(
-        "Invalid account selection for this service.");
+        "Ungültige Kontoauswahl für diesen Dienst.");
     expect(verifierRequests()).toBe(0);
   });
 });
