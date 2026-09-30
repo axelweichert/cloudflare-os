@@ -1,0 +1,42 @@
+{
+  // owlOS — Etsy-Gatekeeper (OWL-1740, Elternticket OWL-1739)
+  // Lokal:  wrangler dev -c owlos/etsy-gatekeeper/wrangler.jsonc --local
+  // Deploy: wrangler deploy -c owlos/etsy-gatekeeper/wrangler.jsonc  (CF Access vor / erforderlich!)
+  //
+  // WIRING-GATE (CEO): siehe README "Deploy (CEO-Wiring-Gate)". Vor jedem `wrangler`-Kommando
+  // die aktive account_id pruefen — ausschliesslich unser CF-Account Weichert.at. Der Account
+  // 6d2a1d5945f8b63047a1d59a9f94de21 (von Busch) ist tabu (Board-Regel OWL-1434). Deshalb ist
+  // hier BEWUSST keine account_id gepinnt: sie wird beim Wiring aktiv gesetzt/geprueft.
+  "name": "gatekeeper-etsy",
+  "main": "./worker.ts",
+  "compatibility_date": "2025-08-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "durable_objects": {
+    "bindings": [
+      { "name": "EtsyGatekeeper", "class_name": "EtsyGatekeeper" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_classes": ["EtsyGatekeeper"] }
+  ],
+  "kv_namespaces": [
+    {
+      // Haelt den rotierenden OAuth-Token-Satz (access + refresh + Ablauf). Beim Wiring die
+      // echte KV-Namespace-ID im Weichert.at-Account eintragen.
+      "binding": "ETSY_TOKENS",
+      "id": "REPLACE_WITH_ETSY_TOKENS_KV_ID"
+    }
+  ],
+  "vars": {
+    // Nicht geheime Konfiguration. Shop-ID beim Wiring auf die echte numerische Shop-ID setzen.
+    "ETSY_API_BASE": "https://openapi.etsy.com",
+    "ETSY_TOKEN_ENDPOINT": "https://api.etsy.com/v3/public/oauth/token",
+    "ETSY_SHOP_ID": "REPLACE_WITH_SHOP_ID"
+  }
+  // Secrets (NICHT ins Repo — per `wrangler secret put` setzen):
+  //   ETSY_KEYSTRING            App-API-Key (keystring, dient auch als OAuth client_id)
+  //   ETSY_SHARED_SECRET        App-Shared-Secret
+  //   ETSY_SEED_REFRESH_TOKEN   initialer OAuth-Refresh-Token der Shop-Inhaberin (optional,
+  //                             alternativ per POST /api/token/seed hinter CF Access setzen)
+  //   API_KEY                   interner Agenten-API-Key fuer /mcp
+}
