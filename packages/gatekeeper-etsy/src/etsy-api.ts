@@ -172,7 +172,10 @@ export class EtsyApi {
 
   constructor(config: EtsyApiConfig) {
     this.#config = config;
-    this.#fetch = config.fetchImpl ?? fetch;
+    // Bind the global fetch: stored on an instance field and invoked as `this.#fetch(...)`, the
+    // native fetch would receive the EtsyApi instance as `this` and the Workers runtime rejects it
+    // with "Illegal invocation: function called with incorrect `this` reference" (OWL-1795).
+    this.#fetch = config.fetchImpl ?? fetch.bind(globalThis);
   }
 
   // --- transport -----------------------------------------------------------
