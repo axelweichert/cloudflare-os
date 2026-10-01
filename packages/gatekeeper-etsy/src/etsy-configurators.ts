@@ -59,7 +59,9 @@ export class EtsyShopConfiguratorUI extends RpcTarget implements EtsyShopConfigu
       return [
         {
           value: shop.shopName,
-          title: shop.title ?? shop.shopName,
+          // `||` not `??`: Etsy returns an empty-string title for many shops; fall back to the handle
+          // so the picker option has a non-empty label instead of rendering blank / "no matches" (OWL-1795).
+          title: shop.title || shop.shopName,
           subtitle: shop.shopName,
           meta: `${shop.activeListingCount} active`,
         },
