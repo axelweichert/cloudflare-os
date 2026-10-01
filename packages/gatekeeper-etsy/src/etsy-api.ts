@@ -56,8 +56,10 @@ export class EtsyApiError extends Error {
 export interface EtsyApiConfig {
   /** Data base, normally https://openapi.etsy.com */
   apiBase: string;
-  /** App API key (keystring) — sent as `x-api-key`. */
+  /** App API key (keystring). Etsy v3 requires `x-api-key: <keystring>:<sharedSecret>`. */
   keystring: string;
+  /** App shared secret. Etsy rejects every call with "Shared secret is required in x-api-key header" without it. */
+  sharedSecret?: string;
   /** Supplies a valid OAuth access token, refreshing as needed. Omit for key-only clients. */
   getToken?: () => Promise<string>;
   fetchImpl?: typeof fetch;
@@ -172,7 +174,10 @@ export class EtsyApi {
 
   constructor(config: EtsyApiConfig) {
     this.#config = config;
-    this.#fetch = config.fetchImpl ?? fetch;
+    // Bind the global fetch: stored on an instance field and invoked as `this.#fetch(...)`, the
+    // native fetch would receive the EtsyApi instance as `this` and the Workers runtime rejects it
+    // with "Illegal invocation: function called with incorrect `this` reference" (OWL-1795).
+    this.#fetch = config.fetchImpl ?? fetch.bind(globalThis);
   }
 
   // --- transport -----------------------------------------------------------
@@ -183,7 +188,12 @@ export class EtsyApi {
     options: { query?: URLSearchParams; body?: URLSearchParams; authed: boolean },
   ): Promise<unknown> {
     const query = options.query && [...options.query].length ? `?${options.query}` : "";
-    const headers: Record<string, string> = { "x-api-key": this.#config.keystring };
+    // Etsy v3 requires the shared secret alongside the keystring: `x-api-key: <keystring>:<sharedSecret>`.
+    // Without it every call 403s with "Shared secret is required in x-api-key header" (OWL-1795).
+    const apiKey = this.#config.sharedSecret
+      ? `${this.#config.keystring}:${this.#config.sharedSecret}`
+      : this.#config.keystring;
+    const headers: Record<string, string> = { "x-api-key": apiKey };
     if (options.authed) {
       if (!this.#config.getToken) {
         throw new EtsyApiError("This Etsy operation requires an authorized account.", 401);
@@ -211,6 +221,9 @@ export class EtsyApi {
     }
     if (!resp.ok) {
       const text = await resp.text().catch(() => "");
+      // Observability: a gatekeeper that silently swallows third-party errors is undebuggable.
+      // Log status + body snippet (no credentials — Etsy error bodies are like {"error":"..."}).
+      console.error(`Etsy API ${resp.status} ${resp.url}: ${text.slice(0, 300)}`);
       throw new EtsyApiError(
         `Etsy API error (HTTP ${resp.status})${text ? `: ${text.slice(0, 300)}` : ""}`,
         resp.status,
@@ -483,6 +496,8 @@ async function requestToken(
   }
   if (!resp.ok) {
     const text = await resp.text().catch(() => "");
+    // Observability: surface OAuth token failures (e.g. {"error":"invalid_grant"}); no secrets logged.
+    console.error(`Etsy token ${resp.status} (${body.get("grant_type")}): ${text.slice(0, 300)}`);
     throw new EtsyTokenError(
       `Etsy token request failed (HTTP ${resp.status})${text ? `: ${text.slice(0, 300)}` : ""}`,
       resp.status,
