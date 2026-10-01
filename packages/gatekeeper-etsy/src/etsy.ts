@@ -495,6 +495,7 @@ export class GatekeeperUserImpl extends WorkerEntrypoint<Env, GatekeeperUserImpl
     return new EtsyApi({
       apiBase: getApiBase(this.env),
       keystring: this.env.ETSY_KEYSTRING ?? "",
+      sharedSecret: this.env.ETSY_SHARED_SECRET ?? "",
       getToken: () => account.getAccessToken(),
     });
   }
@@ -622,6 +623,7 @@ export class EtsyVerifier extends WorkerEntrypoint<Env, EtsyVerifierProps>
     const api = new EtsyApi({
       apiBase: getApiBase(this.env),
       keystring: this.env.ETSY_KEYSTRING ?? "",
+      sharedSecret: this.env.ETSY_SHARED_SECRET ?? "",
       getToken: () => account.getAccessToken(),
     });
     try {
@@ -654,6 +656,7 @@ export class EtsyGatekeeperImpl extends DurableObject<Env, EtsyGatekeeperImplPro
     return new EtsyApi({
       apiBase: getApiBase(this.env),
       keystring: this.env.ETSY_KEYSTRING ?? "",
+      sharedSecret: this.env.ETSY_SHARED_SECRET ?? "",
       getToken: () => account.getAccessToken(),
     });
   }

@@ -65,6 +65,25 @@ describe("EtsyApi default fetch binding (OWL-1795 regression)", () => {
   });
 });
 
+describe("EtsyApi x-api-key header (OWL-1795 regression)", () => {
+  it("sends keystring:sharedSecret, which Etsy v3 requires", async () => {
+    let seenApiKey: string | null = null;
+    const fetchImpl = ((input: unknown, init?: { headers?: Record<string, string> }) => {
+      seenApiKey = init?.headers?.["x-api-key"] ?? null;
+      return Promise.resolve(
+        new Response(JSON.stringify({ results: [{ shop_id: 7, shop_name: "s" }] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    }) as unknown as typeof fetch;
+    const api = new EtsyApi({ apiBase: "https://api.etsy.test", keystring: "KEY", sharedSecret: "SECRET", fetchImpl });
+    await api.resolveShopId("s");
+    // Without the colon form Etsy returns 403 "Shared secret is required in x-api-key header".
+    expect(seenApiKey).toBe("KEY:SECRET");
+  });
+});
+
 describe("ETSY_SCOPES", () => {
   it("stays exactly the OWL-1740 signed-off scope set", () => {
     // Guardrail: widening this set is a security-review change, not a silent edit.

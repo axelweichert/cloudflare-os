@@ -56,8 +56,10 @@ export class EtsyApiError extends Error {
 export interface EtsyApiConfig {
   /** Data base, normally https://openapi.etsy.com */
   apiBase: string;
-  /** App API key (keystring) — sent as `x-api-key`. */
+  /** App API key (keystring). Etsy v3 requires `x-api-key: <keystring>:<sharedSecret>`. */
   keystring: string;
+  /** App shared secret. Etsy rejects every call with "Shared secret is required in x-api-key header" without it. */
+  sharedSecret?: string;
   /** Supplies a valid OAuth access token, refreshing as needed. Omit for key-only clients. */
   getToken?: () => Promise<string>;
   fetchImpl?: typeof fetch;
@@ -186,7 +188,12 @@ export class EtsyApi {
     options: { query?: URLSearchParams; body?: URLSearchParams; authed: boolean },
   ): Promise<unknown> {
     const query = options.query && [...options.query].length ? `?${options.query}` : "";
-    const headers: Record<string, string> = { "x-api-key": this.#config.keystring };
+    // Etsy v3 requires the shared secret alongside the keystring: `x-api-key: <keystring>:<sharedSecret>`.
+    // Without it every call 403s with "Shared secret is required in x-api-key header" (OWL-1795).
+    const apiKey = this.#config.sharedSecret
+      ? `${this.#config.keystring}:${this.#config.sharedSecret}`
+      : this.#config.keystring;
+    const headers: Record<string, string> = { "x-api-key": apiKey };
     if (options.authed) {
       if (!this.#config.getToken) {
         throw new EtsyApiError("This Etsy operation requires an authorized account.", 401);
