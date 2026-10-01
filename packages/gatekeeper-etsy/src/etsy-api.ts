@@ -214,6 +214,9 @@ export class EtsyApi {
     }
     if (!resp.ok) {
       const text = await resp.text().catch(() => "");
+      // Observability: a gatekeeper that silently swallows third-party errors is undebuggable.
+      // Log status + body snippet (no credentials — Etsy error bodies are like {"error":"..."}).
+      console.error(`Etsy API ${resp.status} ${resp.url}: ${text.slice(0, 300)}`);
       throw new EtsyApiError(
         `Etsy API error (HTTP ${resp.status})${text ? `: ${text.slice(0, 300)}` : ""}`,
         resp.status,
@@ -486,6 +489,8 @@ async function requestToken(
   }
   if (!resp.ok) {
     const text = await resp.text().catch(() => "");
+    // Observability: surface OAuth token failures (e.g. {"error":"invalid_grant"}); no secrets logged.
+    console.error(`Etsy token ${resp.status} (${body.get("grant_type")}): ${text.slice(0, 300)}`);
     throw new EtsyTokenError(
       `Etsy token request failed (HTTP ${resp.status})${text ? `: ${text.slice(0, 300)}` : ""}`,
       resp.status,
