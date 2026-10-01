@@ -61,4 +61,25 @@ describe("deploy scripts", () => {
       }
     }
   });
+
+  // A manual `wrangler deploy` without --keep-vars REPLACES the worker's vars with only what the
+  // wrangler config declares -- silently wiping every instance var set out-of-band (BASE_URL from
+  // the release manifest; CF_ACCESS_AUD/CF_ACCESS_ISS and the other backend secrets). The deploy
+  // still exits zero. OWL-1757: etsy was hand-deployed this way, lost BASE_URL, and the board's
+  // Connect button pointed at http://localhost:8787. Earlier: a bare backend deploy wiped 8 vars and
+  // took down all of /api. Production goes through the release manifest; these `deploy` scripts are
+  // the manual escape hatch, and the escape hatch must not be able to delete production config.
+  it("never lets a deploy wipe instance vars (requires --keep-vars)", () => {
+    for (const { name, path, command } of deployScripts) {
+      if (!command.includes("wrangler deploy")) continue;
+      if (command.includes("--dry-run")) continue; // a dry-run uploads nothing and touches no vars
+      assert.ok(
+        command.includes("--keep-vars"),
+        `${name} (${path}) runs 'wrangler deploy' without --keep-vars: ${command}\n` +
+          "A deploy without --keep-vars REPLACES the worker's vars with only those in wrangler config,\n" +
+          "silently deleting every instance var set out-of-band -- BASE_URL, CF_ACCESS_AUD/ISS, and the\n" +
+          "rest. The deploy exits zero; the breakage is silent (OWL-1757: etsy lost BASE_URL; an earlier\n" +
+          "backend deploy wiped 8 vars and killed /api). Add --keep-vars.");
+    }
+  });
 });
