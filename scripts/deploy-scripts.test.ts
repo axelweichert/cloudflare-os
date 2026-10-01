@@ -15,7 +15,9 @@ const deployScripts = readdirSync("packages", { withFileTypes: true })
       return []; // no package.json, or unreadable -- not a workspace package
     }
     const command = manifest.scripts?.deploy;
-    return command ? [{ name: manifest.name, path: manifestPath, command }] : [];
+    // Keep the directory (entry.name) alongside manifest.name: the live worker name is derived from
+    // the directory, not from the manifest's @scope/name (OWL-1804).
+    return command ? [{ name: manifest.name, dir: entry.name, path: manifestPath, command }] : [];
   });
 
 /**
@@ -80,6 +82,34 @@ describe("deploy scripts", () => {
           "silently deleting every instance var set out-of-band -- BASE_URL, CF_ACCESS_AUD/ISS, and the\n" +
           "rest. The deploy exits zero; the breakage is silent (OWL-1757: etsy lost BASE_URL; an earlier\n" +
           "backend deploy wiped 8 vars and killed /api). Add --keep-vars.");
+    }
+  });
+
+  // A bare `wrangler deploy` takes the worker name from wrangler config. Every gatekeeper's
+  // wrangler.jsonc carries the dev name `gatekeeper-<slug>` on purpose -- preview/staging discovers
+  // gatekeepers by that prefix and assumes name === directory, and `wrangler dev` plus the root
+  // dev bindings rely on it too, so the live name cannot be committed there. But the live worker is
+  // `cloudflareos-gk-<slug>`. So a bare deploy silently creates/overwrites an empty
+  // `gatekeeper-<slug>` worker (exit 0, "deployed") while the live `cloudflareos-gk-<slug>` keeps
+  // serving stale code -- OWL-1800. The live name therefore has to be baked into the deploy script.
+  // Scope is gatekeeper-* only; router/workshop-backend deploy under their own names.
+  it("deploys a gatekeeper under its live worker name (requires --name cloudflareos-gk-<slug>)", () => {
+    const GATEKEEPER_PREFIX = "gatekeeper-";
+    for (const { name, dir, path, command } of deployScripts) {
+      if (!dir.startsWith(GATEKEEPER_PREFIX)) continue; // scope: gatekeeper-* (not router/backend)
+      if (!command.includes("wrangler deploy")) continue;
+      if (command.includes("--dry-run")) continue; // a dry-run creates no worker
+      const expected = `cloudflareos-gk-${dir.slice(GATEKEEPER_PREFIX.length)}`;
+      const actual = command.match(/--name[=\s]+(\S+)/)?.[1];
+      assert.equal(
+        actual,
+        expected,
+        `${name} (${path}) does not deploy under --name ${expected}: ${command}\n` +
+          "A bare 'wrangler deploy' uses the wrangler.jsonc name (the dev name gatekeeper-<slug>), so it\n" +
+          `silently creates/overwrites an empty gatekeeper-${dir.slice(GATEKEEPER_PREFIX.length)} worker\n` +
+          `(exit 0, "deployed") while the live ${expected} keeps serving stale code (OWL-1800). The live\n` +
+          "name belongs in the deploy script, not the committed wrangler.jsonc (which preview/staging and\n" +
+          `wrangler dev depend on). Add --name ${expected} (OWL-1804).`);
     }
   });
 });

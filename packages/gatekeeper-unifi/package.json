@@ -5,7 +5,7 @@
   "main": "./src/unifi.ts",
   "scripts": {
     "dev": "echo \"run 'pnpm dev-server' in the root directory instead\" >&2 && exit 1",
-    "deploy": "vp run --no-cache build:configurator && wrangler deploy --keep-vars",
+    "deploy": "vp run --no-cache build:configurator && wrangler deploy --name cloudflareos-gk-unifi --keep-vars",
     "clean": "rm -rf dist src/generated"
   },
   "dependencies": {
