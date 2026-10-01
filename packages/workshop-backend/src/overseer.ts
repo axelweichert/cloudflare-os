@@ -8754,6 +8754,27 @@ type BindingLoopbackTarget = {
  * TODO(multi-gadget): Rename to BindingLoopback. Stubs to this entrypoint aren't stored anywhere,
  * so a rename should be safe.
  */
+// ponytail: 12s fast-fail — comfortably under the runtime's ~30s "code had hung" kill, with
+// headroom for a genuinely slow-but-alive gatekeeper backend. Raise if a real backend needs more.
+export const GATEKEEPER_SESSION_TIMEOUT_MS = 12_000;
+
+/**
+ * Races a gatekeeper session RPC against a deadline so a hung/unreachable downstream rejects
+ * quickly instead of leaving the whole request hanging until the runtime kills it (OWL-1700).
+ * The in-flight RPC is abandoned on timeout; the runtime tears it down when the request settles.
+ */
+export function withGatekeeperSessionTimeout<T>(work: Promise<T>, method: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  let timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+        () => reject(new Error(
+            `Gatekeeper session call "${method}" timed out after `
+            + `${GATEKEEPER_SESSION_TIMEOUT_MS}ms (downstream unreachable or hung); failing fast.`)),
+        GATEKEEPER_SESSION_TIMEOUT_MS);
+  });
+  return Promise.race([work, timeout]).finally(() => clearTimeout(timer));
+}
+
 export class GatekeeperLoopback extends WorkerEntrypoint<Cloudflare.Env, GatekeeperLoopbackProps> {
   constructor(ctx: ExecutionContext<GatekeeperLoopbackProps>, env: Cloudflare.Env) {
     super(ctx, env);
@@ -8770,7 +8791,17 @@ export class GatekeeperLoopback extends WorkerEntrypoint<Cloudflare.Env, Gatekee
       get(target, prop, receiver) {
         // Note: We need `target` to be used as the receiver. If we use `receiver` as the receiver,
         //   we'll get an illegal invocation, as `receiver` points to our Proxy.
-        return Reflect.get(target, prop, target);
+        let value = Reflect.get(target, prop, target);
+        // Fast-fail hanging session calls (OWL-1700): if the downstream gadget/gatekeeper never
+        // answers, the RPC promise never settles and the whole request hangs until the runtime
+        // kills it at ~30s ("code had hung"), freezing the tile. Race every session method call
+        // against a deadline so a stuck downstream surfaces a quick error instead. Leave the
+        // promise protocol and non-method props untouched so awaiting/serializing the stub works.
+        if (typeof value !== "function" || typeof prop !== "string"
+            || prop === "then" || prop === "catch" || prop === "finally") {
+          return value;
+        }
+        return (...args: unknown[]) => withGatekeeperSessionTimeout(value(...args), prop);
       },
       getPrototypeOf(target) {
         return WorkerEntrypoint.prototype;
