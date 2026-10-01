@@ -262,6 +262,37 @@ function unavailableGatekeeperVendorInfo(id: string): GatekeeperVendorInfo {
   };
 }
 
+/**
+ * Guard the per-vendor *build* (not just its RPC) so a single gatekeeper can never topple the whole
+ * listGatekeeperVendors response. The existing try/catch already contains an RPC that rejects, but a
+ * vendor whose describe()/getSupportedResources() *resolves* with structurally-broken data (a
+ * non-string required field, a null description, a non-array resource list) would otherwise be
+ * forwarded verbatim into the returned array. Because the array is serialized to the client as a
+ * unit, one malformed entry can fail the whole reply — exactly the "the entire list disappears
+ * instead of one tile" failure mode. Throwing here routes such a vendor through the caller's catch,
+ * which downgrades it to an `unavailable` tile like any other unreachable gatekeeper (OWL-1752).
+ */
+function assertWellFormedVendorInfo(
+    description: VendorDescription, supportedResources: SupportedResource[]): void {
+  if (typeof description !== "object" || description === null) {
+    throw new Error("Gatekeeper returned a non-object VendorDescription");
+  }
+  if (typeof description.displayName !== "string" || typeof description.url !== "string") {
+    throw new Error("Gatekeeper VendorDescription is missing a string displayName/url");
+  }
+  if (!Array.isArray(supportedResources)) {
+    throw new Error("Gatekeeper returned a non-array supportedResources");
+  }
+  for (let resource of supportedResources) {
+    if (typeof resource !== "object" || resource === null ||
+        typeof resource.urlPattern !== "string" ||
+        typeof resource.title !== "string" ||
+        typeof resource.description !== "string") {
+      throw new Error("Gatekeeper returned a malformed SupportedResource");
+    }
+  }
+}
+
 async function checkGatekeeperVendorFilter(
     vendor: Service<GatekeeperVendor> | Service<GatekeeperUser>,
     vendorId: string,
@@ -1140,6 +1171,9 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
             vendor.describe(),
             vendor.getSupportedResources(options),
           ]);
+          // Isolate the build, not just the RPC: a vendor that resolves with structurally-broken
+          // data must degrade to an `unavailable` tile rather than poison the shared reply array.
+          assertWellFormedVendorInfo(description, supportedResources);
           let enabledResources =
               filterEnabledResources(config, id, supportedResources);
           if (enabledResources.length == 0) {
