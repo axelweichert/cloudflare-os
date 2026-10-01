@@ -424,6 +424,11 @@ export function buildWorkerEntry(
     // (default entrypoint — it forwards whole HTTP requests, not vendor RPC).
     gatekeeperBindingExpansion = { propsByPackage: {} };
   } else {
+    // This BASE_URL template is the Soll for every gatekeeper's live `BASE_URL` var. The Ist (the
+    // value actually on the live worker) is read from the Workers API and checked against this by
+    // live-vars-lib.ts / verify-live-vars.ts. That live reconciliation is a post-deploy/ops step,
+    // deliberately NOT a `main` gate: CI has no per-instance state or creds and cannot know which
+    // gatekeepers are installed where (OWL-1757 was a live worker that never got this var).
     vars.BASE_URL = `$PUBLIC_BASE_URL/gatekeeper/${shortName(pkgName)}`;
     installable = !NOT_INSTALLABLE.has(pkgName);
     if (installable) {

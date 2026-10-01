@@ -74,7 +74,10 @@ const EXPECTED: Record<string, ExpectedArea> = {
       "CF_AI_GATEWAY_API_TOKEN", "CF_AI_GATEWAY_PROVIDERS", "CF_AI_GATEWAY_USE_BINDING",
       "CI_COMMIT_SHA", "CI_PIPELINE_IID", "CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_API_TOKEN",
       "GITHUB_REPOSITORY", "GITHUB_TOKEN", "PREVIEW_ADMINS", "PREVIEW_NAME",
-      "PREVIEW_PR_NUMBER", "PREVIEW_WORKERS_DEV_HOST", "PREVIEW_WRANGLER", "VITE_BACKEND_HOST",
+      "PREVIEW_PR_NUMBER", "PREVIEW_WORKERS_DEV_HOST", "PREVIEW_WRANGLER",
+      // verify-live-vars.ts (release/ops tooling, invoked directly) resolves $PUBLIC_BASE_URL to the
+      // instance origin when no --origin is passed.
+      "PUBLIC_BASE_URL", "VITE_BACKEND_HOST",
     ],
   },
 };
