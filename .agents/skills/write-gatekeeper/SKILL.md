@@ -123,10 +123,15 @@ If you use this:
   shared `build` and `build:configurator` Vite+ tasks from
   `scripts/gatekeeper-configurator-vite-config.ts`; `build` is just `tsc` and depends on
   `build:configurator`, which carries `VITE_FRONTEND_ERROR_REPORTING` in its fingerprint, and
-  `deploy` runs `vp run --no-cache build:configurator && wrangler deploy` — deploys never replay a
-  cached artifact. There is no `build` script
+  `deploy` runs `vp run --no-cache build:configurator && wrangler deploy --keep-vars` — deploys never
+  replay a cached artifact. There is no `build` script
   and no direct builder call, because a script running the builder gets vp's stripped environment
-  and bakes the wrong flag into the shipped HTML.
+  and bakes the wrong flag into the shipped HTML. Production deploys go through the release manifest
+  (`scripts/release/build-release.ts`), which renders each worker's vars from instance state; this
+  `deploy` script is the manual escape hatch, so it carries `--keep-vars` — a bare `wrangler deploy`
+  REPLACES the worker's vars with only those in wrangler config, silently wiping instance vars set
+  out-of-band (`BASE_URL`, `CF_ACCESS_AUD`/`CF_ACCESS_ISS`). `scripts/deploy-scripts.test.ts` enforces
+  this across every package (OWL-1757).
 
 ##### Pre-filling the form from a known resource URL
 

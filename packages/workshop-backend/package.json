@@ -5,7 +5,7 @@
   "main": "./src/index.ts",
   "scripts": {
     "dev": "echo \"run 'pnpm dev-server' in the root directory instead\" >&2 && exit 1",
-    "deploy": "wrangler deploy",
+    "deploy": "wrangler deploy --keep-vars",
     "build:worker": "node build-browser-runtime.mjs && node scripts/build-format-blueprints.mjs && pnpm exec capnweb-validate build --out .wrangler/validate",
     "clean": "rm -rf dist",
     "test:integration": "node build-browser-runtime.mjs && node scripts/build-format-blueprints.mjs && vitest run --config vitest.integration.config.ts",
