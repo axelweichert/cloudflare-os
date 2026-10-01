@@ -469,6 +469,50 @@ describe("connect initiation nonce", () => {
     expect(complete).toHaveBeenCalledOnce();
     expect(await resumed.acceptAuthCode("authorization-code", oauthNonce)).toBe(false);
   });
+  it("uses a manual OAuth client and never registers via DCR", async () => {
+    // The allowlist-server case: a pasted client_id/secret must let the authorization-code flow run
+    // without Dynamic Client Registration. If registration were still attempted, `register` below
+    // would be hit and fail the test.
+    const context = fakeContext();
+    let registerCalled = false;
+    vi.stubGlobal("fetch", async (input: string) => {
+      const url = String(input);
+      if (url.includes("oauth-protected-resource")) {
+        return Response.json({
+          resource: "https://mcp.example/mcp",
+          authorization_servers: ["https://auth.example"],
+        });
+      }
+      if (url.includes("oauth-authorization-server")) {
+        return Response.json({
+          issuer: "https://auth.example",
+          authorization_endpoint: "https://auth.example/authorize",
+          token_endpoint: "https://auth.example/token",
+          registration_endpoint: "https://auth.example/register",
+          response_types_supported: ["code"],
+        });
+      }
+      if (url === "https://auth.example/register") {
+        registerCalled = true;
+        return new Response("", { status: 400 });
+      }
+      return new Response("", { status: 404 });
+    });
+
+    const nonce = "d".repeat(64);
+    const account = new OAuthFlowAccount(context as never, {});
+    await account.setCallback({ complete: vi.fn() } as never, nonce);
+    const outcome = await account.beginConnect(
+      nonce, server("https://mcp.example/mcp"),
+      { client_id: "manual-client", client_secret: "shh" });
+
+    expect(outcome.kind).toBe("redirect");
+    expect(registerCalled).toBe(false);
+    expect(new URL((outcome as { url: string }).url).searchParams.get("client_id"))
+      .toBe("manual-client");
+    expect(context.storage.kv.get<{ client_id: string }>("oauthClient")?.client_id)
+      .toBe("manual-client");
+  });
 });
 
 describe("resolveConnectTarget", () => {

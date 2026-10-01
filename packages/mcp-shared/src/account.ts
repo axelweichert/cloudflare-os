@@ -296,6 +296,7 @@ export abstract class McpAccountBase<E extends AccountEnv, P = unknown>
    */
   async beginConnect(
     initiationNonce: string, target: ConnectedServer | null,
+    manualClient?: StoredOAuthClientInformation,
   ): Promise<ConnectOutcome> {
     const existing = this.server();
     const server = resolveConnectTarget(existing, target);
@@ -322,6 +323,15 @@ export abstract class McpAccountBase<E extends AccountEnv, P = unknown>
         event: "connect.repointed",
         serverHost: hostOf(server.endpoint),
       });
+    }
+
+    // Manual client fallback: a caller who pasted a pre-registered OAuth client seeds it here, under
+    // the same key `oauthProvider().clientInformation` reads. Stored after the endpoint-change wipe
+    // above (so it survives), and with no issuer so it matches whichever AS discovery finds; the SDK
+    // sees existing client information and skips Dynamic Client Registration. For allowlist servers
+    // that reject our DCR redirect_uri.
+    if (manualClient) {
+      this.ctx.storage.kv.put<StoredOAuthClientInformation>("oauthClient", manualClient);
     }
 
     const log = this.log().with({

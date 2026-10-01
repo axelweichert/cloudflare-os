@@ -62,7 +62,9 @@ import {
   mcpGatekeeperUserContext,
   type McpGatekeeperUserProps,
 } from "@gadgets/mcp-shared/user";
-import { connectFormHtml } from "./connect-form.js";
+import { connectFormHtml, redirectBlockedHtml } from "./connect-form.js";
+import { isRedirectUriRejection, type StoredOAuthClientInformation }
+  from "@gadgets/mcp-shared/oauth";
 import { serverIdFromEndpoint } from "./server-id.js";
 import { mcpResourceFor, mcpResources } from "./resources.js";
 import type { ConfiguratorUIOption } from "@gadgets/configurator-ui";
@@ -104,6 +106,22 @@ export default {
           return new Response("Method Not Allowed", { status: 405 });
         }
 
+        // The body reads once, so parse it up front and branch on what it carries.
+        const form = request.method === "POST" ? await request.formData() : null;
+
+        // Manual OAuth-client fallback (the redirect-blocked page): the pasted client_id lets us skip
+        // Dynamic Client Registration, so it takes precedence over the reconnect short-circuit that a
+        // prior failed attempt would otherwise trigger.
+        const clientId = String(form?.get("client_id") ?? "").trim();
+        if (clientId) {
+          const clientSecret = String(form?.get("client_secret") ?? "").trim();
+          const manualClient: StoredOAuthClientInformation =
+            clientSecret ? { client_id: clientId, client_secret: clientSecret }
+                         : { client_id: clientId };
+          return continueConnect(
+            account, initiationNonce, String(form?.get("url") ?? ""), env, path, manualClient);
+        }
+
         // A reconnect already knows its endpoint. Ignore a stale or malicious replacement URL.
         if (await account.hasEndpoint()) {
           return continueConnect(account, initiationNonce, null, env, path);
@@ -114,9 +132,8 @@ export default {
           }
           return htmlResponse(connectFormHtml(path));
         }
-        const form = await request.formData();
         return continueConnect(
-          account, initiationNonce, String(form.get("url") ?? ""), env, path);
+          account, initiationNonce, String(form?.get("url") ?? ""), env, path);
       },
     });
   },
@@ -130,14 +147,17 @@ async function continueConnect(
   endpointUrl: string | null,
   env: Env,
   formPath: string,
+  manualClient?: StoredOAuthClientInformation,
 ): Promise<Response> {
   let target: ConnectedServer | null = null;
+  let serverUrl = endpointUrl ?? "";
 
-  if (endpointUrl !== null) {
+  if (endpointUrl !== null && endpointUrl !== "") {
     const validated = validateCustomEndpoint(env, endpointUrl);
     if (!validated.ok) {
       return htmlResponse(connectFormHtml(formPath, validated.reason), 400);
     }
+    serverUrl = validated.url;
     // `serverName` is a placeholder until the handshake reports the server's own name, and `auth` is
     // a guess that `beginConnect` corrects to `"none"` if the endpoint turns out to be public.
     target = {
@@ -151,9 +171,21 @@ async function continueConnect(
 
   let outcome: ConnectOutcome;
   try {
-    outcome = await account.beginConnect(initiationNonce, target);
+    outcome = await account.beginConnect(initiationNonce, target, manualClient);
   } catch (err) {
     logger.warn("connect failed", { event: "connect.failed", error: err });
+    // The server refused to register our redirect URI. A raw error blob is a dead end here, so guide
+    // the user: allowlist the redirect URI (derived live, never hardcoded — OWL-1600/1614/1615) or
+    // paste a pre-registered client. Suppressed once a manual client was already tried, since the
+    // failure then lies with that client, not with registration.
+    if (!manualClient && isRedirectUriRejection(err)) {
+      // Prefill the retry with the endpoint that failed; on a reconnect it lives on the account.
+      if (!serverUrl) {
+        try { serverUrl = (await account.getServer()).endpoint; } catch { /* not stored yet */ }
+      }
+      return htmlResponse(
+        redirectBlockedHtml(formPath, `${getBaseUrl(env)}/oauth`, serverUrl), 400);
+    }
     return htmlResponse(connectFormHtml(
       formPath, err instanceof Error ? err.message : String(err)), 502);
   }
