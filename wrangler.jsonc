@@ -19,6 +19,8 @@
   // `code 10143: Service binding 'WORKSHOP_BACKEND' references Worker 'workshop-backend' which
   // was not found`.
   "name": "cloudflareos",
+  "workers_dev": false,
+  "preview_urls": false,
   "main": "packages/router/src/index.ts",
   "compatibility_date": "2026-02-02",
 

@@ -1,5 +1,7 @@
 {
   "name": "gatekeeper-cloudflare",
+  "workers_dev": false,
+  "preview_urls": false,
   "main": ".wrangler/validate/src/cloudflare.ts",
   "build": {
     "command": "pnpm exec capnweb-validate build --out .wrangler/validate",

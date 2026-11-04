@@ -548,6 +548,8 @@ class MySessionImpl extends RpcTarget implements MySession {
 ```jsonc
 {
   "name": "gatekeeper-<name>",
+  "workers_dev": false,
+  "preview_urls": false,
   "main": "src/<name>.ts",
   "compatibility_date": "2026-02-02",
   "compatibility_flags": ["allow_irrevocable_stub_storage"],
@@ -559,6 +561,8 @@ class MySessionImpl extends RpcTarget implements MySession {
   ]
 }
 ```
+
+`workers_dev` and `preview_urls` stay `false` (OWL-2360): a gatekeeper is reached over its service binding, never over a workers.dev address. `scripts/pruefe-workers-dev.mjs` fails CI otherwise.
 
 Only Durable Object classes go in `new_sqlite_classes`. `MyVerifier` and `MyHookControllerImpl` are `WorkerEntrypoint`s, so they need no migration entry — but, like all entrypoints, they must be `export`ed from the worker's main module (so `ctx.exports.MyVerifier(...)` resolves). If your hook uses a dedicated event-source DO to hold the `initiator`, add that DO here too.
 

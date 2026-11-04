@@ -4,6 +4,8 @@
   // (cloudflareos-gk-owlos, bound as GATEKEEPER_OWLOS in the root wrangler.jsonc) and account
   // are supplied at deploy time, like the other cloudflareos-gk-* workers — not committed here.
   "name": "gatekeeper-owlos",
+  "workers_dev": false,
+  "preview_urls": false,
   "main": ".wrangler/validate/src/owlos.ts",
   "vars": {
     "BASE_URL": "https://cloudflareos.weichert.at/gatekeeper/owlos"
