@@ -17,6 +17,8 @@
   // Dev is a separate base: wrangler.dev.jsonc (workshop-backend) + run-dev-server.ts. Never use
   // this file for dev.
   "name": "cloudflareos-backend",
+  "workers_dev": false,
+  "preview_urls": false,
   "account_id": "6b9b3fa0e9f6be87faf7ca1b212641a3",
   "main": ".wrangler/validate/src/server.ts",
   "build": {

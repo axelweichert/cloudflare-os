@@ -1,5 +1,7 @@
 {
   "name": "gatekeeper-etsy",
+  "workers_dev": false,
+  "preview_urls": false,
   "main": ".wrangler/validate/src/etsy.ts",
   "build": {
     "command": "pnpm exec capnweb-validate build --out .wrangler/validate",

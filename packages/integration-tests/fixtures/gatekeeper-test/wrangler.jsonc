@@ -1,6 +1,8 @@
 {
   "$schema": "../../node_modules/wrangler/config-schema.json",
   "name": "gatekeeper-test",
+  "workers_dev": false,
+  "preview_urls": false,
 
   // Unlike the shipping gatekeepers, `main` points straight at source with no capnweb-validate build
   // step. @validateRpc() would need this fixture to carry its own `wrangler types` output -- half a

@@ -1,5 +1,7 @@
 {
   "name": "gatekeeper-confluence",
+  "workers_dev": false,
+  "preview_urls": false,
   "main": ".wrangler/validate/src/confluence.ts",
   "build": {
     "command": "pnpm exec capnweb-validate build --out .wrangler/validate",

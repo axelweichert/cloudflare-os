@@ -7,6 +7,8 @@
   // `wrangler secret put API_KEY` setzen. Empfehlung: der Agenten-API-Key ist SCHREIB-neutral —
   // echte Schreibgewalt hat nur der Freigabe-Approve-Pfad (menschlich, CF-Access-gated).
   "name": "gatekeeper-vonbusch-crm",
+  "workers_dev": false,
+  "preview_urls": false,
   "main": "./worker.ts",
   "compatibility_date": "2025-08-01",
   "compatibility_flags": ["nodejs_compat"],

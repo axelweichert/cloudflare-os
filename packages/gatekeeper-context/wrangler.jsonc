@@ -1,6 +1,8 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "gatekeeper-context",
+  "workers_dev": false,
+  "preview_urls": false,
   "main": ".wrangler/validate/src/index.ts",
   "build": {
     "command": "pnpm exec capnweb-validate build --out .wrangler/validate",

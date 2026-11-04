@@ -1,5 +1,7 @@
 {
   "name": "gatekeeper-supabase",
+  "workers_dev": false,
+  "preview_urls": false,
   "main": ".wrangler/validate/src/supabase.ts",
   "build": {
     "command": "pnpm exec capnweb-validate build --out .wrangler/validate",
