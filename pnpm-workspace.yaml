@@ -15,9 +15,9 @@ catalog:
   typescript: 7.0.2
   # Exact, not ranged: the transform has to stay on esbuild. Oxc does not lower the Stage-3
   # decorators capnweb-validate's `@validateRpc()` relies on (cloudflare/workers-sdk#12626).
-  vite: 7.3.6
+  vite: 7.3.8
   vite-plus: ^0.2.8
-  vitest: ^4.1.10
+  vitest: ^4.1.12
   wrangler: ^4.119.0
 
 overrides:
@@ -31,9 +31,29 @@ overrides:
   # - @lezer/markdown is a deep transitive of @codemirror/lang-markdown.
   '@types/node': 26.1.0
   '@lezer/markdown': 1.6.4
-  # oxfmt (via vite-plus) pins tinypool to exactly 2.1.0 (CVE-2026-104848/-104849, critical).
-  # Dev tooling only; pin the patched release until vite-plus ships an oxfmt that moves on.
-  tinypool: 2.1.2
+  # Security floor for transitive dependencies flagged by Dependabot (OWL-2465). Exact, mature
+  # releases (older than minimumReleaseAge) on the same major line as the parents expect.
+  undici@7: 7.30.2
+  seroval: 1.6.12
+  seroval-plugins: 1.6.12
+  zod@4: 4.6.7
+  sharp: 0.35.5
+  source-map-js: 1.2.2
+  # oxfmt (via vite-plus) pins tinypool to exactly 2.1.0 (critical CVEs, OWL-2464). Dev tooling only.
+  tinypool: 2.2.0
+  # vite-plus 0.2.8 pins its own vitest 4.1.10 family (vitest <4.1.11 is flagged). Lift the whole
+  # family to the catalog patch so the two copies stay identical. vite-plus 1.x would fix this
+  # upstream but requires vitest 5, which @cloudflare/vitest-pool-workers does not support yet.
+  'vitest@4': 4.1.12
+  '@vitest/browser@4': 4.1.12
+  '@vitest/browser-preview@4': 4.1.12
+  '@vitest/expect@4': 4.1.12
+  '@vitest/mocker@4': 4.1.12
+  '@vitest/pretty-format@4': 4.1.12
+  '@vitest/runner@4': 4.1.12
+  '@vitest/snapshot@4': 4.1.12
+  '@vitest/spy@4': 4.1.12
+  '@vitest/utils@4': 4.1.12
 
 # Reject dependency versions published within this many minutes (24h), matching the
 # CI supply-chain policy so local installs can't commit a too-fresh lockfile.
