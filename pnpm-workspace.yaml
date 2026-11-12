@@ -31,6 +31,9 @@ overrides:
   # - @lezer/markdown is a deep transitive of @codemirror/lang-markdown.
   '@types/node': 26.1.0
   '@lezer/markdown': 1.6.4
+  # oxfmt (via vite-plus) pins tinypool to exactly 2.1.0 (CVE-2026-104848/-104849, critical).
+  # Dev tooling only; pin the patched release until vite-plus ships an oxfmt that moves on.
+  tinypool: 2.1.2
 
 # Reject dependency versions published within this many minutes (24h), matching the
 # CI supply-chain policy so local installs can't commit a too-fresh lockfile.
