@@ -19,8 +19,10 @@ const COMPOSER_MENU_ITEM =
 
 export default function ComposerFormatMenuItems({
   onSelect,
+  showTrailingSeparator = false,
 }: {
   onSelect: (format: OutputFormatOffer) => void
+  showTrailingSeparator?: boolean
 }) {
   const { formats, creating, create } = useOutputFormats()
 
@@ -41,7 +43,7 @@ export default function ComposerFormatMenuItems({
           disabled={creating !== null}
           onClick={() => choose(format)}
         >
-          <span className="mr-2 inline-flex h-4 w-4 items-center justify-center text-kumo-inactive">
+          <span className="inline-flex h-4 w-4 items-center justify-center text-kumo-inactive">
             <FormatGlyph
               output={format.output}
               size="md"
@@ -53,7 +55,7 @@ export default function ComposerFormatMenuItems({
           </span>
         </DropdownMenu.Item>
       ))}
-      <div className="my-1 border-t border-kumo-line/70" />
+      {showTrailingSeparator && <div className="my-1 border-t border-kumo-line/70" />}
     </>
   )
 }

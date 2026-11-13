@@ -7,16 +7,19 @@
     "dev": "echo \"run 'pnpm dev-server' in the root directory instead\" >&2 && exit 1",
     "deploy": "vp run --no-cache build:configurator && wrangler deploy --keep-vars",
     "clean": "rm -rf dist src/generated",
-    "test:run": "vitest run"
+    "test:run": "vp run -F @gadgets/confluence-gatekeeper build:configurator && vitest run"
   },
   "dependencies": {
     "@gadgets/configurator-ui": "workspace:*",
+    "@gadgets/gatekeeper-kit": "workspace:*",
     "@gadgets/workshop-shared": "workspace:*",
     "capnweb": "catalog:",
     "capnweb-validate": "catalog:",
-    "node-html-parser": "^7.1.0"
+    "node-html-parser": "^9.0.5"
   },
   "devDependencies": {
+    "@gadgets/scripts": "workspace:*",
+    "playwright": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:",
     "wrangler": "catalog:"

@@ -1,0 +1,995 @@
+// The push action's queue/simulate/apply/revert flow, driven against the real
+// `GitHubGatekeeperImpl` Durable Object (instantiated with props through the TestHooks facet, the
+// way the overseer does) with GitHub itself faked at the `fetch` boundary and the workspace git
+// cache faked at the `GitCache` stub boundary. What this file guards, per plans/worktrees.md §3:
+//
+// - Queue time binds the expected remote ref state (simulated head, so stacked pushes compose),
+//   short-circuits a push whose desired state already holds, and fails a non-force
+//   non-fast-forward *before anything is queued*.
+// - Simulation: `listBranches`/`getCommit` read the pending push as if it had already landed.
+// - Apply is a send-pack whose old-sha is the queue-time expectation (CAS for force and non-force
+//   alike), with desired-state idempotency: the branch already being at `newSha` is success.
+// - Revert rolls the ref back (or deletes a created branch), CAS'd from the pushed commit.
+
+import { RpcStub, RpcTarget } from "cloudflare:workers";
+import { env, runInDurableObject } from "cloudflare:test";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ActionDescription, GitObjectType, GitOid }
+  from "@gadgets/workshop-shared/gatekeeper";
+import type { ActionPresentation } from "@gadgets/gatekeeper-kit/actions";
+import { FLUSH_PKT, ZERO_OID, encodePktLine, pktText } from "@gadgets/gatekeeper-kit/git-transport";
+import type { GatekeeperProps, Outcome, PushActionData } from "./worker";
+
+const OWNER = "acme";
+const REPO = "widgets";
+/** Where the binding reads the repository once pinned: by its id, 1. */
+const API_BASE = "https://api.github.com/repositories/1";
+/** The repository by name, which the binding reads only to pin its id. */
+const NAME_ROOT = `https://api.github.com/repos/${OWNER}/${REPO}`;
+const RECEIVE_PACK_URL = `https://github.com/${OWNER}/${REPO}.git/git-receive-pack`;
+
+/** Deterministic fake full commit ids. */
+const BASE = "a".repeat(40);   // the branch head the work was based on
+const HEAD1 = "b".repeat(40);  // first agent-authored commit
+const HEAD2 = "c".repeat(40);  // second agent-authored commit, child of HEAD1
+const OTHER = "d".repeat(40);  // an unrelated head the remote may move to
+const TREE = "e".repeat(40);
+
+const PACK_BYTES = new TextEncoder().encode("PACK-STAND-IN");
+
+function commitPayload(parents: string[], message: string): Uint8Array {
+  return new TextEncoder().encode([
+    `tree ${TREE}`,
+    ...parents.map(parent => `parent ${parent}`),
+    "author Ada Lovelace <ada@example.com> 1700000000 +0000",
+    "committer Ada Lovelace <ada@example.com> 1700000100 +0000",
+    "",
+    `${message}\n`,
+  ].join("\n"));
+}
+
+/**
+ * Stands in for the workspace git cache. Ancestry is declared per test as (ancestor, descendant)
+ * pairs over *cached* history, commit bytes are served for simulation reads, and `buildPack()`
+ * returns stand-in bytes the receive-pack capture can assert on.
+ */
+class TestGitCache extends RpcTarget {
+  readonly commits = new Map<GitOid, Uint8Array>();
+  readonly ancestries = new Set<string>();
+
+  withCommit(oid: GitOid, payload: Uint8Array): this {
+    this.commits.set(oid, payload);
+    return this;
+  }
+
+  /** Declare that `ancestor` is an ancestor of `descendant` (and that `descendant` is cached). */
+  withAncestry(ancestor: GitOid, descendant: GitOid): this {
+    this.ancestries.add(`${ancestor}:${descendant}`);
+    this.commits.set(descendant, this.commits.get(descendant) ?? commitPayload([ancestor], "x"));
+    return this;
+  }
+
+  async isAncestor(ancestor: GitOid, descendant: GitOid): Promise<boolean> {
+    if (!this.commits.has(descendant)) {
+      throw new Error(
+        `Cannot check ancestry: ${descendant} is not a commit in the workspace's git cache.`);
+    }
+    return ancestor === descendant || this.ancestries.has(`${ancestor}:${descendant}`);
+  }
+
+  /** The oids `get()` was asked for: a type-only check must `stat()` instead. */
+  readonly gets: GitOid[] = [];
+
+  /** Objects `get()` answers as a stream, as the real cache does over MAX_BUFFERED_BLOB_SIZE. */
+  readonly streamed = new Map<GitOid, { type: GitObjectType, content: Uint8Array }>();
+
+  /** The oids whose streamed content was cancelled, and those read to the end. */
+  readonly cancelled: GitOid[] = [];
+  readonly drained: GitOid[] = [];
+
+  async get(id: GitOid)
+      : Promise<{ type: GitObjectType, content: Uint8Array | ReadableStream<Uint8Array> } | null> {
+    this.gets.push(id);
+    const streamed = this.streamed.get(id);
+    if (streamed !== undefined) {
+      let sent = false;
+      return {
+        type: streamed.type,
+        content: new ReadableStream<Uint8Array>({
+          pull: controller => {
+            if (sent) {
+              this.drained.push(id);
+              controller.close();
+            } else {
+              sent = true;
+              controller.enqueue(streamed.content.slice());
+            }
+          },
+          cancel: () => { this.cancelled.push(id); },
+        }, { highWaterMark: 0 }),
+      };
+    }
+    const payload = this.commits.get(id);
+    return payload === undefined ? null : { type: "commit", content: payload };
+  }
+
+  async stat(id: GitOid): Promise<{ type: GitObjectType, size: number } | null> {
+    const payload = this.commits.get(id);
+    return payload === undefined ? null : { type: "commit", size: payload.length };
+  }
+
+  async buildPack(): Promise<ReadableStream<Uint8Array>> {
+    return new ReadableStream({
+      start(controller) {
+        controller.enqueue(PACK_BYTES);
+        controller.close();
+      },
+    });
+  }
+}
+
+/** One captured `fetch` exchange with the fake GitHub. */
+type ReceivePackExchange = { body: Uint8Array };
+
+/**
+ * Fakes GitHub at the fetch boundary: the REST endpoints the push flow reads (branch head, branch
+ * protection, branch list, commit lookup, repo metadata) and the git-receive-pack endpoint (captured; responses are enqueued by the
+ * test). Installed with `vi.stubGlobal`, which reaches the gatekeeper because the whole workerd
+ * suite -- runner, hook DO, and facets -- shares one isolate.
+ */
+class FakeGitHub {
+  readonly branches = new Map<string, string>();  // branch name → head commit id
+  readonly protectedBranches = new Set<string>();
+  /** Ruleset rules per branch name, which GitHub reports for a branch that does not exist too. */
+  readonly branchRules = new Map<string, { type: string }[]>();
+  /** When set, the ruleset read answers this status, as GitHub does to an account it refuses. */
+  branchRulesStatus: number | undefined;
+  readonly restCommits = new Map<string, { sha: string, message: string }>();  // ref → commit
+  readonly receivePackExchanges: ReceivePackExchange[] = [];
+  readonly receivePackResponses: Uint8Array[] = [];
+  defaultBranch = "main";
+
+  install(): void {
+    vi.stubGlobal("fetch", this.#handle.bind(this));
+  }
+
+  respondToPush(...lines: string[]): void {
+    const pieces = [...lines.map(encodePktLine), FLUSH_PKT];
+    const out = new Uint8Array(pieces.reduce((total, piece) => total + piece.byteLength, 0));
+    let offset = 0;
+    for (const piece of pieces) {
+      out.set(piece, offset);
+      offset += piece.byteLength;
+    }
+    this.receivePackResponses.push(out);
+  }
+
+  async #handle(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+    const url = new URL(typeof input === "string" ? input : (input as Request).url ?? String(input));
+    const path = url.origin + url.pathname;
+
+    if (path === RECEIVE_PACK_URL) {
+      const body = new Uint8Array(await new Response(init?.body as BodyInit).arrayBuffer());
+      this.receivePackExchanges.push({ body });
+      const response = this.receivePackResponses.shift();
+      if (!response) throw new Error("test: unexpected receive-pack request");
+      return new Response(response, {
+        headers: { "Content-Type": "application/x-git-receive-pack-result" },
+      });
+    }
+
+    if (path.startsWith(`${API_BASE}/git/ref/heads/`)) {
+      const name = decodeURIComponent(path.slice(`${API_BASE}/git/ref/heads/`.length));
+      const head = this.branches.get(name);
+      if (head === undefined) {
+        return Response.json({ message: "Not Found" }, { status: 404 });
+      }
+      return Response.json({ ref: `refs/heads/${name}`, object: { sha: head, type: "commit" } });
+    }
+
+    if (path.startsWith(`${API_BASE}/branches/`)) {
+      const name = decodeURIComponent(path.slice(`${API_BASE}/branches/`.length));
+      const head = this.branches.get(name);
+      if (head === undefined) {
+        return Response.json({ message: "Branch not found" }, { status: 404 });
+      }
+      return Response.json({ name, commit: { sha: head }, protected: this.protectedBranches.has(name) });
+    }
+
+    if (path.startsWith(`${API_BASE}/rules/branches/`)) {
+      if (this.branchRulesStatus !== undefined) {
+        return Response.json({ message: "Resource not accessible" }, { status: this.branchRulesStatus });
+      }
+      const name = decodeURIComponent(path.slice(`${API_BASE}/rules/branches/`.length));
+      // An enterprise's repository-wide rules come back for every branch, as they do on GitHub.
+      return Response.json([
+        { type: "repository_delete" }, { type: "repository_transfer" }, ...(this.branchRules.get(name) ?? []),
+      ]);
+    }
+
+    if (path === `${API_BASE}/branches`) {
+      const data = [...this.branches.entries()].map(([name, sha]) =>
+        ({ name, commit: { sha }, protected: this.protectedBranches.has(name) }));
+      return Response.json(data);
+    }
+
+    if (path.startsWith(`${API_BASE}/commits/`)) {
+      const ref = decodeURIComponent(path.slice(`${API_BASE}/commits/`.length));
+      const fromBranch = this.branches.get(ref);
+      const commit = this.restCommits.get(ref)
+        ?? (fromBranch !== undefined ? { sha: fromBranch, message: `rest ${ref}` } : undefined);
+      if (commit === undefined) {
+        // Like GitHub: an unknown full commit id answers 422 ("No commit found for SHA"); only
+        // an unknown branch/tag name answers 404.
+        if (/^[0-9a-f]{40}$/.test(ref)) {
+          return Response.json({ message: `No commit found for SHA: ${ref}` }, { status: 422 });
+        }
+        return Response.json({ message: "Not Found" }, { status: 404 });
+      }
+      // The `sha` media type answers with the bare commit id as text, like GitHub does.
+      if (new Headers(init?.headers).get("Accept") === "application/vnd.github.sha") {
+        return new Response(commit.sha, {
+          headers: { "Content-Type": "application/vnd.github.sha" },
+        });
+      }
+      return Response.json({
+        sha: commit.sha,
+        html_url: `https://github.com/${OWNER}/${REPO}/commit/${commit.sha}`,
+        commit: { message: commit.message, author: null, committer: null },
+        author: null,
+        parents: [],
+      });
+    }
+
+    if (path === API_BASE || path === NAME_ROOT) {
+      return Response.json({
+        id: 1,
+        name: REPO,
+        full_name: `${OWNER}/${REPO}`,
+        html_url: `https://github.com/${OWNER}/${REPO}`,
+        description: null,
+        visibility: "public",
+        default_branch: this.defaultBranch,
+        owner: { login: OWNER, html_url: `https://github.com/${OWNER}` },
+      });
+    }
+
+    throw new Error(`test: unexpected fetch to ${url}`);
+  }
+}
+
+/** Records what the gatekeeper submits, standing in for the overseer's approval queue. */
+class TestApprovalQueue extends RpcTarget {
+  readonly observations: string[] = [];
+  readonly submitted: { action: number, description: ActionDescription }[] = [];
+
+  async authorizeObservation(description: { title: string }): Promise<void> {
+    this.observations.push(description.title);
+  }
+
+  async submitAction(action: number, description: ActionDescription): Promise<void> {
+    this.submitted.push({ action, description });
+  }
+}
+
+class AdvertisingCache extends RpcTarget {
+  readonly advertised: GitOid[] = [];
+
+  async advertiseCommit(id: GitOid): Promise<void> {
+    this.advertised.push(id);
+  }
+}
+
+/** A session's approval queue that refuses its first observation, as the Workshop refusing its audience would. */
+class RefusingSessionQueue extends RpcTarget {
+  readonly observations: string[] = [];
+  readonly cache = new AdvertisingCache();
+  #refused = false;
+
+  async authorizeObservation(description: { title: string }): Promise<void> {
+    if (!this.#refused) {
+      this.#refused = true;
+      throw new Error("test: the audience was refused");
+    }
+    this.observations.push(description.title);
+  }
+
+  async getGitCache(): Promise<AdvertisingCache> {
+    return this.cache;
+  }
+}
+
+let nextScenario = 0;
+
+// Fresh stubs per call: a stub passed as an RPC argument is disposed when the call returns.
+function stubOf(target: TestGitCache | TestApprovalQueue): never {
+  return new RpcStub(target) as never;
+}
+
+/** Rethrows a forwarded failure locally (see `Outcome` in worker.ts). */
+async function unwrap<T>(pending: Promise<Outcome<T>>): Promise<T> {
+  const result = await pending;
+  if ("error" in result) throw new Error(result.error);
+  return result.ok;
+}
+
+/**
+ * A fresh gatekeeper facet (repo-scoped) backed by a token-bearing user account, driven through
+ * TestHooks (a facet stub cannot ride back to the test, so every call forwards through the hook
+ * DO). Methods mirror the gatekeeper's, with the test's fakes wrapped into stubs per call.
+ */
+async function repoGatekeeper() {
+  const scenario = `push-${nextScenario++}`;
+  const accountId = env.USER_ACCOUNT.newUniqueId();
+  await runInDurableObject(env.USER_ACCOUNT.get(accountId), async (_instance, state) => {
+    state.storage.kv.put("accessToken", "test-token");
+  });
+  const props: GatekeeperProps = {
+    userObjectId: accountId.toString(),
+    resourceKind: "repo",
+    owner: OWNER,
+    repo: REPO,
+  };
+  const hooks = env.TEST_HOOKS.getByName(scenario);
+  return {
+    preparePush: (branch: string, commitId: string, force: boolean, cache: TestGitCache) =>
+      unwrap(hooks.preparePush(scenario, props, branch, commitId, force, stubOf(cache))),
+    submitPush: (queue: TestApprovalQueue, action: PushActionData, description: ActionPresentation) =>
+      unwrap(hooks.submitPush(scenario, props, stubOf(queue), action, description)),
+    applyAction: (actionId: number, cache: TestGitCache) =>
+      unwrap(hooks.applyAction(scenario, props, actionId, stubOf(cache))),
+    rejectAction: (actionId: number) => unwrap(hooks.rejectAction(scenario, props, actionId)),
+    revertAction: (actionId: number) => unwrap(hooks.revertAction(scenario, props, actionId)),
+    listBranchesFirstPage: (pageSize: number) =>
+      unwrap(hooks.listBranchesFirstPage(scenario, props, pageSize)),
+    listBranchesFirstPageAfterReject: (pageSize: number, actionId: number) =>
+      unwrap(hooks.listBranchesFirstPageAfterReject(scenario, props, pageSize, actionId)),
+    listBranchesPagedRejectBetween: (actionId: number) =>
+      unwrap(hooks.listBranchesPagedRejectBetween(scenario, props, actionId)),
+    /** The session's `listBranches()` pages over `queue`, rejecting `actionId`, if given, after each refused page. */
+    sessionBranchPages: (queue: RefusingSessionQueue, actionId?: number) => unwrap(hooks.sessionPages(
+      scenario, props, new RpcStub(queue) as never, [{ method: "listBranches" }], actionId)),
+    isSimulatedCommitId: (commitId: string) =>
+      unwrap(hooks.isSimulatedCommitId(scenario, props, commitId)),
+    getCommit: (ref: string | undefined, cache?: TestGitCache) =>
+      unwrap(hooks.getCommit(scenario, props, ref, cache === undefined ? undefined : stubOf(cache))),
+    resolveRef: (ref: string | undefined, cache?: TestGitCache) =>
+      unwrap(hooks.resolveRef(scenario, props, ref, cache === undefined ? undefined : stubOf(cache))),
+    repoMetadata: () => unwrap(hooks.repoMetadata(scenario, props)),
+  };
+}
+
+type GatekeeperHandle = Awaited<ReturnType<typeof repoGatekeeper>>;
+
+/** preparePush + submitActionForApproval, the way the session's push() drives them. */
+async function queuePush(
+  gk: GatekeeperHandle, cache: TestGitCache, queue: TestApprovalQueue,
+  branch: string, commitId: string, force = false,
+) {
+  const action = await gk.preparePush(branch, commitId, force, cache);
+  if (action === null) return null;
+  await gk.submitPush(queue, action, {
+    title: `Push ${commitId.slice(0, 12)} to ${branch}`,
+    description: "test push",
+    pushedCommits: [commitId],
+    implementsRevert: true,
+  });
+  return action;
+}
+
+/** The textual pkt-lines of a captured receive-pack request, plus the raw bytes after the flush. */
+function splitPushRequest(body: Uint8Array): { commands: string[], pack: Uint8Array } {
+  // The command block is pkt-lines up to the first flush; everything after is the raw pack.
+  const commands: string[] = [];
+  let offset = 0;
+  while (offset < body.byteLength) {
+    const length = parseInt(new TextDecoder().decode(body.subarray(offset, offset + 4)), 16);
+    if (length === 0) {
+      offset += 4;
+      break;
+    }
+    commands.push(pktText(body.subarray(offset + 4, offset + length)));
+    offset += length;
+  }
+  return { commands, pack: body.subarray(offset) };
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+describe("queue time", () => {
+  it("binds the expected old head from the live branch and composes stacked pushes", async () => {
+    const github = new FakeGitHub();
+    github.branches.set("main", BASE);
+    github.install();
+    const gk = await repoGatekeeper();
+    const queue = new TestApprovalQueue();
+    const cache = new TestGitCache().withAncestry(BASE, HEAD1).withAncestry(HEAD1, HEAD2)
+      .withAncestry(BASE, HEAD2);
+
+    const first = await queuePush(gk, cache, queue, "main", HEAD1);
+    expect(first).toMatchObject({ type: "push", expectedOldSha: BASE, newSha: HEAD1, force: false });
+
+    // The second push binds to the first's newSha (the simulated head), not the live head, so
+    // approving both in order applies cleanly.
+    const second = await queuePush(gk, cache, queue, "main", HEAD2);
+    expect(second).toMatchObject({ expectedOldSha: HEAD1, newSha: HEAD2 });
+    expect(queue.submitted.map(s => s.description.pushedCommits)).toEqual([[HEAD1], [HEAD2]]);
+  });
+
+  it("returns null (queuing nothing) when the branch is already at the commit", async () => {
+    const github = new FakeGitHub();
+    github.branches.set("main", HEAD1);
+    github.install();
+    const gk = await repoGatekeeper();
+    const queue = new TestApprovalQueue();
+    const cache = new TestGitCache().withCommit(HEAD1, commitPayload([BASE], "x"));
+
+    expect(await queuePush(gk, cache, queue, "main", HEAD1)).toBeNull();
+    expect(queue.submitted).toEqual([]);
+  });
+
+  it("fails a non-force non-fast-forward before anything is queued", async () => {
+    const github = new FakeGitHub();
+    github.branches.set("main", OTHER);  // the branch moved past the head the work was based on
+    github.install();
+    const gk = await repoGatekeeper();
+    const queue = new TestApprovalQueue();
+    const cache = new TestGitCache().withAncestry(BASE, HEAD1);  // OTHER is not an ancestor
+
+    await expect(queuePush(gk, cache, queue, "main", HEAD1))
+      .rejects.toThrow(/not a fast-forward/);
+    expect(queue.submitted).toEqual([]);
+
+    // force skips only the fast-forward policy check; the CAS at apply still binds OTHER.
+    const forced = await queuePush(gk, cache, queue, "main", HEAD1, true);
+    expect(forced).toMatchObject({ expectedOldSha: OTHER, newSha: HEAD1, force: true });
+  });
+
+  it("exempts branch creation from the fast-forward check", async () => {
+    const github = new FakeGitHub();
+    github.install();  // no branches: "feature" does not exist
+    const gk = await repoGatekeeper();
+    const queue = new TestApprovalQueue();
+    const cache = new TestGitCache().withCommit(HEAD1, commitPayload([BASE], "x"));
+
+    const action = await queuePush(gk, cache, queue, "feature", HEAD1);
+    expect(action).toMatchObject({ expectedOldSha: ZERO_OID, newSha: HEAD1, force: false });
+  });
+});
+
+describe("auto-approval", () => {
+  /** Queues one push and returns the gate flag recorded on it and the verdict it was submitted with. */
+  async function verdict(github: FakeGitHub, branch: string, force = false) {
+    github.install();
+    const gk = await repoGatekeeper();
+    const queue = new TestApprovalQueue();
+    const cache = new TestGitCache().withAncestry(BASE, HEAD1);
+    // worker.ts's hand-written mirror of the record does not declare the gate flag.
+    const action: PushActionData & { gatedBranch?: boolean } =
+      (await queuePush(gk, cache, queue, branch, HEAD1, force))!;
+    const { actionKind, autoApprovable, description } = queue.submitted[0].description;
+    return { gatedBranch: action.gatedBranch, tag: actionKind?.tag, autoApprovable, description };
+  }
+
+  function repoWith(...branches: string[]): FakeGitHub {
+    const github = new FakeGitHub();
+    for (const branch of branches) github.branches.set(branch, BASE);
+    return github;
+  }
+
+  it("lets a push or force push to an unprotected feature branch auto-apply", async () => {
+    expect(await verdict(repoWith("main", "feature"), "feature"))
+      .toMatchObject({ gatedBranch: false, tag: "github.push", autoApprovable: true });
+    expect(await verdict(repoWith("main", "feature"), "feature", true))
+      .toMatchObject({ gatedBranch: false, tag: "github.forcePush", autoApprovable: true });
+  });
+
+  it("lets a push that creates a branch auto-apply", async () => {
+    expect(await verdict(repoWith("main"), "feature"))
+      .toMatchObject({ gatedBranch: false, tag: "github.push", autoApprovable: true });
+  });
+
+  it("keeps a push or force push to the default branch manual under its usual kind", async () => {
+    const plain = await verdict(repoWith("main"), "main");
+    expect(plain).toMatchObject({ gatedBranch: true, tag: "github.push", autoApprovable: false });
+    expect(plain.description).toContain(
+      "Branch `main` is the repository's default branch or a protected branch, the repository is empty, " +
+      "or GitHub could not be asked which.");
+    expect(await verdict(repoWith("main"), "main", true))
+      .toMatchObject({ gatedBranch: true, tag: "github.forcePush", autoApprovable: false });
+  });
+
+  it("reads the default branch from the repository, not by name", async () => {
+    const trunk = () => {
+      const github = repoWith("main", "trunk");
+      github.defaultBranch = "trunk";
+      return github;
+    };
+    expect(await verdict(trunk(), "main")).toMatchObject({ gatedBranch: false, autoApprovable: true });
+    expect(await verdict(trunk(), "trunk")).toMatchObject({ gatedBranch: true, autoApprovable: false });
+  });
+
+  it("keeps a push or force push to a protected branch manual", async () => {
+    const release = () => {
+      const github = repoWith("main", "release");
+      github.protectedBranches.add("release");
+      return github;
+    };
+    expect(await verdict(release(), "release"))
+      .toMatchObject({ gatedBranch: true, tag: "github.push", autoApprovable: false });
+    expect(await verdict(release(), "release", true))
+      .toMatchObject({ gatedBranch: true, tag: "github.forcePush", autoApprovable: false });
+  });
+
+  it("keeps the first push into an empty repository manual, since it makes the default branch", async () => {
+    expect(await verdict(repoWith(), "feature"))
+      .toMatchObject({ gatedBranch: true, tag: "github.push", autoApprovable: false });
+  });
+
+  it("keeps a push that creates a branch a ruleset covers manual", async () => {
+    const github = repoWith("main");
+    github.branchRules.set("release/1.0", [{ type: "pull_request" }]);
+    expect(await verdict(github, "release/1.0"))
+      .toMatchObject({ gatedBranch: true, tag: "github.push", autoApprovable: false });
+  });
+
+  it("lets a push auto-apply when GitHub refuses this account its branch's rulesets", async () => {
+    const github = repoWith("main", "feature");
+    github.branchRulesStatus = 403;
+    expect(await verdict(github, "feature"))
+      .toMatchObject({ gatedBranch: false, tag: "github.push", autoApprovable: true });
+  });
+
+  it("holds a push for a person when its branch's rulesets cannot be read for another reason", async () => {
+    const github = repoWith("main", "feature");
+    github.branchRulesStatus = 429;
+    expect(await verdict(github, "feature"))
+      .toMatchObject({ gatedBranch: true, tag: "github.push", autoApprovable: false });
+  });
+});
+
+describe("simulation", () => {
+  it("reads a branch with a queued push at the pushed head", async () => {
+    const github = new FakeGitHub();
+    github.branches.set("main", BASE);
+    github.branches.set("other", OTHER);
+    github.install();
+    const gk = await repoGatekeeper();
+    const cache = new TestGitCache().withAncestry(BASE, HEAD1)
+      .withCommit(HEAD1, commitPayload([BASE], "feat: simulate me"));
+    await queuePush(gk, cache, new TestApprovalQueue(), "main", HEAD1);
+
+    const page = await gk.listBranchesFirstPage(50);
+    expect(page).toContainEqual({ name: "main", headCommit: HEAD1, protected: false });
+    expect(page).toContainEqual({ name: "other", headCommit: OTHER, protected: false });
+
+    // getCommit on the branch resolves to the simulated head, synthesized from the cached bytes
+    // -- and reports it as cache-served, so the session withholds advertisement.
+    const { details, fromCache } = await gk.getCommit("main", cache);
+    expect(fromCache).toBe(true);
+    expect(details.id).toBe(HEAD1);
+    expect(details.message).toBe("feat: simulate me");
+    expect(details.author.name).toBe("Ada Lovelace");
+    expect(details.parents).toEqual([BASE]);
+
+    // A real remote read is not cache-served.
+    expect((await gk.getCommit("other", cache)).fromCache).toBe(false);
+  });
+
+  it("injects a branch a queued push creates, standing in for its name", async () => {
+    const github = new FakeGitHub();
+    github.branches.set("main", BASE);
+    github.install();
+    const gk = await repoGatekeeper();
+    const cache = new TestGitCache().withCommit(HEAD1, commitPayload([BASE], "x"));
+    await queuePush(gk, cache, new TestApprovalQueue(), "feature", HEAD1);
+
+    const page = await gk.listBranchesFirstPage(50);
+    expect(page).toContainEqual({ name: "feature", headCommit: HEAD1, protected: false });
+    expect(page?.filter(branch => branch.name === "feature")).toHaveLength(1);
+  });
+
+  it("drops an injected branch whose push was rejected before the page was drained, still withholding its head", async () => {
+    const github = new FakeGitHub();
+    github.branches.set("main", BASE);
+    github.install();
+    const gk = await repoGatekeeper();
+    const cache = new TestGitCache().withCommit(HEAD1, commitPayload([BASE], "x"));
+    const action = (await queuePush(gk, cache, new TestApprovalQueue(), "feature", HEAD1))!;
+
+    // The cursor snapshots the injected branch at build time; the rejection lands before the
+    // page is drained, so serving the snapshot would list a branch that will never exist.
+    const page = await gk.listBranchesFirstPageAfterReject(50, action.approvalId);
+    expect(page?.some(branch => branch.name === "feature")).toBe(false);
+
+    // The head never reached GitHub, and it is no longer a pending push -- but advertising
+    // callbacks must keep withholding it, or the rejected push's commit would be durably
+    // recorded as pullable from this remote (misrouting pulls and shrinking later push packs).
+    expect(await gk.isSimulatedCommitId(HEAD1)).toBe(true);
+  });
+
+  it.each([
+    ["a branch it creates", "feature", new TestGitCache().withCommit(HEAD1, commitPayload([BASE], "x"))],
+    ["an existing branch's head", "main", new TestGitCache().withAncestry(BASE, HEAD1)],
+  ])("never offers a refused page again once the push behind it, to %s, is rejected", async (_, branch, cache) => {
+    const github = new FakeGitHub();
+    github.branches.set("main", BASE);
+    github.install();
+    const gk = await repoGatekeeper();
+    const action = (await queuePush(gk, cache, new TestApprovalQueue(), branch, HEAD1))!;
+    const queue = new RefusingSessionQueue();
+
+    // The first page is refused, and the push rejected before the retry, which fails as it did:
+    // the page it would offer was overlaid with the push.
+    await expect(gk.sessionBranchPages(queue, action.approvalId)).rejects.toThrow("audience was refused");
+    // A listing made since shows the branches as GitHub has them.
+    expect(await gk.sessionBranchPages(queue)).toEqual([
+      [expect.objectContaining({ name: "main", headCommit: BASE })],
+      null,
+    ]);
+    expect(queue.observations).toEqual(["List branches"]);
+    expect(queue.cache.advertised).toEqual([BASE]);
+  });
+
+  it("revalidates injected branches when served, not when buffered behind a small page", async () => {
+    const github = new FakeGitHub();
+    github.branches.set("main", BASE);
+    github.install();
+    const gk = await repoGatekeeper();
+    const queue = new TestApprovalQueue();
+    const cache = new TestGitCache()
+      .withCommit(HEAD1, commitPayload([BASE], "x"))
+      .withCommit(HEAD2, commitPayload([BASE], "y"));
+    await queuePush(gk, cache, queue, "feat-a", HEAD1);
+    const second = (await queuePush(gk, cache, queue, "feat-b", HEAD2))!;
+
+    // Page size 1: the first page serves feat-a while feat-b sits buffered behind it; the
+    // rejection lands between the pages, so the second page must drop the already-buffered
+    // feat-b snapshot rather than serve a branch that will never exist.
+    const pages = await gk.listBranchesPagedRejectBetween(second.approvalId);
+    expect(pages.first).toEqual([{ name: "feat-a", headCommit: HEAD1, protected: false }]);
+    expect(pages.second).toEqual([{ name: "main", headCommit: BASE, protected: false }]);
+  });
+
+  it("stops injecting a queued creation once the branch appears remotely", async () => {
+    const github = new FakeGitHub();
+    github.install();  // "feature" does not exist at queue time
+    const gk = await repoGatekeeper();
+    const cache = new TestGitCache().withCommit(HEAD1, commitPayload([BASE], "x"));
+    await queuePush(gk, cache, new TestApprovalQueue(), "feature", HEAD1);
+
+    // A third party creates the branch before approval: the queued creation's expectation is
+    // invalidated (its zero-id CAS would fail at apply), so the listing must show the real
+    // branch rather than hiding it behind the simulated one.
+    github.branches.set("feature", OTHER);
+    const page = await gk.listBranchesFirstPage(50);
+    expect(page).toContainEqual({ name: "feature", headCommit: OTHER, protected: false });
+    expect(page?.filter(branch => branch.name === "feature")).toHaveLength(1);
+  });
+
+  it("serves getCommit for a queued commit id GitHub does not know yet", async () => {
+    const github = new FakeGitHub();
+    github.branches.set("main", BASE);
+    github.install();
+    const gk = await repoGatekeeper();
+    const cache = new TestGitCache().withAncestry(BASE, HEAD1)
+      .withCommit(HEAD1, commitPayload([BASE], "pending"));
+    await queuePush(gk, cache, new TestApprovalQueue(), "main", HEAD1);
+
+    const { details, fromCache } = await gk.getCommit(HEAD1, cache);
+    expect(fromCache).toBe(true);
+    expect(details.id).toBe(HEAD1);
+    expect(details.message).toBe("pending");
+  });
+
+  it("reads a streamed commit whole, and cancels a streamed object of another type", async () => {
+    const github = new FakeGitHub();
+    github.branches.set("main", BASE);
+    github.install();
+    const gk = await repoGatekeeper();
+    const cache = new TestGitCache().withAncestry(BASE, HEAD1)
+      .withCommit(HEAD1, commitPayload([BASE], "huge"));
+    await queuePush(gk, cache, new TestApprovalQueue(), "main", HEAD1);
+    // HEAD1's message makes it too large to buffer; OTHER is a large blob, not a commit.
+    cache.streamed.set(HEAD1, { type: "commit", content: cache.commits.get(HEAD1)! });
+    cache.streamed.set(OTHER, { type: "blob", content: new Uint8Array(64) });
+
+    const { details } = await gk.getCommit(HEAD1, cache);
+    expect(details.message).toBe("huge");
+    expect(cache.drained).toContain(HEAD1);
+
+    await expect(gk.getCommit(OTHER, cache)).rejects.toThrow(/No commit found for SHA/);
+    await vi.waitFor(() => expect(cache.cancelled).toContain(OTHER));
+  });
+
+  it("resolveRef maps a branch with a queued push to its simulated head", async () => {
+    const github = new FakeGitHub();
+    github.branches.set("main", BASE);
+    github.branches.set("other", OTHER);
+    github.install();
+    const gk = await repoGatekeeper();
+    const cache = new TestGitCache().withAncestry(BASE, HEAD1)
+      .withCommit(HEAD1, commitPayload([BASE], "feat: simulate me"));
+    await queuePush(gk, cache, new TestApprovalQueue(), "main", HEAD1);
+
+    // Cache-served, so the session withholds advertisement (the commit is not on GitHub yet).
+    // Confirmed by type alone: no get(), whose content (a stream, for a huge commit) would be
+    // left unconsumed.
+    cache.gets.length = 0;
+    expect(await gk.resolveRef("main", cache)).toEqual({ id: HEAD1, fromCache: true });
+    expect(cache.gets).toEqual([]);
+    // A real remote resolution is not cache-served.
+    expect(await gk.resolveRef("other", cache)).toEqual({ id: OTHER, fromCache: false });
+  });
+
+  it("resolveRef confirms a queued commit id GitHub does not know yet", async () => {
+    const github = new FakeGitHub();
+    github.branches.set("main", BASE);
+    github.install();
+    const gk = await repoGatekeeper();
+    const cache = new TestGitCache().withAncestry(BASE, HEAD1)
+      .withCommit(HEAD1, commitPayload([BASE], "pending"));
+    await queuePush(gk, cache, new TestApprovalQueue(), "main", HEAD1);
+
+    cache.gets.length = 0;
+    expect(await gk.resolveRef(HEAD1, cache)).toEqual({ id: HEAD1, fromCache: true });
+    expect(cache.gets).toEqual([]);
+    // A commit neither GitHub nor the workspace git cache knows still fails (GitHub's unknown-id
+    // answer is a 422, which must not be swallowed when the cache cannot serve the id either).
+    await expect(gk.resolveRef(OTHER, cache)).rejects.toThrow(/No commit found for SHA/);
+  });
+});
+
+describe("default branch", () => {
+  it("reports the default branch in repo metadata and defaults getCommit/resolveRef to it", async () => {
+    const github = new FakeGitHub();
+    github.defaultBranch = "trunk";
+    github.branches.set("trunk", BASE);
+    github.restCommits.set("trunk", { sha: BASE, message: "tip of trunk" });
+    github.install();
+    const gk = await repoGatekeeper();
+
+    expect((await gk.repoMetadata()).defaultBranch).toBe("trunk");
+    expect(await gk.resolveRef(undefined)).toEqual({ id: BASE, fromCache: false });
+    const { details } = await gk.getCommit(undefined);
+    expect(details.id).toBe(BASE);
+    expect(details.message).toBe("tip of trunk");
+  });
+
+  it("simulates a queued push to the default branch through an omitted ref", async () => {
+    const github = new FakeGitHub();
+    github.branches.set("main", BASE);
+    github.install();
+    const gk = await repoGatekeeper();
+    const cache = new TestGitCache().withAncestry(BASE, HEAD1)
+      .withCommit(HEAD1, commitPayload([BASE], "feat: simulate me"));
+    await queuePush(gk, cache, new TestApprovalQueue(), "main", HEAD1);
+
+    expect(await gk.resolveRef(undefined, cache)).toEqual({ id: HEAD1, fromCache: true });
+    const { details, fromCache } = await gk.getCommit(undefined, cache);
+    expect(fromCache).toBe(true);
+    expect(details.id).toBe(HEAD1);
+  });
+});
+
+describe("apply", () => {
+  /** Queues an auto-approvable push to `feature`, changes the repository, and applies it. */
+  async function applyAfter(change: (github: FakeGitHub) => void) {
+    const github = new FakeGitHub();
+    github.branches.set("main", BASE);
+    github.branches.set("feature", BASE);
+    github.install();
+    const gk = await repoGatekeeper();
+    const cache = new TestGitCache().withAncestry(BASE, HEAD1);
+    const action: PushActionData & { gatedBranch?: boolean } =
+      (await queuePush(gk, cache, new TestApprovalQueue(), "feature", HEAD1))!;
+    expect(action.gatedBranch).toBe(false);
+    change(github);
+    github.respondToPush("unpack ok", "ok refs/heads/feature");
+    return { github, applied: gk.applyAction(action.approvalId, cache) };
+  }
+
+  it("refuses an auto-approvable push whose branch became protected while it waited", async () => {
+    const { github, applied } = await applyAfter(github => github.protectedBranches.add("feature"));
+    await expect(applied).rejects.toThrow(/has become the default or a protected branch/);
+    expect(github.receivePackExchanges).toHaveLength(0);
+  });
+
+  it("asks for a retry, not a discard, when the gate cannot be read at apply", async () => {
+    const { github, applied } = await applyAfter(github => { github.branchRulesStatus = 429; });
+    await expect(applied).rejects.toThrow(/Could not read whether branch "feature".*Try again/);
+    expect(github.receivePackExchanges).toHaveLength(0);
+  });
+
+  it("finds a push that landed before its reply was lost even once it gated its branch", async () => {
+    const { github, applied } = await applyAfter(github => {
+      github.branches.set("feature", HEAD1);
+      github.protectedBranches.add("feature");
+    });
+    await expect(applied).resolves.toBeUndefined();
+    expect(github.receivePackExchanges).toHaveLength(0);
+  });
+
+  it("refuses an auto-approvable push whose branch became the default while it waited", async () => {
+    const { github, applied } = await applyAfter(github => { github.defaultBranch = "feature"; });
+    await expect(applied).rejects.toThrow(/has become the default or a protected branch/);
+    expect(github.receivePackExchanges).toHaveLength(0);
+  });
+
+  it("send-packs the built pack with the queue-time CAS and marks the action applied", async () => {
+    const github = new FakeGitHub();
+    github.branches.set("main", BASE);
+    github.install();
+    const gk = await repoGatekeeper();
+    const cache = new TestGitCache().withAncestry(BASE, HEAD1);
+    const action = (await queuePush(gk, cache, new TestApprovalQueue(), "main", HEAD1))!;
+
+    github.respondToPush("unpack ok", "ok refs/heads/main");
+    await gk.applyAction(action.approvalId, cache);
+
+    expect(github.receivePackExchanges).toHaveLength(1);
+    const { commands, pack } = splitPushRequest(github.receivePackExchanges[0].body);
+    expect(commands).toHaveLength(1);
+    expect(commands[0]).toMatch(
+      new RegExp(`^${BASE} ${HEAD1} refs/heads/main\0report-status agent=`));
+    expect(pack).toEqual(PACK_BYTES);
+
+    // A re-delivered apply (the overseer crashed before persisting its completion record) is
+    // idempotent success: nothing is pushed again...
+    await gk.applyAction(action.approvalId, cache);
+    expect(github.receivePackExchanges).toHaveLength(1);
+    // ...and the simulation overlay is gone (the branch reads at whatever GitHub reports).
+    const page = await gk.listBranchesFirstPage(50);
+    expect(page).toContainEqual({ name: "main", headCommit: BASE, protected: false });
+  });
+
+  it("fails with branch-moved guidance when the CAS is rejected", async () => {
+    const github = new FakeGitHub();
+    github.branches.set("main", BASE);
+    github.install();
+    const gk = await repoGatekeeper();
+    const cache = new TestGitCache().withAncestry(BASE, HEAD1);
+    const action = (await queuePush(gk, cache, new TestApprovalQueue(), "main", HEAD1))!;
+
+    github.branches.set("main", OTHER);  // moved between approval and apply
+    github.respondToPush("unpack ok", "ng refs/heads/main fetch first");
+    await expect(gk.applyAction(action.approvalId, cache))
+      .rejects.toThrow(/has moved from/);
+  });
+
+  it("fails the same way for a force push -- the CAS is not loosened", async () => {
+    const github = new FakeGitHub();
+    github.branches.set("main", OTHER);
+    github.install();
+    const gk = await repoGatekeeper();
+    const cache = new TestGitCache().withAncestry(BASE, HEAD1);
+    const action = (await queuePush(gk, cache, new TestApprovalQueue(), "main", HEAD1, true))!;
+    expect(action.expectedOldSha).toBe(OTHER);
+
+    github.branches.set("main", BASE);  // moved again after approval
+    github.respondToPush("unpack ok", "ng refs/heads/main fetch first");
+    await expect(gk.applyAction(action.approvalId, cache))
+      .rejects.toThrow(/has moved from/);
+  });
+
+  it("fails a creation push whose branch appeared in the interim", async () => {
+    const github = new FakeGitHub();
+    github.install();
+    const gk = await repoGatekeeper();
+    const cache = new TestGitCache().withCommit(HEAD1, commitPayload([BASE], "x"));
+    const action = (await queuePush(gk, cache, new TestApprovalQueue(), "feature", HEAD1))!;
+
+    github.branches.set("feature", OTHER);  // created in the interim
+    github.respondToPush("unpack ok", "ng refs/heads/feature reference already exists");
+    await expect(gk.applyAction(action.approvalId, cache))
+      .rejects.toThrow(/was created after this push was queued/);
+  });
+
+  it("passes GitHub's reason through when it refuses an update whose CAS held", async () => {
+    const github = new FakeGitHub();
+    github.branches.set("main", BASE);
+    github.install();
+    const gk = await repoGatekeeper();
+    const cache = new TestGitCache().withAncestry(BASE, HEAD1);
+    const action = (await queuePush(gk, cache, new TestApprovalQueue(), "main", HEAD1))!;
+
+    github.respondToPush("unpack ok", "ng refs/heads/main protected branch hook declined");
+    await expect(gk.applyAction(action.approvalId, cache))
+      .rejects.toThrow("GitHub refused the push: protected branch hook declined");
+  });
+
+  it("names a discarded push as the reason a push stacked on it cannot apply", async () => {
+    const github = new FakeGitHub();
+    github.branches.set("main", BASE);
+    github.install();
+    const gk = await repoGatekeeper();
+    const cache = new TestGitCache().withAncestry(BASE, HEAD1).withAncestry(HEAD1, HEAD2);
+    const first = (await queuePush(gk, cache, new TestApprovalQueue(), "main", HEAD1))!;
+    const stacked = (await queuePush(gk, cache, new TestApprovalQueue(), "main", HEAD2))!;
+    expect(stacked.expectedOldSha).toBe(HEAD1);
+
+    await gk.rejectAction(first.approvalId);
+    github.respondToPush("unpack ok", "ng refs/heads/main fetch first");
+    await expect(gk.applyAction(stacked.approvalId, cache))
+      .rejects.toThrow(`it builds on ${HEAD1}, the head of a discarded push to "main"`);
+  });
+
+  it("treats the branch already being at newSha as success (desired state)", async () => {
+    const github = new FakeGitHub();
+    github.branches.set("main", BASE);
+    github.install();
+    const gk = await repoGatekeeper();
+    const cache = new TestGitCache().withAncestry(BASE, HEAD1);
+    const action = (await queuePush(gk, cache, new TestApprovalQueue(), "main", HEAD1))!;
+
+    // Whether an earlier attempt landed it (crash between push and completion record) or a third
+    // party pushed the identical commit: the approved end state holds, so apply succeeds.
+    github.branches.set("main", HEAD1);
+    github.respondToPush("unpack ok", "ng refs/heads/main fetch first");
+    await gk.applyAction(action.approvalId, cache);
+
+    // A re-delivered apply of the now-approved push succeeds without touching the remote, even
+    // if the branch has moved on since (the fake would throw on an unexpected receive-pack).
+    github.branches.set("main", OTHER);
+    await gk.applyAction(action.approvalId, cache);
+    expect(github.receivePackExchanges).toHaveLength(1);
+  });
+});
+
+describe("revert", () => {
+  it("rolls the branch back to the approved old head with an empty pack", async () => {
+    const github = new FakeGitHub();
+    github.branches.set("main", BASE);
+    github.install();
+    const gk = await repoGatekeeper();
+    const cache = new TestGitCache().withAncestry(BASE, HEAD1);
+    const action = (await queuePush(gk, cache, new TestApprovalQueue(), "main", HEAD1))!;
+    github.respondToPush("unpack ok", "ok refs/heads/main");
+    await gk.applyAction(action.approvalId, cache);
+
+    github.respondToPush("unpack ok", "ok refs/heads/main");
+    expect(await gk.revertAction(action.approvalId)).toBeUndefined();
+
+    const { commands, pack } = splitPushRequest(github.receivePackExchanges[1].body);
+    expect(commands[0]).toMatch(new RegExp(`^${HEAD1} ${BASE} refs/heads/main\0`));
+    // An empty pack: header ("PACK", version 2, zero objects) + SHA-1 trailer.
+    expect(pack).toHaveLength(32);
+    expect([...pack.subarray(0, 12)])
+      .toEqual([0x50, 0x41, 0x43, 0x4b, 0, 0, 0, 2, 0, 0, 0, 0]);
+  });
+
+  it("deletes a branch the push created, sending no pack", async () => {
+    const github = new FakeGitHub();
+    github.install();
+    const gk = await repoGatekeeper();
+    const cache = new TestGitCache().withCommit(HEAD1, commitPayload([BASE], "x"));
+    const action = (await queuePush(gk, cache, new TestApprovalQueue(), "feature", HEAD1))!;
+    github.respondToPush("unpack ok", "ok refs/heads/feature");
+    await gk.applyAction(action.approvalId, cache);
+
+    github.respondToPush("unpack ok", "ok refs/heads/feature");
+    expect(await gk.revertAction(action.approvalId)).toBeUndefined();
+
+    const { commands, pack } = splitPushRequest(github.receivePackExchanges[1].body);
+    expect(commands[0]).toMatch(new RegExp(`^${HEAD1} ${ZERO_OID} refs/heads/feature\0`));
+    expect(pack).toHaveLength(0);
+  });
+
+  it("reports (not throws) when the branch has moved on, and stomps nothing", async () => {
+    const github = new FakeGitHub();
+    github.branches.set("main", BASE);
+    github.install();
+    const gk = await repoGatekeeper();
+    const cache = new TestGitCache().withAncestry(BASE, HEAD1);
+    const action = (await queuePush(gk, cache, new TestApprovalQueue(), "main", HEAD1))!;
+    github.respondToPush("unpack ok", "ok refs/heads/main");
+    await gk.applyAction(action.approvalId, cache);
+
+    github.respondToPush("unpack ok", "ng refs/heads/main fetch first");
+    const result = await gk.revertAction(action.approvalId);
+    expect(result).toMatchObject({ canRetry: false });
+    expect((result as { message: string }).message).toMatch(/no longer at the pushed commit/);
+  });
+});

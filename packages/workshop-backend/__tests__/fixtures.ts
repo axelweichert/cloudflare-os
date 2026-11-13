@@ -5,10 +5,11 @@
 import { RpcStub as NativeRpcStub } from "cloudflare:workers";
 import { createTypedStorage, collection } from "@gadgets/typed-storage";
 import type { Collection, Singleton } from "@gadgets/typed-storage";
-import type { Overseer } from "@gadgets/workshop-shared/api";
-import { OverseerDurableObject, makeOverseerStorage } from "../src/overseer.js";
-import type { ActionRecord } from "../src/overseer.js";
+import type { CollaboratorAccess, Overseer } from "@gadgets/workshop-shared/api";
+import { OverseerDurableObject } from "../src/overseer.js";
+import { makeOverseerStorage, type ActionRecord } from "../src/storage-schema/overseer-storage.js";
 import { makeMockStorage } from "./mock-storage.js";
+import {SessionWatchers} from "../src/session-watchers";
 
 /**
  * The production schema over mock storage, so the action suites (auto-approval drain, pending
@@ -67,38 +68,56 @@ export function putAction(
 
 /**
  * Forges a client interface over the given storage via open(). `role` picks the returned
- * interface class ("build" opens as the owner); `exports` supplies any ctx.exports entries the
- * exercised paths dereference.
+ * interface class ("build" opens as `ownerId`); `access` is a "use" viewer's effective access
+ * (default: no gadget); `exports` supplies any ctx.exports entries the
+ * exercised paths dereference; `impl` overrides individual members of the forged impl (e.g. to
+ * delegate one method to a real OverseerImpl under test).
  */
 export async function openFakeOverseer(
     storage: object,
-    opts: { role?: "build" | "use", exports?: object } = {}): Promise<Overseer> {
+    opts: { role?: "build" | "use", access?: CollaboratorAccess, ownerId?: string, userId?: string, exports?: object,
+            impl?: object } = {}): Promise<Overseer> {
   let role = opts.role ?? "build";
-  let ownerId = "owner-id";
-  let userId = role === "build" ? ownerId : "viewer-id";
+  let access: CollaboratorAccess = role === "build"
+      ? { role: "build" } : opts.access ?? { role: "use", gadgetIds: [] };
+  let ownerId = opts.ownerId ?? "owner-id";
+  let userId = opts.userId ?? (role === "build" ? ownerId : "viewer-id");
   let overseer = {
     open: OverseerDurableObject.prototype.open,
     impl: {
       ownerId,
+      assertGatekeeperUsable: () => {},
+      sessionWatchers: new SessionWatchers(),
       ensureAmbientCapsules: async () => {},
       markOutputsDirty: () => {},
+      trackUnreadReader: () => {},
+      joinSession: () => () => {},
       joinPresence: () => () => {},
       joinOutputsFanout: () => () => {},
       ensureObserver: async () => {},
       syncOutputsTo: async () => {},
-      getSharingManager: async () => ({ getEffectiveRole: () => role }),
+      recordGadgetAnalytics: () => {},
+      outputsSnapshot: () => [],
+      wrapUserDo: (stub: unknown) => stub,
+      // What open() consults for a non-owner's access: the permission-graph lookup and (for
+      // "build") observer verification in one. The sharing manager is still reached, but only to
+      // redeem a share key, which these tests never pass.
+      authorizeCollaborator: async () => access,
+      getSharingManager: async () => ({}),
       ctx: { id: { toString: () => "workspace-id" }, exports: opts.exports ?? {} },
       users: {
         idFromString: (id: string) => id,
         get: () => ({
           whoami: async () => ({ id: "profile-id", name: "Test User" }),
-          recordSharedGadgetOpen: async () => {},
+          recordSharedWorkspaceOpen: async () => {},
         }),
       },
       storage: Object.assign(storage, {
-        prohibitAllSharing: { get: () => false },
+        deleting: { get: () => false },
+        containsRestrictedData: { get: () => false },
         title: { get: () => "Test Workspace" },
       }),
+      ...opts.impl,
     },
   } satisfies Pick<OverseerDurableObject, "open"> & { impl: object };
   return overseer.open(userId, `${userId}-profile`, new NativeRpcStub<() => void>(() => {}));

@@ -1,0 +1,170 @@
+import { useEffect, useRef, useState } from "react";
+import type { RpcStub } from "capnweb";
+import type { ChatAttachmentHandle, Overseer } from "@gadgets/workshop-shared/api";
+import { reportIssue } from "../../../../errorReporting";
+import { formatAttachmentSize } from "../../attachmentFormatting";
+import {
+  MAX_CHAT_ATTACHMENT_TOTAL_BYTES,
+  prepareChatAttachment,
+} from "./prepareChatAttachment";
+
+export const MAX_COMPOSER_ATTACHMENTS = 5;
+
+export type ComposerAttachment = {
+  id: string;
+  blob: Blob;
+  name?: string;
+  previewUrl?: string;
+  mimeType: string;
+  uploadState: "uploading" | "ready" | "error";
+  ref?: ChatAttachmentHandle;
+  error?: string;
+};
+
+type ComposerAttachmentsOptions = {
+  getOverseer: () => Promise<RpcStub<Overseer>> | RpcStub<Overseer>;
+  onError: (message: string) => void;
+};
+
+const errorMessage = (error: unknown, fallback: string) =>
+  error instanceof Error && error.message ? error.message : fallback;
+
+export const useComposerAttachments = ({
+  getOverseer,
+  onError,
+}: ComposerAttachmentsOptions) => {
+  const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
+  const attachmentsRef = useRef<ComposerAttachment[]>([]);
+  const mountedRef = useRef(true);
+  const getOverseerRef = useRef(getOverseer);
+  const onErrorRef = useRef(onError);
+  getOverseerRef.current = getOverseer;
+  onErrorRef.current = onError;
+
+  const updateAttachments = (
+    update: (current: ComposerAttachment[]) => ComposerAttachment[],
+  ) => {
+    const next = update(attachmentsRef.current);
+    attachmentsRef.current = next;
+    setAttachments(next);
+  };
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      const abandoned = attachmentsRef.current;
+      attachmentsRef.current = [];
+      for (const attachment of abandoned) {
+        if (attachment.previewUrl) URL.revokeObjectURL(attachment.previewUrl);
+      }
+    };
+  }, []);
+
+  const uploadAttachment = async (
+    id: string,
+    blob: Blob,
+    mimeType: string,
+    name: string | undefined,
+  ) => {
+    try {
+      const overseer = await getOverseerRef.current();
+      if (!mountedRef.current || !attachmentsRef.current.some((item) => item.id === id)) return;
+      // Streamed, so no upload needs the whole file in memory at either end.
+      const oid = await overseer.uploadBlob({ stream: blob.stream(), byteLength: blob.size });
+      if (!mountedRef.current || !attachmentsRef.current.some((item) => item.id === id)) {
+        return;
+      }
+      const ref: ChatAttachmentHandle = {oid, mimeType, name};
+      updateAttachments((current) => current.map((item) =>
+        item.id === id ? { ...item, uploadState: "ready", ref } : item));
+    } catch (error) {
+      if (!mountedRef.current || !attachmentsRef.current.some((item) => item.id === id)) return;
+      console.error("Failed to upload chat attachment:", error);
+      reportIssue("chat.attachment-upload", error);
+      const message = errorMessage(error, "Hochladen fehlgeschlagen");
+      updateAttachments((current) => current.map((item) =>
+        item.id === id ? { ...item, uploadState: "error", error: message } : item));
+      onErrorRef.current(errorMessage(error, "Anhang konnte nicht hochgeladen werden"));
+    }
+  };
+
+  const addFiles = async (files: FileList | File[]) => {
+    const candidates = Array.from(files);
+    const initialRoom = MAX_COMPOSER_ATTACHMENTS - attachmentsRef.current.length;
+    if (initialRoom <= 0) {
+      onErrorRef.current(`Du kannst bis zu ${MAX_COMPOSER_ATTACHMENTS} Anhänge hinzufügen`);
+      return;
+    }
+    const accepted = candidates.slice(0, initialRoom);
+    if (candidates.length > initialRoom) {
+      onErrorRef.current(initialRoom === 1
+        ? "Nur der erste Anhang wurde hinzugefügt"
+        : `Nur die ersten ${initialRoom} Anhänge wurden hinzugefügt`);
+    }
+
+    const prepared = await Promise.allSettled(accepted.map(async (file) => ({
+      file,
+      ...(await prepareChatAttachment(file)),
+    })));
+    if (!mountedRef.current) return;
+
+    for (const result of prepared) {
+      if (result.status === "rejected") {
+        console.error("Failed to process chat attachment:", result.reason);
+        onErrorRef.current(errorMessage(result.reason, "Anhang konnte nicht verarbeitet werden"));
+        continue;
+      }
+
+      const { file, blob, mimeType } = result.value;
+      if (attachmentsRef.current.length >= MAX_COMPOSER_ATTACHMENTS) {
+        onErrorRef.current(`Du kannst bis zu ${MAX_COMPOSER_ATTACHMENTS} Anhänge hinzufügen`);
+        continue;
+      }
+      const totalBytes = attachmentsRef.current.reduce(
+        (sum, attachment) => sum + attachment.blob.size,
+        0,
+      );
+      if (totalBytes + blob.size > MAX_CHAT_ATTACHMENT_TOTAL_BYTES) {
+        onErrorRef.current(
+          `Angehängte Dateien dürfen zusammen höchstens ${formatAttachmentSize(MAX_CHAT_ATTACHMENT_TOTAL_BYTES)} groß sein`,
+        );
+        continue;
+      }
+
+      const id = crypto.randomUUID();
+      const previewUrl = mimeType.startsWith("image/") ? URL.createObjectURL(blob) : undefined;
+      const attachment: ComposerAttachment = {
+        id,
+        blob,
+        mimeType,
+        name: file.name || undefined,
+        previewUrl,
+        uploadState: "uploading",
+      };
+      updateAttachments((current) => [...current, attachment]);
+      void uploadAttachment(id, blob, mimeType, file.name || undefined);
+    }
+  };
+
+  const removeAttachment = (id: string) => {
+    const attachment = attachmentsRef.current.find((item) => item.id === id);
+    if (attachment?.previewUrl) URL.revokeObjectURL(attachment.previewUrl);
+    updateAttachments((current) => current.filter((item) => item.id !== id));
+  };
+
+  const clearSentAttachments = (sent: readonly ComposerAttachment[]) => {
+    const sentIds = new Set(sent.map((attachment) => attachment.id));
+    for (const attachment of sent) {
+      if (attachment.previewUrl) URL.revokeObjectURL(attachment.previewUrl);
+    }
+    updateAttachments((current) => current.filter((attachment) => !sentIds.has(attachment.id)));
+  };
+
+  return {
+    attachments,
+    addFiles,
+    clearSentAttachments,
+    removeAttachment,
+  };
+};

@@ -128,6 +128,7 @@ export const de: Record<TKey, string> = {
 
   // ── chat ─────────────────────────────────────────────────────────
   'chat.composer.waitingAgent': 'Warte auf Agenten…',
+  'chat.composer.steerWhileWorking': 'Schreib dem Agenten, während er arbeitet…',
   'chat.composer.newConversation': 'Neue Unterhaltung starten…',
   'chat.composer.followUp': 'Stelle eine Anschlussfrage…',
   'chat.composer.showThinking': 'Denkprozess anzeigen',

@@ -6,7 +6,8 @@
 // instantiates a gatekeeper in production.
 
 import { DurableObject, RpcStub, RpcTarget } from "cloudflare:workers";
-import type { GatekeeperUserVerifier } from "@gadgets/workshop-shared/gatekeeper";
+import type { GatekeeperUserVerifier, GitCache, GitObjectType, GitOid }
+  from "@gadgets/workshop-shared/gatekeeper";
 import type { CloudflareObservabilityGatekeeper } from "../src/cloudflare.js";
 
 export { default } from "../src/cloudflare.js";
@@ -18,13 +19,41 @@ type GatekeeperProps = {
   workerName?: string;
 };
 
-type TestExports = {
+export type TestExports = {
   CloudflareObservabilityGatekeeper(options: { props: GatekeeperProps }):
     DurableObjectClass<CloudflareObservabilityGatekeeper>;
 };
 
-/** Stands in for another user's Cloudflare account during an observer admission check. */
+/**
+ * Stands in for the git cache the overseer passes to `applyAction()`. This read-only gatekeeper
+ * never touches it, so every method just throws.
+ */
+class TestGitCache extends RpcTarget implements GitCache {
+  async get(_id: GitOid): Promise<{type: GitObjectType, content: Uint8Array} | null> {
+    throw new Error("not implemented");
+  }
+  async has(_id: GitOid): Promise<boolean> { throw new Error("not implemented"); }
+  async stat(_id: GitOid): Promise<{type: GitObjectType, size: number} | null> {
+    throw new Error("not implemented");
+  }
+  async put(_type: GitObjectType, _content: Uint8Array): Promise<GitOid> {
+    throw new Error("not implemented");
+  }
+  async advertiseCommit(_commitId: GitOid): Promise<void> { throw new Error("not implemented"); }
+  async buildPack(): Promise<ReadableStream<Uint8Array>> { throw new Error("not implemented"); }
+  async consumePack(_pack: ReadableStream<Uint8Array>): Promise<GitOid[]> {
+    throw new Error("not implemented");
+  }
+  async isAncestor(_ancestor: GitOid, _descendant: GitOid): Promise<boolean> {
+    throw new Error("not implemented");
+  }
+}
+
+/** Stands in for another user's Cloudflare account during an observer access check. */
 class TestVerifier extends RpcTarget {
+  /** The account IDs `checkTelemetryAccess` was asked about, in order. */
+  readonly asked: string[] = [];
+
   constructor(private readonly outcome: boolean | string) {
     super();
   }
@@ -32,6 +61,12 @@ class TestVerifier extends RpcTarget {
   async hasObservabilityAccess(): Promise<boolean> {
     if (typeof this.outcome === "string") throw new Error(this.outcome);
     return this.outcome;
+  }
+
+  async checkTelemetryAccess(accountIds: string[]): Promise<boolean[]> {
+    this.asked.push(...accountIds);
+    if (typeof this.outcome === "string") throw new Error(this.outcome);
+    return accountIds.map(() => this.outcome === true);
   }
 }
 
@@ -62,6 +97,28 @@ export class TestHooks extends DurableObject<Env> {
     }
   }
 
+  /**
+   * Run `verifyObserverAccess` for observers, keyed by ID, whose verifiers have known answers.
+   * Returns the allowed observer IDs or the thrown message, and what each verifier was asked.
+   */
+  async verifyObserverAccess(
+    facetName: string, props: GatekeeperProps,
+    outcomes: Record<string, boolean | string>, subresources: string[],
+  ): Promise<{ result: string[] | string; asked: Record<string, string[]> }> {
+    const verifiers = Object.entries(outcomes).map(([id, outcome]) => ({ id, target: new TestVerifier(outcome) }));
+    const observers = verifiers.map(({ id, target }) => ({
+      id, verifier: new RpcStub(target) as unknown as Fetcher<GatekeeperUserVerifier>,
+    }));
+    let result: string[] | string;
+    try {
+      ({ allowedObserverIds: result } =
+        await this.#gatekeeper(facetName, props).verifyObserverAccess(observers, subresources));
+    } catch (error) {
+      result = error instanceof Error ? error.message : String(error);
+    }
+    return { result, asked: Object.fromEntries(verifiers.map(({ id, target }) => [id, target.asked])) };
+  }
+
   /** The resource description for a binding, which encodes the account/Worker split. */
   async describeResource(
     facetName: string, props: GatekeeperProps,
@@ -74,7 +131,10 @@ export class TestHooks extends DurableObject<Env> {
   /** Confirms the read-only resource refuses every mutating gatekeeper operation. */
   async applyActionMessage(facetName: string, props: GatekeeperProps): Promise<string> {
     try {
-      await this.#gatekeeper(facetName, props).applyAction(1);
+      // The overseer always passes an action-scoped git cache with the apply call, and the
+      // validator (sharpened by the `Gatekeeper` interface) requires it, so the test passes a
+      // stand-in the same way.
+      await this.#gatekeeper(facetName, props).applyAction(1, new RpcStub(new TestGitCache()));
       return "did not throw";
     } catch (error) {
       return error instanceof Error ? error.message : String(error);

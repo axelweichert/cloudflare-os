@@ -460,6 +460,27 @@ Die eigentliche Übernahme läuft ausschließlich über den Overlay-Re-apply-Upg
 
 ---
 
+### Sync 2026-11-13 — `[currency-sync:966a3518]` Voll-Merge (OWL-2477)
+
+- **Befund:** `origin/main` teilt sehr wohl Historie mit upstream (`git merge-base` =
+  `1dc84421`, 2026-08-25). Die frühere Annahme „Snapshot ohne gemeinsame Historie“ war falsch;
+  deshalb diesmal **echter `git merge upstream/main`** statt semantischer Ports.
+- **Umfang:** 399 Upstream-Commits `1dc84421..966a3518`. Die Backports #298/#334/#344 und
+  OWL-1715 gehen in den Upstream-Fassungen auf.
+- **Konfliktregel wie §3:** Upstream-Logik übernommen, DE-Oberfläche und DE-Backend-Meldungen
+  behalten, eigene Gatekeeper (Etsy, owlOS, UniFi) und Deploy-Riegel behalten.
+- **Neu im Fork wegen Upstream-Umbau:** Worker-Configs entstehen jetzt aus `cloudflare.config.ts`
+  (`pnpm configs:generate`). Die Wurzel-`wrangler.jsonc` bleibt die handgeschriebene Prod-Config
+  des Routers; die Wurzel-`cloudflare.config.ts` erzeugt `wrangler.dev-base.jsonc`. Etsy, owlOS
+  und UniFi haben eigene `cloudflare.config.ts`. `workers_dev`/`preview_urls` stehen zentral auf
+  `false` (Board-Regel OWL-2362).
+- **Deploy-relevant:** Backend-Migrationen `v3` (`UserDirectoryDurableObject`) und `v4`
+  (`AdminAuditDurableObject`), Binding `CF_VERSION_METADATA`, Kompatibilitätsdatum `2026-09-04`
+  in `wrangler.prod.jsonc` nachgetragen.
+- **Sicherungspunkt:** Tag `pre-sync-2026-11-13` auf `d24d7b4d` (vorheriges `main`).
+
+---
+
 ## 11. Vendorierte Upstream-Pakete (OWL-1583, 2026-09-22)
 
 Board-Befund OWL-1582: „ein Gatekeeper aus dem Upstream soll in der Auswahl

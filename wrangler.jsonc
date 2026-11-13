@@ -1,3 +1,5 @@
+// Generated from cloudflare.config.ts by scripts/generate-worker-configs.ts -- do not edit.
+// Change cloudflare.config.ts and run `pnpm configs:generate`.
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
 
@@ -20,7 +22,12 @@
   // was not found`.
   "name": "cloudflareos",
   "main": "packages/router/src/index.ts",
-  "compatibility_date": "2026-02-02",
+  // Upstream's repo-wide date (scripts/worker-config.ts COMPATIBILITY_DATE), OWL-2477.
+  "compatibility_date": "2026-09-04",
+
+  // Board rule OWL-2362: never reachable on workers.dev or preview URLs.
+  "workers_dev": false,
+  "preview_urls": false,
 
   "services": [
     { "binding": "WORKSHOP_BACKEND", "service": "cloudflareos-backend" },

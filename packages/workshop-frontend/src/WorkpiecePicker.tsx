@@ -1,10 +1,13 @@
 import { useState } from 'react'
-import { CaretLeft, CaretRight, Check, Lightning, PencilSimple, Pulse, X } from '@phosphor-icons/react'
+import {
+  CaretLeft, CaretRight, Check, GitBranch, Lightning, PencilSimple, Pulse, X,
+} from '@phosphor-icons/react'
 import { FormatGlyph } from './components/format/FormatVisuals'
 import { Tooltip } from '@cloudflare/kumo'
-import type { WorkpieceId, WorkpieceSummary } from '@gadgets/workshop-shared/api'
+import type { GadgetSummary, WorkpieceId, WorktreeSummary } from '@gadgets/workshop-shared/api'
 import { CountBadge } from './components/CountBadge'
 import { WorkshopIconButton, WorkshopInput } from './components/WorkshopControls'
+import { GadgetContextMenu } from './features/gadget-deletion/GadgetContextMenu'
 import { isImeComposing } from './keyboardEvent'
 
 export const WORKPIECE_RAIL_COLLAPSED_WIDTH = 48
@@ -12,7 +15,10 @@ export const WORKPIECE_RAIL_EXPANDED_WIDTH = 220
 
 interface WorkpiecePickerProps {
   // Draft apps remain listed globally; selecting one returns to its creating conversation.
-  gadgets: WorkpieceSummary[]
+  gadgets: GadgetSummary[]
+  // Worktrees are listed the same way, in their own group after the apps: each belongs to one
+  // conversation, and selecting it returns there.
+  worktrees: WorktreeSummary[]
   selectedId: WorkpieceId | null
   // The gadget the agent is currently streaming edits into, if any. Shown as an activity dot when
   // it isn't the selected one (e.g. because the user pinned their selection mid-turn).
@@ -23,12 +29,15 @@ interface WorkpiecePickerProps {
   onExpandedChange: (expanded: boolean) => void
   onSelect: (id: WorkpieceId) => void
   onRename: (id: WorkpieceId, title: string) => void
+  // Asks to delete a gadget, from its right-click menu; the caller confirms it.
+  onDelete: (gadget: GadgetSummary) => void
   pendingActivityCount: number
   onOpenActivity: () => void
 }
 
 export default function WorkpiecePicker({
   gadgets,
+  worktrees,
   selectedId,
   agentEditingId,
   hookedGadgetIds,
@@ -36,6 +45,7 @@ export default function WorkpiecePicker({
   onExpandedChange,
   onSelect,
   onRename,
+  onDelete,
   pendingActivityCount,
   onOpenActivity,
 }: WorkpiecePickerProps) {
@@ -115,15 +125,14 @@ export default function WorkpiecePicker({
             )
           }
 
-          return (
+          const row = (
             <div
-              key={gadget.id}
               className={`group/workpiece flex items-center rounded-lg text-[13px] leading-[18px] tracking-[-0.25px] transition-colors ${
                 expanded ? 'h-8 gap-1 pl-2 pr-1' : 'h-9 w-9 justify-center self-center'
               } ${
                 isSelected
                   ? 'bg-kumo-fill font-medium text-kumo-strong'
-                  : 'text-kumo-default hover:bg-kumo-tint'
+                  : 'text-kumo-default hover:bg-kumo-tint data-[popup-open]:bg-kumo-tint'
               }`}
             >
               <Tooltip content={`${gadget.title}${!expanded && isPending ? ' (Entwurf)' : ''}${hasHook ? ' · Hooks aktiviert' : ''}`} asChild>
@@ -183,7 +192,62 @@ export default function WorkpiecePicker({
               )}
             </div>
           )
+
+          return (
+            <GadgetContextMenu key={gadget.id} trigger={row} onDelete={() => onDelete(gadget)} />
+          )
         })}
+
+        {worktrees.length > 0 && (
+          <>
+            {expanded ? (
+              <span className="mt-3 mb-1 px-2 text-[11px] font-medium uppercase tracking-[0.06em] text-kumo-inactive">
+                Worktrees
+              </span>
+            ) : (
+              <span aria-hidden="true" className="mx-2 mt-2 mb-1.5 border-t border-kumo-line" />
+            )}
+            {worktrees.map(worktree => {
+              const isSelected = worktree.id === selectedId
+              const isAgentEditing = agentEditingId === worktree.id && !isSelected
+              return (
+                <div
+                  key={worktree.id}
+                  className={`flex items-center rounded-lg text-[13px] leading-[18px] tracking-[-0.25px] transition-colors ${
+                    expanded ? 'h-8 gap-1 pl-2 pr-1' : 'h-9 w-9 justify-center self-center'
+                  } ${
+                    isSelected
+                      ? 'bg-kumo-fill font-medium text-kumo-strong'
+                      : 'text-kumo-default hover:bg-kumo-tint'
+                  }`}
+                >
+                  <Tooltip content={worktree.title} asChild>
+                    <button
+                      type="button"
+                      onClick={() => onSelect(worktree.id)}
+                      className={`relative flex min-w-0 cursor-pointer items-center text-left ${
+                        expanded ? 'flex-1 gap-2' : 'h-full w-full justify-center'
+                      }`}
+                      aria-current={isSelected ? 'true' : undefined}
+                    >
+                      <GitBranch
+                        size={expanded ? 15 : 17}
+                        className={`flex-shrink-0 ${isSelected ? 'text-kumo-strong' : 'text-kumo-inactive'}`}
+                        weight={isSelected ? 'fill' : 'regular'}
+                      />
+                      {expanded && (
+                        <span className="min-w-0 flex-1 truncate">{worktree.title}</span>
+                      )}
+                      {isAgentEditing && (
+                        <span className={`${expanded ? '' : 'absolute right-1 top-1'} h-1.5 w-1.5 flex-shrink-0 animate-pulse rounded-full bg-kumo-brand`} />
+                      )}
+                    </button>
+                  </Tooltip>
+                </div>
+              )
+            })}
+          </>
+        )}
 
         <Tooltip content="Aktivität anzeigen" asChild>
           <button

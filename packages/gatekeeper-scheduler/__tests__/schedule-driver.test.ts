@@ -6,13 +6,13 @@ import {
   runInDurableObject,
 } from "cloudflare:test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { HookInitiator } from "@gadgets/workshop-shared/gatekeeper";
-import { reportIssue } from "@gadgets/backend-utils/error-reporting";
+import type { HookInitiator, ObservationDescription } from "@gadgets/workshop-shared/gatekeeper";
+import { reportIssue } from "@gadgets/observability/error-reporting";
 import type { ScheduledTaskHook } from "../src/types.js";
 import { ScheduleDriver } from "../src/schedule-driver.js";
 import type { ScheduleActivation, StoredSchedule } from "../src/schedule-driver.js";
 
-vi.mock("@gadgets/backend-utils/error-reporting", () => ({ reportIssue: vi.fn() }));
+vi.mock("@gadgets/observability/error-reporting", () => ({ reportIssue: vi.fn() }));
 
 type ScheduleHookTarget = RpcTarget & ScheduledTaskHook;
 
@@ -21,8 +21,10 @@ type TestHooks = HookInitiator<ScheduleHookTarget> & {
     mode: "success" | "start-reject" | "authorization-reject" | "callback-reject",
   ): Promise<void>;
   blockAt(point: "start" | "authorization" | "callback"): Promise<void>;
+  holdCallbacksUntilConcurrent(count: number): Promise<void>;
   read(): Promise<{
     events: string[];
+    observations: ObservationDescription[];
     callbackScheduleIds: string[];
     maxActiveCallbacks: number;
     disposedApprovalQueues: number;
@@ -30,6 +32,10 @@ type TestHooks = HookInitiator<ScheduleHookTarget> & {
   }>;
   release(): Promise<void>;
   reset(): Promise<void>;
+  waitForDisposals(
+    target: { approvalQueues: number; callbacks: number },
+    budgetMs: number,
+  ): Promise<void>;
   waitUntilBlocked(): Promise<void>;
 };
 
@@ -187,11 +193,13 @@ describe("ScheduleDriver", () => {
 
     const stored = await driver.getSchedule("workspace-a", "schedule-a");
     expect(stored?.state).toMatchObject({ status: "active" });
-    expect((await testEnv.TEST_HOOKS.read()).events.map((event) => event.split(":")[0])).toEqual([
+    const hook = await testEnv.TEST_HOOKS.read();
+    expect(hook.events.map((event) => event.split(":")[0])).toEqual([
       "start",
       "authorize",
       "callback",
     ]);
+    expect(hook.observations).toMatchObject([{ subresources: [] }]);
   });
 
   it("completes consecutive Sunday and Wednesday deliveries for a weekly schedule", async () => {
@@ -318,12 +326,7 @@ describe("ScheduleDriver", () => {
     expect(
       (await testEnv.TEST_HOOKS.read()).events.filter((event) => event.startsWith("callback:")),
     ).toHaveLength(2);
-    await vi.waitFor(async () => {
-      expect(await testEnv.TEST_HOOKS.read()).toMatchObject({
-        disposedApprovalQueues: 2,
-        disposedCallbacks: 2,
-      });
-    }, { timeout: 5_000 });
+    await testEnv.TEST_HOOKS.waitForDisposals({ approvalQueues: 2, callbacks: 2 }, 2_000);
 
     await driver.disable("workspace-a", "schedule-a");
     const keys = await runInDurableObject(driver, (_instance, state) =>
@@ -540,12 +543,7 @@ describe("ScheduleDriver", () => {
       "authorize",
       `callback:${runId}`,
     ]);
-    await vi.waitFor(async () => {
-      expect(await testEnv.TEST_HOOKS.read()).toMatchObject({
-        disposedApprovalQueues: 2,
-        disposedCallbacks: 2,
-      });
-    }, { timeout: 5_000 });
+    await testEnv.TEST_HOOKS.waitForDisposals({ approvalQueues: 2, callbacks: 2 }, 2_000);
     expect(reportIssue).not.toHaveBeenCalled();
   });
 
@@ -674,7 +672,7 @@ describe("ScheduleDriver", () => {
     expect((await testEnv.TEST_HOOKS.read()).events).toEqual([]);
   });
 
-  // These input-gate interruption tests can deadlock vitest-pool-workers during teardown.
+  // These input-gate interruption tests can deadlock `@cloudflare/vitest-plugin` during teardown.
   // See https://github.com/cloudflare/workers-sdk/issues/14180.
   it.skip("stops before authorization when revoked during startHook", async () => {
     const events = await revokeWhileDeliveryIsBlocked("revoke-start", "start");
@@ -724,6 +722,7 @@ describe("ScheduleDriver", () => {
         }
       });
     });
+    await testEnv.TEST_HOOKS.holdCallbacksUntilConcurrent(4);
 
     await runDurableObjectAlarm(driver);
     await vi.waitFor(async () => {
@@ -833,29 +832,42 @@ describe("ScheduleDriver", () => {
         },
         activationTime,
       );
-      await makeActiveScheduleDue(driver, "workspace-a", scheduleId);
     }
-    await updateSchedule(driver, "workspace-a", "broken", (stored) => ({
-      ...stored,
-      state: {
-        ...stored.state,
-        spec: { kind: "interval", everyMs: 0, anchorMs: activationTime },
-      },
-    }));
+    // Only after every enable: one that ran with a row already due would plan a real alarm for
+    // now, which could deliver "broken" with its valid spec before the spec below is broken.
+    const plannedAlarm = await runInDurableObject(driver, (_instance, state) => {
+      state.storage.transactionSync(() => {
+        for (const [key, stored] of state.storage.kv.list<StoredSchedule>({
+          prefix: "schedule:",
+        })) {
+          if (stored.state.status !== "active") throw new Error("Expected active schedule");
+          const spec =
+            stored.state.scheduleId === "broken"
+              ? { kind: "interval" as const, everyMs: 0, anchorMs: activationTime }
+              : stored.state.spec;
+          state.storage.kv.put<StoredSchedule>(key, {
+            ...stored,
+            state: { ...stored.state, spec, nextFire: 1 },
+          });
+        }
+      });
+      return state.storage.getAlarm();
+    });
+    expect(plannedAlarm).toBe(activationTime + 60_000);
 
     await expect(runDurableObjectAlarm(driver)).resolves.toBe(true);
-    await vi.waitFor(async () => {
-      const healthy = await driver.getSchedule("workspace-a", "healthy");
-      expect(healthy?.state.status === "active" ? healthy.state.nextFire : 0).toBeGreaterThan(
-        activationTime,
-      );
+    const healthy = await driver.getSchedule("workspace-a", "healthy");
+    expect(healthy?.state.status === "active" ? healthy.state.nextFire : 0).toBeGreaterThan(
+      activationTime,
+    );
+    // The throw is admission's next-fire computation, so "broken" never reaches its callback.
+    expect((await driver.getSchedule("workspace-a", "broken"))?.state).toMatchObject({
+      status: "pending",
+      stage: "admission",
     });
-    expect((await driver.getSchedule("workspace-a", "broken"))?.state.status).toBe("pending");
-    expect(
-      (await testEnv.TEST_HOOKS.read()).callbackScheduleIds.filter(
-        (scheduleId) => scheduleId === "healthy",
-      ),
-    ).toHaveLength(1);
+    const delivery = await testEnv.TEST_HOOKS.read();
+    expect(delivery.events.filter((event) => event === "start")).toHaveLength(2);
+    expect(delivery.callbackScheduleIds).toEqual(["healthy"]);
     expect(reportIssue).toHaveBeenCalledWith(
       "scheduler.delivery",
       expect.anything(),
@@ -985,11 +997,14 @@ describe("ScheduleDriver", () => {
 
   it("does not replace an existing earlier alarm when enable validation fails", async () => {
     const driver = testEnv.SCHEDULE_DRIVER.getByName("failed-enable-alarm");
-    const now = Date.now();
-    const earlierAlarm = now + 1_000;
 
     const result = await runInDurableObject(driver, async (instance, state) => {
+      // Read the clock in the object: workerd moves a past alarm to now. A minute out, the alarm
+      // can't fire during the test and stays inside enable's five-minute recovery deadline.
+      const now = Date.now();
+      const earlierAlarm = now + 60_000;
       await state.storage.setAlarm(earlierAlarm);
+      const armed = await state.storage.getAlarm();
       let message = "did not reject";
       try {
         await instance.enable(
@@ -1007,11 +1022,12 @@ describe("ScheduleDriver", () => {
       } catch (error) {
         message = error instanceof Error ? error.message : String(error);
       }
-      return { message, alarm: await state.storage.getAlarm() };
+      return { earlierAlarm, armed, message, alarm: await state.storage.getAlarm() };
     });
 
+    expect(result.armed).toBe(result.earlierAlarm);
     expect(result.message).toContain("positive safe integer");
-    expect(result.alarm).toBe(earlierAlarm);
+    expect(result.alarm).toBe(result.earlierAlarm);
   });
 
   it("keeps a committed enable when precise alarm replanning fails", async () => {

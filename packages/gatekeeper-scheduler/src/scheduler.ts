@@ -20,12 +20,12 @@ import type {
   HookController,
   HookInitiator,
   HookTargetMetadata,
-  ObservationAuthorizer,
   ResourceConfiguratorFrame,
   ResourceDescription,
   SupportedResource,
   VendorDescription,
 } from "@gadgets/workshop-shared/gatekeeper";
+import { workerVersionTag } from "@gadgets/workshop-shared/gatekeeper";
 import {
   normalizeCalendarRule,
   normalizeInterval,
@@ -35,6 +35,7 @@ import {
 import { ScheduleDriver } from "./schedule-driver.js";
 import type { ScheduleSpec } from "./schedule-types.js";
 import type { ManagementListOptions, ManagementSchedulePage } from "./management.js";
+import type { ScheduleManagementApi as ScheduleManagementApiShape } from "./management-types.js";
 import type {
   CalendarRule,
   NormalizedScheduleOccurrences,
@@ -145,6 +146,7 @@ export class ScheduleSessionImpl extends RpcTarget implements ScheduleSession {
     await this.#approvalQueue.authorizeObservation({
       title: "List scheduled tasks",
       description: "List enabled schedules for this workspace.",
+      subresources: [],
     });
     return schedules;
   }
@@ -269,9 +271,7 @@ export class SchedulerGatekeeper
   }
 
   /** Returns no catalog because schedule discovery happens through list(). */
-  async getAgentCatalog(
-    _authorizer: NativeRpcStub<ObservationAuthorizer>,
-  ): Promise<AgentCatalog | null> {
+  async getAgentCatalog(): Promise<AgentCatalog | null> {
     return null;
   }
 
@@ -280,6 +280,14 @@ export class SchedulerGatekeeper
 
   /** Removes a collaborator; no observer state is retained. */
   async removeObserver(_id: string): Promise<void> {}
+
+  /** Allows every observer under the low-stakes observer policy. */
+  async verifyObserverAccess(
+    observers: { id: string; verifier: Fetcher<GatekeeperUserVerifier> }[],
+    _subresources: string[],
+  ): Promise<{ allowedObserverIds: string[] }> {
+    return { allowedObserverIds: observers.map((observer) => observer.id) };
+  }
 
   /** Rejects action application because the scheduler is read-only. */
   applyAction(_action: number): Promise<void> {
@@ -299,8 +307,9 @@ export class SchedulerGatekeeper
   }
 }
 
+/** The account's {@link ScheduleManagementApiShape}, over its driver. */
 @validateRpc()
-export class ScheduleManagementApi extends RpcTarget {
+export class ScheduleManagementApi extends RpcTarget implements ScheduleManagementApiShape {
   constructor(private readonly driver: Pick<ScheduleDriver, "listAccount">) {
     super();
   }
@@ -374,6 +383,11 @@ export class ScheduleAccount
     throw new Error("Scheduled Tasks has no connect flow.");
   }
 
+  /** Rejects commit because no flow can ever stage credentials. */
+  commitReconnect(_stageId: string): Promise<void> {
+    throw new Error("Scheduled Tasks has no connect flow.");
+  }
+
   /** Returns no authentication identity. */
   async getAuthenticatedEmail(): Promise<string | null> {
     return null;
@@ -411,6 +425,11 @@ export class GatekeeperVendor extends WorkerEntrypoint<Cloudflare.Env> {
       autoProvisionsAccount: true,
       providesAuth: false,
     };
+  }
+
+  /** The version tag of this Worker's running version, for the deployment's admins. */
+  async versionTag(): Promise<string | undefined> {
+    return workerVersionTag(this.env);
   }
 
   /** Mints a new opaque Scheduler account capability. */

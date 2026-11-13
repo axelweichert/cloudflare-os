@@ -2,20 +2,26 @@ import { DurableObject, RpcStub, RpcTarget, WorkerEntrypoint } from "cloudflare:
 import { skipRpcValidation, validateRpc } from "capnweb-validate";
 import {
   stripTrailingSlashes,
+  workerVersionTag,
   type AccountDescription,
   type ActionKind,
   type ApprovalQueue,
   type AvatarImage,
+  type ConnectHandoff,
   type Gatekeeper,
   type GatekeeperConnectCallback,
   type GatekeeperUser,
   type GatekeeperUserVerifier,
   type GatekeeperVendor as GatekeeperVendorIface,
+  type ObservationDescription,
   type ResourceConfiguratorFrame,
   type ResourceDescription,
   type SupportedResource,
   type VendorDescription,
 } from "@gadgets/workshop-shared/gatekeeper";
+import { connectHandoffPageHtml, htmlResponse } from "@gadgets/gatekeeper-kit/connect-pages";
+import { commitStagedCredentials, stageCredentials } from "@gadgets/gatekeeper-kit/credential-stage";
+import { readTextCapped } from "@gadgets/gatekeeper-kit/response-body";
 import { OwlosClient, OwlosError, verifyCredentials, type OwlosCredentials } from "./owlos-api";
 import type { OwlosSession } from "./types";
 import type { OwlosWorkspaceConfiguratorRpc } from "./configurator/owlos-configurator-types";
@@ -24,6 +30,14 @@ import TYPES_CODE from "./types.txt";
 // scripts/build-gatekeeper-configurator.ts — a real configurator module that wires the MessagePort
 // RPC runtime, so the connect iframe reports ready (unlike the old inline HTML string).
 import WORKSPACE_CONFIGURATOR_HTML from "./generated/owlos-workspace-configurator-ui.txt";
+
+/** Observation that must state its subresources, so an omitted list is a type error. */
+type ObservationWithSubresources = ObservationDescription & { subresources: string[] };
+
+/** Reports a read; this gatekeeper's reads expose no tracked subresources, so callers pass `[]`. */
+function authorizeRead(queue: RpcStub<ApprovalQueue>, observation: ObservationWithSubresources): Promise<void> {
+  return queue.authorizeObservation(observation);
+}
 
 // ---------------------------------------------------------------------------
 // Config & nonce helpers (identical shape to gk-unifi / gk-cloudflare)
@@ -146,16 +160,6 @@ const CONNECT_FORM_HTML = (params: { actionUrl: string; instanceUrl?: string; er
 </body>
 </html>`;
 
-const SELF_CLOSING_HTML = `<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="UTF-8"><title>Connected</title></head>
-<body style="font-family: system-ui, sans-serif; padding: 2rem; text-align: center;">
-  <script>window.close();</script>
-  <h2 style="color: #677979;">Connected!</h2>
-  <p>Your owlOS workspace has been linked to Cloudflare OS. You may close this tab.</p>
-</body>
-</html>`;
-
 const INVALID_LINK_HTML = `<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="UTF-8"><title>Link Expired</title></head>
@@ -167,6 +171,9 @@ const INVALID_LINK_HTML = `<!DOCTYPE html>
 
 // ---------------------------------------------------------------------------
 // fetch handler: serves the connect form and accepts its POST
+
+// The route checks only path shape before reading the form; the account checks the nonce after.
+const MAX_CONNECT_FORM_BYTES = 16 * 1024;
 
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -194,9 +201,9 @@ export default {
       }
 
       if (req.method === "POST") {
-        let formData: FormData;
+        let formData: URLSearchParams;
         try {
-          formData = await req.formData();
+          formData = new URLSearchParams(await readTextCapped(req, MAX_CONNECT_FORM_BYTES));
         } catch {
           return new Response("Invalid form submission.", { status: 400 });
         }
@@ -223,7 +230,7 @@ export default {
             { headers: { "Content-Type": "text/html; charset=utf-8" }, status: 400 },
           );
         }
-        return new Response(SELF_CLOSING_HTML, { headers: { "Content-Type": "text/html; charset=utf-8" } });
+        return htmlResponse(connectHandoffPageHtml(result.handoff));
       }
     }
 
@@ -249,6 +256,10 @@ export class GatekeeperVendor extends WorkerEntrypoint<Env> implements Gatekeepe
     };
   }
 
+  async versionTag(): Promise<string | undefined> {
+    return workerVersionTag(this.env);
+  }
+
   async connectAccount(callback: Fetcher<GatekeeperConnectCallback>): Promise<{ url: string }> {
     const userObjectId = this.ctx.exports.UserAccount.newUniqueId();
     const nonce = generateNonce();
@@ -271,10 +282,21 @@ export class GatekeeperVendor extends WorkerEntrypoint<Env> implements Gatekeepe
 interface StoredNonce {
   value: string;
   expiresAt: number;
+  /**
+   * Set when this flow reconnects an existing account, so its credentials are staged rather than
+   * made live. The mode travels with the flow instead of living on the account: committing one
+   * reconnect while another is in flight must not change how that other flow lands.
+   */
+  reconnect?: true;
+  /**
+   * Set while a submission is being verified against owlOS, so a concurrent submission cannot pass
+   * the same nonce; cleared again when verification fails so the user can resubmit.
+   */
+  connecting?: true;
 }
 
 type CompleteConnectionResult =
-  | { kind: "ok" }
+  | { kind: "ok"; handoff: ConnectHandoff }
   | { kind: "invalid_nonce" }
   | { kind: "error"; message: string };
 
@@ -291,14 +313,17 @@ export class UserAccount extends DurableObject<Env> {
   }
 
   async prepareReconnect(nonce: string): Promise<void> {
-    this.ctx.storage.kv.put("reconnecting", true);
     this.ctx.storage.kv.put<StoredNonce>("nonce", {
       value: nonce,
       expiresAt: Date.now() + NONCE_LIFETIME_MS,
+      reconnect: true,
     });
   }
 
-  /** Validates the nonce but does not consume it (so the user can resubmit if validation fails). */
+  /**
+   * Validates the nonce without claiming it, for the GET preview of the form. A submission that
+   * fails validation releases its claim (see completeConnection), so the user can resubmit.
+   */
   async verifyNonceWithoutConsuming(nonce: string): Promise<boolean> {
     const stored = this.ctx.storage.kv.get<StoredNonce>("nonce");
     if (!stored || Date.now() >= stored.expiresAt) return false;
@@ -307,41 +332,49 @@ export class UserAccount extends DurableObject<Env> {
 
   async completeConnection(nonce: string, instanceUrl: string, apiToken: string): Promise<CompleteConnectionResult> {
     const stored = this.ctx.storage.kv.get<StoredNonce>("nonce");
-    if (!stored || Date.now() >= stored.expiresAt || !constantTimeEqual(stored.value, nonce)) {
+    if (!stored || stored.connecting || Date.now() >= stored.expiresAt
+        || !constantTimeEqual(stored.value, nonce)) {
       return { kind: "invalid_nonce" };
     }
+    // Claim the nonce before the first await. The Durable Object's input gate does not cover the
+    // outbound verification, so a second submission arriving meanwhile would otherwise validate the
+    // same nonce and complete the connection a second time.
+    this.ctx.storage.kv.put<StoredNonce>("nonce", { ...stored, connecting: true });
 
     // Verify the instance is a real owlOS ERP and the token authenticates, before storing anything.
     let creds: OwlosCredentials;
     try {
       creds = await verifyCredentials(instanceUrl, apiToken);
     } catch (e: any) {
+      this.#releaseNonceClaim(nonce);
       const msg = e instanceof OwlosError ? e.message : `Unable to verify owlOS instance: ${e?.message ?? e}`;
       return { kind: "error", message: msg };
     }
 
     // Consume the nonce now that we've validated.
     this.ctx.storage.kv.delete("nonce");
-    this.ctx.storage.kv.put<OwlosCredentials>("credentials", creds);
 
     const callback = this.ctx.storage.kv.get<Fetcher<GatekeeperConnectCallback>>("callback");
     if (!callback) {
-      this.ctx.storage.kv.delete("credentials");
       return { kind: "error", message: "Connection callback expired. Please restart." };
     }
 
-    const reconnecting = this.ctx.storage.kv.get<boolean>("reconnecting");
-    if (reconnecting) {
-      this.ctx.storage.kv.delete("reconnecting");
+    let handoff: ConnectHandoff;
+    if (stored.reconnect) {
+      // The reconnect URL is a bearer capability, so the new credentials are only staged until the
+      // Workshop has confirmed the browser that finished the flow is the owner's (see
+      // commitReconnect). Bound gadgets keep reading the current token meanwhile.
+      const stageId = stageCredentials<OwlosCredentials>(this.ctx.storage.kv, creds, Date.now());
       try {
-        await callback.credentialsRestored();
+        handoff = await callback.reconnectComplete(stageId);
       } catch (e: any) {
         return { kind: "error", message: `Failed to notify workshop: ${e?.message ?? e}` };
       }
     } else {
+      this.ctx.storage.kv.put<OwlosCredentials>("credentials", creds);
       try {
         const props: OwlosUserImplProps = { userObjectId: this.ctx.id.toString() };
-        await callback.complete(this.ctx.exports.OwlosUserImpl({ props }));
+        handoff = await callback.complete(this.ctx.exports.OwlosUserImpl({ props }));
       } catch (e: any) {
         this.ctx.storage.kv.delete("credentials");
         return { kind: "error", message: `Failed to notify workshop: ${e?.message ?? e}` };
@@ -349,7 +382,23 @@ export class UserAccount extends DurableObject<Env> {
     }
 
     await this.ctx.storage.deleteAlarm();
-    return { kind: "ok" };
+    return { kind: "ok", handoff };
+  }
+
+  // Releases a failed submission's claim without reopening a nonce that another flow replaced while
+  // this request was suspended. Synchronous storage makes the check and put one step.
+  #releaseNonceClaim(nonce: string): void {
+    const stored = this.ctx.storage.kv.get<StoredNonce>("nonce");
+    if (!stored || !stored.connecting || !constantTimeEqual(stored.value, nonce)) return;
+    const { connecting: _, ...released } = stored;
+    this.ctx.storage.kv.put<StoredNonce>("nonce", released);
+  }
+
+  /** Makes the credentials staged under `stageId` live; see GatekeeperUser.commitReconnect. */
+  async commitReconnect(stageId: string): Promise<void> {
+    const creds = commitStagedCredentials<OwlosCredentials>(this.ctx.storage.kv, Date.now(), stageId);
+    if (!creds) throw new Error("No reconnect is awaiting confirmation. Please try again.");
+    this.ctx.storage.kv.put<OwlosCredentials>("credentials", creds);
   }
 
   getCredentials(): OwlosCredentials {
@@ -450,6 +499,10 @@ export class OwlosUserImpl extends WorkerEntrypoint<Env, OwlosUserImplProps> imp
     return { url: `${getBaseUrl(this.env)}/${this.ctx.props.userObjectId}/${nonce}` };
   }
 
+  async commitReconnect(stageId: string): Promise<void> {
+    await this.#userAccount().commitReconnect(stageId);
+  }
+
   async ensureResources(_resourceUrlPatterns: string[]): Promise<{ url?: string }> {
     return {};
   }
@@ -540,7 +593,7 @@ export class OwlosGatekeeperImpl
     return new OwlosSessionImpl(creds, approvalQueue.dup());
   }
 
-  // Read-only in S1: no actions are ever submitted.
+  /** Read-only in S1: no actions are ever submitted. */
   async applyAction(actionId: number): Promise<void> {
     throw new Error(`No queued owlOS action exists with id ${actionId}; this gatekeeper is read-only.`);
   }
@@ -549,9 +602,22 @@ export class OwlosGatekeeperImpl
     throw new Error("This gatekeeper is read-only; there is nothing to revert.");
   }
 
-  // Low-stakes observer strategy (see OwlosUserImpl.getVerifier): any collaborator may observe.
+  /**
+   * Low-stakes observer strategy (see OwlosUserImpl.getVerifier): any collaborator may observe, so
+   * reads report `subresources: []` and verifyObserverAccess allows every observer.
+   */
   async addObserver(_id: string, _user: Fetcher<GatekeeperUserVerifier>): Promise<void> {}
   async removeObserver(_id: string): Promise<void> {}
+  /** addObserver never restricted anyone, so there is no historical requirement to export. */
+  async getHistoricalSubresources(): Promise<string[]> { return []; }
+
+  /** Allows every observer under the low-stakes observer policy. */
+  async verifyObserverAccess(
+    observers: { id: string; verifier: Fetcher<GatekeeperUserVerifier> }[],
+    _subresources: string[],
+  ): Promise<{ allowedObserverIds: string[] }> {
+    return { allowedObserverIds: observers.map((observer) => observer.id) };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -580,7 +646,8 @@ class OwlosSessionImpl extends RpcTarget implements OwlosSession {
 
   async me(): Promise<Record<string, unknown>> {
     const identity = await this.#client.me();
-    await this.#approvalQueue.authorizeObservation({
+    await authorizeRead(this.#approvalQueue, {
+      subresources: [],
       title: "Read owlOS workspace identity",
       description: "Fetched the authenticated owlOS workspace identity (`GET /api/auth/me`).",
     });

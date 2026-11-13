@@ -138,6 +138,7 @@ export const en = {
   // ── chat ─────────────────────────────────────────────────────────
   // ChatInterface.tsx — composer / list / dialogs / attachments
   'chat.composer.waitingAgent': 'Waiting for agent…',
+  'chat.composer.steerWhileWorking': 'Message the agent while it works…',
   'chat.composer.newConversation': 'Start a new conversation…',
   'chat.composer.followUp': 'Ask a follow-up…',
   'chat.composer.showThinking': 'Show thinking',

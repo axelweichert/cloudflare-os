@@ -1,0 +1,42 @@
+{
+  "name": "@gadgets/ui",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    },
+    "./hierarchical-list": {
+      "types": "./src/HierarchicalList/index.ts",
+      "import": "./src/HierarchicalList/index.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "test:run": "vitest run"
+  },
+  "peerDependencies": {
+    "@cloudflare/kumo": "^2.16.0",
+    "react": "^19.3.1"
+  },
+  "dependencies": {
+    "@phosphor-icons/react": "^2.1.10",
+    "motion": "^14.7.1"
+  },
+  "devDependencies": {
+    "@cloudflare/kumo": "^2.16.0",
+    "@gadgets/scripts": "workspace:*",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "jsdom": "^26.1.0",
+    "motion": "^14.7.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vitest": "catalog:"
+  }
+}

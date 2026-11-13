@@ -14,8 +14,10 @@ import { DurableObject, RpcStub, RpcTarget, WorkerEntrypoint } from "cloudflare:
 import { skipRpcValidation, validateRpc } from "capnweb-validate";
 import {
   stripTrailingSlashes,
+  workerVersionTag,
   type AccountDescription,
   type ApprovalQueue,
+  type ConnectHandoff,
   type Gatekeeper,
   type GatekeeperConnectCallback,
   type GatekeeperConnectOptions,
@@ -27,6 +29,9 @@ import {
   type SupportedResource,
   type VendorDescription,
 } from "@gadgets/workshop-shared/gatekeeper";
+import { connectHandoffPageHtml, htmlResponse } from "@gadgets/gatekeeper-kit/connect-pages";
+import { commitStagedCredentials, stageCredentials } from "@gadgets/gatekeeper-kit/credential-stage";
+import { clearCredentialExpiryLatch, notifyCredentialsExpiredOnce } from "@gadgets/gatekeeper-kit/credential-expiry";
 import {
   computeCodeChallenge,
   EtsyApi,
@@ -90,6 +95,12 @@ type StoredNonce = {
   expiresAt: number;
   stage: "initiation" | "oauth";
   codeVerifier?: string;
+  /**
+   * Set when this flow reconnects an existing account, so its token set is staged rather than made
+   * live. The mode travels with the flow instead of living on the account: committing one
+   * reconnect while another is in flight must not change how that other flow lands.
+   */
+  reconnect?: true;
 };
 
 type ResourceKind = "shop" | "listing";
@@ -132,14 +143,6 @@ const LISTING_RESOURCE: SupportedResource = {
 };
 
 const SUPPORTED_RESOURCES: SupportedResource[] = [SHOP_RESOURCE, LISTING_RESOURCE];
-
-const SELF_CLOSING_HTML = `<!DOCTYPE html>
-<html lang="en">
-  <body>
-    <script type="text/javascript">window.close();</script>
-    <p>Authorization complete. You may close this tab and return to Cloudflare OS.</p>
-  </body>
-</html>`;
 
 const INVALID_LINK_HTML = `<!DOCTYPE html>
 <html lang="en">
@@ -269,16 +272,14 @@ export default {
       const stub: DurableObjectStub<UserAccount> = ctx.exports.UserAccount.get(
         ctx.exports.UserAccount.idFromString(doId),
       );
-      const accepted = await stub.acceptAuthCode(code, oauthNonce);
-      if (!accepted) {
+      const handoff = await stub.acceptAuthCode(code, oauthNonce);
+      if (!handoff) {
         return new Response(INVALID_LINK_HTML, {
           headers: { "Content-Type": "text/html; charset=utf-8" },
         });
       }
 
-      return new Response(SELF_CLOSING_HTML, {
-        headers: { "Content-Type": "text/html; charset=utf-8" },
-      });
+      return htmlResponse(connectHandoffPageHtml(handoff));
     }
 
     return new Response("Not Found", { status: 404 });
@@ -302,6 +303,10 @@ export class GatekeeperVendor extends WorkerEntrypoint<Env> implements Gatekeepe
         "reviews, edit listing details, and update order fulfilment — with every change gated by " +
         "human approval.",
     };
+  }
+
+  async versionTag(): Promise<string | undefined> {
+    return workerVersionTag(this.env);
   }
 
   async connectAccount(
@@ -346,12 +351,12 @@ export class UserAccount extends DurableObject<Env> {
   }
 
   async prepareReconnect(initiationNonce: string): Promise<void> {
-    this.ctx.storage.kv.put("reconnecting", true);
-    this.ctx.storage.kv.put("expiredNotified", false);
+    clearCredentialExpiryLatch(this.ctx.storage.kv);
     this.ctx.storage.kv.put<StoredNonce>("nonce", {
       value: initiationNonce,
       expiresAt: Date.now() + INITIATION_NONCE_LIFETIME_MS,
       stage: "initiation",
+      reconnect: true,
     });
   }
 
@@ -377,11 +382,16 @@ export class UserAccount extends DurableObject<Env> {
       expiresAt: Date.now() + OAUTH_NONCE_LIFETIME_MS,
       stage: "oauth",
       codeVerifier,
+      reconnect: stored.reconnect,
     });
     return { oauthNonce, codeChallenge };
   }
 
-  async acceptAuthCode(code: string, oauthNonce: string): Promise<boolean> {
+  /**
+   * Finishes the OAuth code exchange and returns the handoff for the page the browser lands on, or
+   * null when the callback's nonce doesn't match.
+   */
+  async acceptAuthCode(code: string, oauthNonce: string): Promise<ConnectHandoff | null> {
     const stored = this.ctx.storage.kv.get<StoredNonce>("nonce");
     if (
       !stored ||
@@ -390,7 +400,7 @@ export class UserAccount extends DurableObject<Env> {
       Date.now() >= stored.expiresAt ||
       !constantTimeEqual(stored.value, oauthNonce)
     ) {
-      return false;
+      return null;
     }
     this.ctx.storage.kv.delete("nonce");
 
@@ -406,17 +416,20 @@ export class UserAccount extends DurableObject<Env> {
       codeVerifier: stored.codeVerifier,
       redirectUri: `${getBaseUrl(this.env)}/oauth`,
     });
-    this.ctx.storage.kv.put<EtsyTokenSet>("token", token);
-    this.ctx.storage.kv.put("expiredNotified", false);
 
-    const reconnecting = this.ctx.storage.kv.get<boolean>("reconnecting");
-    if (reconnecting) {
-      this.ctx.storage.kv.delete("reconnecting");
-      await callback.credentialsRestored();
+    let handoff: ConnectHandoff;
+    if (stored.reconnect) {
+      // The reconnect URL is a bearer capability, so the new token set is only staged until the
+      // Workshop has confirmed the browser that finished the flow is the owner's (see
+      // commitReconnect). Bound gadgets keep reading the current token meanwhile.
+      const stageId = stageCredentials<EtsyTokenSet>(this.ctx.storage.kv, token, Date.now());
+      handoff = await callback.reconnectComplete(stageId);
     } else {
+      this.ctx.storage.kv.put<EtsyTokenSet>("token", token);
+      clearCredentialExpiryLatch(this.ctx.storage.kv);
       try {
         const props: GatekeeperUserImplProps = { userObjectId: this.ctx.id.toString() };
-        await callback.complete(this.ctx.exports.GatekeeperUserImpl({ props }));
+        handoff = await callback.complete(this.ctx.exports.GatekeeperUserImpl({ props }));
       } catch (err) {
         this.ctx.storage.kv.delete("token");
         throw err;
@@ -424,7 +437,15 @@ export class UserAccount extends DurableObject<Env> {
     }
 
     await this.ctx.storage.deleteAlarm();
-    return true;
+    return handoff;
+  }
+
+  /** Makes the token set staged under `stageId` live; see GatekeeperUser.commitReconnect. */
+  async commitReconnect(stageId: string): Promise<void> {
+    const token = commitStagedCredentials<EtsyTokenSet>(this.ctx.storage.kv, Date.now(), stageId);
+    if (!token) throw new Error("No reconnect is awaiting confirmation. Please try again.");
+    this.ctx.storage.kv.put<EtsyTokenSet>("token", token);
+    clearCredentialExpiryLatch(this.ctx.storage.kv);
   }
 
   /** Returns a valid access token, refreshing (and persisting the rotated set) when near expiry. */
@@ -456,10 +477,8 @@ export class UserAccount extends DurableObject<Env> {
   }
 
   async noteCredentialsExpired(): Promise<void> {
-    if (this.ctx.storage.kv.get<boolean>("expiredNotified")) return;
-    this.ctx.storage.kv.put("expiredNotified", true);
-    const callback = this.ctx.storage.kv.get<Fetcher<GatekeeperConnectCallback>>("callback");
-    if (callback) await callback.credentialsExpired();
+    await notifyCredentialsExpiredOnce(this.ctx.storage.kv,
+      this.ctx.storage.kv.get<Fetcher<GatekeeperConnectCallback>>("callback"), "etsy");
   }
 
   async alarm(): Promise<void> {
@@ -586,6 +605,10 @@ export class GatekeeperUserImpl extends WorkerEntrypoint<Env, GatekeeperUserImpl
     return {
       url: `${getBaseUrl(this.env)}/${this.ctx.props.userObjectId}/${initiationNonce}`,
     };
+  }
+
+  async commitReconnect(stageId: string): Promise<void> {
+    await this.#account().commitReconnect(stageId);
   }
 
   async ensureResources(_resourceUrlPatterns: string[]): Promise<{ url?: string }> {
@@ -779,6 +802,10 @@ export class EtsyGatekeeperImpl extends DurableObject<Env, EtsyGatekeeperImplPro
         description: description.description,
         implementsRevert: false,
         awaitDecision: true, // Phase 1 does not simulate; block the agent until the user decides.
+        // Not a policy verdict: these actions declare no actionKind (getAutoApprovableActions() is
+        // []), so every one stays manually approved, as before autoApprovable was required. Per-kind
+        // verdicts under the write-gatekeeper opt-out policy belong with Phase 2.
+        autoApprovable: false,
       });
     } catch (error) {
       this.ctx.storage.kv.delete(this.#actionKey(id));

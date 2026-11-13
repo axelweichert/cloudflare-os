@@ -20,8 +20,10 @@ import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as ProvidersRouteImport } from './routes/providers'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as UnifiRouteImport } from './routes/unifi'
+import { Route as UnreadRouteImport } from './routes/unread'
 import { Route as WorkspacesRouteImport } from './routes/workspaces'
 import { Route as BlueprintIdRouteImport } from './routes/blueprint.$id'
+import { Route as ConnectHandoffRouteImport } from './routes/connect.handoff'
 import { Route as GadgetIdRouteImport } from './routes/gadget.$id'
 import { Route as GatekeepersAppIdRouteImport } from './routes/gatekeepers_.$appId'
 import { Route as WorkspaceIdRouteImport } from './routes/workspace.$id'
@@ -81,6 +83,11 @@ const UnifiRoute = UnifiRouteImport.update({
   path: '/unifi',
   getParentRoute: () => rootRouteImport,
 } as any)
+const UnreadRoute = UnreadRouteImport.update({
+  id: '/unread',
+  path: '/unread',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const WorkspacesRoute = WorkspacesRouteImport.update({
   id: '/workspaces',
   path: '/workspaces',
@@ -89,6 +96,11 @@ const WorkspacesRoute = WorkspacesRouteImport.update({
 const BlueprintIdRoute = BlueprintIdRouteImport.update({
   id: '/blueprint/$id',
   path: '/blueprint/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ConnectHandoffRoute = ConnectHandoffRouteImport.update({
+  id: '/connect/handoff',
+  path: '/connect/handoff',
   getParentRoute: () => rootRouteImport,
 } as any)
 const GadgetIdRoute = GadgetIdRouteImport.update({
@@ -119,8 +131,10 @@ export interface FileRoutesByFullPath {
   '/providers': typeof ProvidersRoute
   '/signup': typeof SignupRoute
   '/unifi': typeof UnifiRoute
+  '/unread': typeof UnreadRoute
   '/workspaces': typeof WorkspacesRoute
   '/blueprint/$id': typeof BlueprintIdRoute
+  '/connect/handoff': typeof ConnectHandoffRoute
   '/gadget/$id': typeof GadgetIdRoute
   '/gatekeepers/$appId': typeof GatekeepersAppIdRoute
   '/workspace/$id': typeof WorkspaceIdRoute
@@ -137,8 +151,10 @@ export interface FileRoutesByTo {
   '/providers': typeof ProvidersRoute
   '/signup': typeof SignupRoute
   '/unifi': typeof UnifiRoute
+  '/unread': typeof UnreadRoute
   '/workspaces': typeof WorkspacesRoute
   '/blueprint/$id': typeof BlueprintIdRoute
+  '/connect/handoff': typeof ConnectHandoffRoute
   '/gadget/$id': typeof GadgetIdRoute
   '/gatekeepers/$appId': typeof GatekeepersAppIdRoute
   '/workspace/$id': typeof WorkspaceIdRoute
@@ -156,8 +172,10 @@ export interface FileRoutesById {
   '/providers': typeof ProvidersRoute
   '/signup': typeof SignupRoute
   '/unifi': typeof UnifiRoute
+  '/unread': typeof UnreadRoute
   '/workspaces': typeof WorkspacesRoute
   '/blueprint/$id': typeof BlueprintIdRoute
+  '/connect/handoff': typeof ConnectHandoffRoute
   '/gadget/$id': typeof GadgetIdRoute
   '/gatekeepers_/$appId': typeof GatekeepersAppIdRoute
   '/workspace/$id': typeof WorkspaceIdRoute
@@ -176,8 +194,10 @@ export interface FileRouteTypes {
     | '/providers'
     | '/signup'
     | '/unifi'
+    | '/unread'
     | '/workspaces'
     | '/blueprint/$id'
+    | '/connect/handoff'
     | '/gadget/$id'
     | '/gatekeepers/$appId'
     | '/workspace/$id'
@@ -194,8 +214,10 @@ export interface FileRouteTypes {
     | '/providers'
     | '/signup'
     | '/unifi'
+    | '/unread'
     | '/workspaces'
     | '/blueprint/$id'
+    | '/connect/handoff'
     | '/gadget/$id'
     | '/gatekeepers/$appId'
     | '/workspace/$id'
@@ -212,8 +234,10 @@ export interface FileRouteTypes {
     | '/providers'
     | '/signup'
     | '/unifi'
+    | '/unread'
     | '/workspaces'
     | '/blueprint/$id'
+    | '/connect/handoff'
     | '/gadget/$id'
     | '/gatekeepers_/$appId'
     | '/workspace/$id'
@@ -231,8 +255,10 @@ export interface RootRouteChildren {
   ProvidersRoute: typeof ProvidersRoute
   SignupRoute: typeof SignupRoute
   UnifiRoute: typeof UnifiRoute
+  UnreadRoute: typeof UnreadRoute
   WorkspacesRoute: typeof WorkspacesRoute
   BlueprintIdRoute: typeof BlueprintIdRoute
+  ConnectHandoffRoute: typeof ConnectHandoffRoute
   GadgetIdRoute: typeof GadgetIdRoute
   GatekeepersAppIdRoute: typeof GatekeepersAppIdRoute
   WorkspaceIdRoute: typeof WorkspaceIdRoute
@@ -317,6 +343,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof UnifiRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/unread': {
+      id: '/unread'
+      path: '/unread'
+      fullPath: '/unread'
+      preLoaderRoute: typeof UnreadRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/workspaces': {
       id: '/workspaces'
       path: '/workspaces'
@@ -329,6 +362,13 @@ declare module '@tanstack/react-router' {
       path: '/blueprint/$id'
       fullPath: '/blueprint/$id'
       preLoaderRoute: typeof BlueprintIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/connect/handoff': {
+      id: '/connect/handoff'
+      path: '/connect/handoff'
+      fullPath: '/connect/handoff'
+      preLoaderRoute: typeof ConnectHandoffRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/gadget/$id': {
@@ -367,8 +407,10 @@ const rootRouteChildren: RootRouteChildren = {
   ProvidersRoute: ProvidersRoute,
   SignupRoute: SignupRoute,
   UnifiRoute: UnifiRoute,
+  UnreadRoute: UnreadRoute,
   WorkspacesRoute: WorkspacesRoute,
   BlueprintIdRoute: BlueprintIdRoute,
+  ConnectHandoffRoute: ConnectHandoffRoute,
   GadgetIdRoute: GadgetIdRoute,
   GatekeepersAppIdRoute: GatekeepersAppIdRoute,
   WorkspaceIdRoute: WorkspaceIdRoute,

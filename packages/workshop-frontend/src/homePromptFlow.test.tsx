@@ -7,14 +7,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const testState = vi.hoisted(() => {
   const listModels = vi.fn<() => Promise<never[]>>(async () => []);
-  const newGadget = vi.fn<() => never>();
+  const newWorkspace = vi.fn<() => never>();
   return {
     addToast: vi.fn<(toast: unknown) => void>(),
-    authenticatedApi: { listModels, newGadget },
+    authenticatedApi: { listModels, newWorkspace },
     currentUser: { id: "user-a", name: "User A" },
     listModels,
     navigate: vi.fn<(options: unknown) => void>(),
-    newGadget,
+    newWorkspace,
     seeds: [] as Array<{ text?: string; nonce?: number }>,
     draftStorageKeys: [] as Array<string | undefined>,
   };
@@ -36,8 +36,8 @@ vi.mock("./AuthContext", () => ({
   }),
 }));
 
-vi.mock("./ChatInterface", () => ({
-  ChatInput: ({ seedText, seedNonce, draftStorageKey }: {
+vi.mock("./features/chat/composer/ChatComposer", () => ({
+  ChatComposer: ({ seedText, seedNonce, draftStorageKey }: {
     seedText?: string;
     seedNonce?: number;
     draftStorageKey?: string;
@@ -50,6 +50,7 @@ vi.mock("./ChatInterface", () => ({
 
 vi.mock("./components/MeshBackground", () => ({ default: () => null }));
 vi.mock("./components/AppShell/HomeTaskSuggestions", () => ({ default: () => null }));
+vi.mock("./features/deployment-updates/UpdateAvailableNotice", () => ({ UpdateAvailableNotice: () => null }));
 vi.mock("./useDocumentTitle", () => ({ useDocumentTitle: () => {} }));
 
 import { HomePageContent } from "./routes/index";
@@ -80,7 +81,7 @@ describe("Home prompt route flow", () => {
     );
     expect(Math.max(...testState.seeds.map(({ nonce }) => nonce ?? 0))).toBe(1);
     expect(testState.navigate).toHaveBeenCalledWith({ to: "/", search: {}, replace: true });
-    expect(testState.newGadget).not.toHaveBeenCalled();
+    expect(testState.newWorkspace).not.toHaveBeenCalled();
     expect(testState.draftStorageKeys).toContain("gadgets:composer-draft:v1:user-a:home");
   });
 });

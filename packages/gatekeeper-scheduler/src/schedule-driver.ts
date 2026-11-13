@@ -1,6 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 import type { RpcStub, RpcTarget } from "cloudflare:workers";
-import { reportIssue } from "@gadgets/backend-utils/error-reporting";
+import { reportIssue } from "@gadgets/observability/error-reporting";
 import type { ApprovalQueue, HookInitiator } from "@gadgets/workshop-shared/gatekeeper";
 import {
   admitRun,
@@ -432,6 +432,7 @@ export class ScheduleDriver extends DurableObject {
         await hookResult.approvalQueue.authorizeObservation({
           title: `Run scheduled task: ${admitted.title}`,
           description: `Deliver scheduled task ${prepared.scheduleId} for its planned occurrence at ${prepared.scheduledTime}.`,
+          subresources: [],
         });
       } catch {
         this.#failPending(prepared, "authorization_failed", Date.now());

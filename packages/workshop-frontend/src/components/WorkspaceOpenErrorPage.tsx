@@ -1,12 +1,13 @@
-import { Lock, MagnifyingGlass, WarningCircle } from '@phosphor-icons/react'
+import { LinkBreak, Lock, MagnifyingGlass, WarningCircle } from '@phosphor-icons/react'
 import { useEffect, useId, useRef } from 'react'
 import {
-  getOpenGadgetErrorCode,
-  OPEN_GADGET_ERROR_CODES,
+  getOpenWorkspaceErrorCode,
+  OPEN_WORKSPACE_ERROR_CODES,
 } from '@gadgets/workshop-shared/api'
 import { WorkshopButton } from './WorkshopControls'
 
-export type WorkspaceOpenFailureKind = 'access-denied' | 'not-found' | 'unexpected'
+export type WorkspaceOpenFailureKind =
+  'access-denied' | 'not-found' | 'share-links-disabled' | 'unexpected'
 
 const CONTENT = {
   'access-denied': {
@@ -21,6 +22,12 @@ const CONTENT = {
     Icon: MagnifyingGlass,
     retryable: false,
   },
+  'share-links-disabled': {
+    title: 'Share links are turned off for this workspace',
+    message: 'Ask the workspace owner to add you directly, then try again.',
+    Icon: LinkBreak,
+    retryable: true,
+  },
   unexpected: {
     title: "We couldn't load this workspace",
     message: 'Try again. If the problem continues, return to your workspaces.',
@@ -30,11 +37,13 @@ const CONTENT = {
 } as const
 
 export function classifyWorkspaceOpenFailure(error: unknown): WorkspaceOpenFailureKind {
-  switch (getOpenGadgetErrorCode(error)) {
-    case OPEN_GADGET_ERROR_CODES.workspaceAccessDenied:
+  switch (getOpenWorkspaceErrorCode(error)) {
+    case OPEN_WORKSPACE_ERROR_CODES.workspaceAccessDenied:
       return 'access-denied'
-    case OPEN_GADGET_ERROR_CODES.workspaceNotFound:
+    case OPEN_WORKSPACE_ERROR_CODES.workspaceNotFound:
       return 'not-found'
+    case OPEN_WORKSPACE_ERROR_CODES.shareLinksDisabled:
+      return 'share-links-disabled'
     default:
       return 'unexpected'
   }

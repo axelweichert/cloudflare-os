@@ -1,20 +1,18 @@
-# Upstream-Pin für den owlOS/CloudflareOS-Fork (OWL-1567 / AC1)
+# Upstream-Pin für den owlOS/CloudflareOS-Fork (OWL-1567 / AC1, fortgeschrieben OWL-2477)
 #
-# Upstream = cloudflare/cloudflare-os (öffentlich). `origin/main` ist ein
-# Snapshot-Fork OHNE gemeinsame Historie (git merge-base leer) — deshalb wird
-# hier eine explizite Ziel-Ref gepinnt statt auf merge-base zu vertrauen.
-# Upgrade-Prozess: docs/UPGRADING.md.  Format: KEY=value, `#`-Zeilen sind Kommentar.
+# Upstream = cloudflare/cloudflare-os (öffentlich). `origin/main` teilt Historie mit upstream
+# (erste gemeinsame Basis 1dc84421, 2026-08-25). Seit OWL-2477 wird per echtem `git merge
+# upstream/main` integriert; `git merge-base origin/main upstream/main` ist danach der Pin-Stand.
+# Ablauf + Register: vonbusch/FORK-SYNC.md.  Format: KEY=value, `#`-Zeilen sind Kommentar.
 
-# Ziel-Ref des nächsten geplanten Upgrades (git rev-parse upstream/main am Pin-Datum).
-UPSTREAM_REF=004ab773fad6d4fb7fe67be920a3ef37e46dc58a
+# Zuletzt integrierter Upstream-Stand (git rev-parse upstream/main am Merge-Tag).
+UPSTREAM_REF=966a3518a00702d9a350b4fc608dff346c74d516
 UPSTREAM_REMOTE=https://github.com/cloudflare/cloudflare-os.git
-UPSTREAM_PINNED_AT=2026-09-26
+UPSTREAM_PINNED_AT=2026-11-13
 
-# Basis-Version, auf der der aktuelle Fork-Snapshot beruht (erste Bestandsaufnahme,
-# vonbusch/FORK-SYNC.md). Kein SHA verfügbar, weil Snapshot-Fork ohne Historie.
+# Datum der ersten Bestandsaufnahme (vonbusch/FORK-SYNC.md §4).
 BASE_SNAPSHOT_DATE=2026-08-27
 
 # Letzte Currency-Triage (Read-only-Sichtung des Upstream-Drifts, OWL-1571).
-# Fingerprint = letzter kritischer Commit der Sichtung. Solange dieser == Pin-Stand,
-# ist der Drift bereits gesichtet → Register in vonbusch/FORK-SYNC.md.
-LAST_CURRENCY_TRIAGE=currency-sync:91c06bc6  # 4 krit. Commits f961c844..004ab773, OWL-1715, 2026-09-26
+# Mit dem Voll-Merge OWL-2477 ist der gesamte Drift bis UPSTREAM_REF integriert.
+LAST_CURRENCY_TRIAGE=currency-sync:966a3518  # Voll-Merge 1dc84421..966a3518 (399 Commits), OWL-2477, 2026-11-13
