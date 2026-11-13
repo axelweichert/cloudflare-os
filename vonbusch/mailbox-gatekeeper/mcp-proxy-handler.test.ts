@@ -142,7 +142,7 @@ test("tools/list: cross-mailbox-Tool entfernt, inbox_id aus Schema weg", async (
   const body = await parse(res);
   assert.ok(!body.error, body.error?.message);
   const tools: { name: string; inputSchema?: { properties?: Record<string, unknown> } }[] = body.result.tools;
-  const names = tools.map(t => t.name).sort();
+  const names = tools.map(t => t.name).toSorted();
   assert.ok(!names.includes("list_all_inboxes"), "cross-mailbox-Tool darf nicht erscheinen");
   assert.ok(names.includes("send_message"), "mailbox-Tool muss erscheinen");
   assert.ok(names.includes("get_server_status"), "Passthrough-Tool muss erscheinen");

@@ -31,9 +31,11 @@ export interface ModelPrice {
   cacheWrite?: number;
 }
 
-// Grobe Richtpreise (USD / 1M Tokens), Stand 2026-08. Bewusst konservativ (eher zu hoch) für
-// die Vorab-Entscheidung; die exakte Verrechnung kommt aus dem Gateway-Log. Erweiterbar/
-// überschreibbar via BudgetLedger-Option `prices`.
+/**
+ * Grobe Richtpreise (USD / 1M Tokens), Stand 2026-08. Bewusst konservativ (eher zu hoch) für
+ * die Vorab-Entscheidung; die exakte Verrechnung kommt aus dem Gateway-Log. Erweiterbar/
+ * überschreibbar via BudgetLedger-Option `prices`.
+ */
 export const DEFAULT_PRICE_TABLE: Record<string, ModelPrice> = {
   "claude-opus-4-8": { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
   "claude-sonnet-5": { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
@@ -63,9 +65,11 @@ export function estimateCostUsd(
   return Math.max(0, cost);
 }
 
-// ---------------------------------------------------------------------------
-// Abrechnungsperiode: UTC-Tag oder -Monat. Zeit wird injiziert (nowMs), damit der Kern
-// deterministisch testbar bleibt (kein Date.now() im Kern).
+/**
+ * ---------------------------------------------------------------------------
+ * Abrechnungsperiode: UTC-Tag oder -Monat. Zeit wird injiziert (nowMs), damit der Kern
+ * deterministisch testbar bleibt (kein Date.now() im Kern).
+ */
 export type BudgetPeriod = "day" | "month";
 
 /** Kanonischer Perioden-Schlüssel (UTC): "2026-08-25" (day) bzw. "2026-08" (month). */

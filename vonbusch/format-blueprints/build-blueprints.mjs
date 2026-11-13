@@ -17,7 +17,7 @@
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import { gzipSync } from "node:zlib";
 import { createRequire } from "node:module";
-import { dirname, join, basename } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -53,7 +53,7 @@ function encodeContent(files) {
   // verdrahten, damit ein Rebuild ohne Quelländerung dieselben Archiv-Bytes erzeugt.
   doc.clientID = 1;
   const root = doc.getMap();
-  for (const name of Object.keys(files).sort()) {
+  for (const name of Object.keys(files).toSorted()) {
     const text = new Y.Text();
     text.insert(0, files[name]);
     root.set(name, text);
@@ -77,7 +77,7 @@ async function writeIfChanged(path, bytes) {
 
 const srcDir = join(here, "src");
 const dirs = (await readdir(srcDir, { withFileTypes: true }))
-  .filter((d) => d.isDirectory()).map((d) => d.name).sort();
+  .filter((d) => d.isDirectory()).map((d) => d.name).toSorted();
 
 let built = 0;
 for (const name of dirs) {
@@ -86,7 +86,7 @@ for (const name of dirs) {
   const { blueprintId, version, created, sidecar, bindings } = manifest;
 
   const files = {};
-  for (const f of (await readdir(dir)).sort()) {
+  for (const f of (await readdir(dir)).toSorted()) {
     if (f === "blueprint.json") continue;
     files[f] = await readFile(join(dir, f), "utf8");
   }

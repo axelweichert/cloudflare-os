@@ -60,8 +60,10 @@ class DoQueueStore implements QueueStore {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Durable Object: eine Instanz hält die gesamte Firmen-Queue (Singleton per idFromName).
+/**
+ * ---------------------------------------------------------------------------
+ * Durable Object: eine Instanz hält die gesamte Firmen-Queue (Singleton per idFromName).
+ */
 export class MailGatekeeper extends DurableObject<Env> {
   private queue: MailApprovalQueue;
   private mailer: Mailer;
@@ -165,8 +167,10 @@ function decode(s: string): string {
   try { return decodeURIComponent(s); } catch { return s; }
 }
 
-// ---------------------------------------------------------------------------
-// Worker: alle Requests an die Singleton-DO-Instanz "default" routen.
+/**
+ * ---------------------------------------------------------------------------
+ * Worker: alle Requests an die Singleton-DO-Instanz "default" routen.
+ */
 export default class MailGatekeeperWorker extends WorkerEntrypoint<Env> {
   async fetch(request: Request): Promise<Response> {
     const id = this.env.MailGatekeeper.idFromName("default");

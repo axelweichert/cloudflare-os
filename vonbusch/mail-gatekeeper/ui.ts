@@ -45,7 +45,7 @@ function renderItem(item: QueueItem): string {
 
 export function renderQueuePage(items: QueueItem[]): string {
   const pending = items.filter((i) => i.status === "pending");
-  const others = items.filter((i) => i.status !== "pending").sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  const others = items.filter((i) => i.status !== "pending").toSorted((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
 
   return `<!DOCTYPE html>
 <html lang="de">

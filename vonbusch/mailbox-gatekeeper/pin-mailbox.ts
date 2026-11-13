@@ -113,7 +113,7 @@ export function buildPinPlan(tools: McpTool[], config: PinConfig): PinPlan {
       continue;
     }
     // pinned: Mailbox-Feld aus dem Schema herausschneiden.
-    const props = { ...(tool.inputSchema?.properties ?? {}) };
+    const props = { ...tool.inputSchema?.properties };
     delete props[cfg.mailboxParam];
     const required = (tool.inputSchema?.required ?? []).filter(r => r !== cfg.mailboxParam);
     advertised.push({
@@ -121,7 +121,7 @@ export function buildPinPlan(tools: McpTool[], config: PinConfig): PinPlan {
       description:
         (tool.description ? tool.description + " " : "") +
         `(vonBuschOS: fest auf Mailbox "${cfg.mailbox}" verengt.)`,
-      inputSchema: { ...(tool.inputSchema ?? {}), properties: props, required },
+      inputSchema: { ...tool.inputSchema, properties: props, required },
     });
   }
   config.audit?.({

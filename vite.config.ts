@@ -93,6 +93,9 @@ export default defineConfig({
       // Bundled blueprint files are user-authored gadget source extracted verbatim for review. They
       // do not follow the host repository's lint rules and must round-trip without code changes.
       '**/bundled-blueprints/blueprints/*/files/**',
+      // Same for the fork's format blueprints: blueprints.test.ts requires src/ to match the shipped
+      // snapshot byte for byte, so lint-driven edits would change what users install (OWL-2477).
+      'vonbusch/format-blueprints/src/**',
       '**/*.gen.ts',
       '**/node_modules/**',
       '**/.wrangler/**',

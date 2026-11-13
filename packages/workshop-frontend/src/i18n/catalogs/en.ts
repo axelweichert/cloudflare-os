@@ -1,12 +1,14 @@
-// owlOS i18n overlay — NOT present in upstream (see vonbusch/FORK-SYNC.md §12).
-//
-// The English catalog is the SOURCE OF TRUTH for the key set: `TKey` is derived
-// from it, so every other catalog (de.ts) must supply exactly these keys or the
-// typecheck fails. Flat `namespace.key` → string maps; no plural machinery.
-//
-// `{name}` placeholders are interpolated by useT(key, { name }). Keep them because
-// word order differs across languages (e.g. "Switch to Dark." vs "Zu Dunkel wechseln.").
-// Plurals: the component picks `.one` / `.other` by count (t(n === 1 ? …one : …other)).
+/**
+ * owlOS i18n overlay — NOT present in upstream (see vonbusch/FORK-SYNC.md §12).
+ *
+ * The English catalog is the SOURCE OF TRUTH for the key set: `TKey` is derived
+ * from it, so every other catalog (de.ts) must supply exactly these keys or the
+ * typecheck fails. Flat `namespace.key` → string maps; no plural machinery.
+ *
+ * `{name}` placeholders are interpolated by useT(key, { name }). Keep them because
+ * word order differs across languages (e.g. "Switch to Dark." vs "Zu Dunkel wechseln.").
+ * Plurals: the component picks `.one` / `.other` by count (t(n === 1 ? …one : …other)).
+ */
 export const en = {
   // AppShell chrome (upstream file — see FORK-SYNC.md touched-files list)
   'appshell.mainNav': 'Main navigation',
