@@ -286,6 +286,10 @@ const NO_DEFAULT_CRED_INPUTS = new Set([
   "gatekeeper-mcp-portal",    // same MCP OAuth chain as gatekeeper-mcp
   "gatekeeper-unifi",         // users connect their own UniFi Site Manager API key in-app
   "gatekeeper-cloudflare",    // users connect their own Cloudflare API token in-app (OWL-1618)
+  "gatekeeper-proxmox-ve",    // fork: users connect their own Proxmox VE API token in-app
+  "gatekeeper-proxmox-bs",    // fork: users connect their own Proxmox Backup Server API token in-app
+  "gatekeeper-mailarchiver",  // fork: users connect their own MailArchiver URL + token in-app
+  "gatekeeper-vonbusch-robomon", // fork: users connect their own Robomon token in-app
 ]);
 
 // Not installable on customer instances: Email Routing needs a zone, which workers.dev-hosted
@@ -324,6 +328,10 @@ const SINGLETON = new Set([
   "gatekeeper-mcp-portal",    // (2) no inputs; the one portal comes from the deployment's vars
   "gatekeeper-cloudflare",    // (2) fork: no inputs; users connect their own API token in-app (OWL-1618)
   "gatekeeper-unifi",         // (2) fork: no inputs; users connect their own Site Manager key in-app
+  "gatekeeper-proxmox-ve",    // (2) fork: no inputs; users connect their own API token in-app
+  "gatekeeper-proxmox-bs",    // (2) fork: no inputs; users connect their own API token in-app
+  "gatekeeper-mailarchiver",  // (2) fork: no inputs; users connect their own URL + token in-app
+  "gatekeeper-vonbusch-robomon", // (2) fork: no inputs; users connect their own token in-app
 ]);
 
 /** Default wizard inputs for an installable gatekeeper that fronts a third-party OAuth app. */
