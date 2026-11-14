@@ -14,7 +14,7 @@
 // never a scheme/format brute force. The token is never logged. Connect failures surface one
 // generic message to the user; the diagnosable cause goes to the Worker log only.
 import { PRODUCT } from "./product";
-import { normalizeToken, ProxmoxError, type CfAccessCredentials } from "./token";
+import { effectiveCfAccess, normalizeToken, ProxmoxError, type CfAccessCredentials } from "./token";
 
 export { normalizeCfAccess, normalizeToken, ProxmoxError, type CfAccessCredentials } from "./token";
 
@@ -49,14 +49,11 @@ function requestHeaders(
     Authorization: `${PRODUCT.authPrefix}=${creds.apiToken}`,
     ...extra,
   };
-  if (creds.cfAccess) {
-    headers["CF-Access-Client-Id"] = creds.cfAccess.clientId;
-    headers["CF-Access-Client-Secret"] = creds.cfAccess.clientSecret;
-    headers["X-Gk-Access-Source"] = "connection";
-  } else if (env?.PROXMOX_CF_ACCESS_CLIENT_ID && env?.PROXMOX_CF_ACCESS_CLIENT_SECRET) {
-    headers["CF-Access-Client-Id"] = env.PROXMOX_CF_ACCESS_CLIENT_ID;
-    headers["CF-Access-Client-Secret"] = env.PROXMOX_CF_ACCESS_CLIENT_SECRET;
-    headers["X-Gk-Access-Source"] = "env";
+  const chosen = effectiveCfAccess(creds.cfAccess, env?.PROXMOX_CF_ACCESS_CLIENT_ID, env?.PROXMOX_CF_ACCESS_CLIENT_SECRET);
+  if (chosen) {
+    headers["CF-Access-Client-Id"] = chosen.access.clientId;
+    headers["CF-Access-Client-Secret"] = chosen.access.clientSecret;
+    headers["X-Gk-Access-Source"] = chosen.source;
   }
   return headers;
 }
