@@ -40,7 +40,9 @@ import {
   HomeAssistantRest,
   HomeAssistantWebSocket,
   fetchRegistrySnapshot,
+  withAccessHeaders,
   withWebSocket,
+  type CfAccessEnv,
   type HomeAssistantCredentials,
   type RegistrySnapshot,
 } from "./homeassistant-api";
@@ -97,7 +99,12 @@ function authorizeRead(queue: RpcStub<ApprovalQueue>, observation: ObservationWi
 // ---------------------------------------------------------------------------
 // Configuration & nonce helpers
 
-type Env = Cloudflare.Env & {
+/**
+ * `CF_ACCESS_CLIENT_ID` / `CF_ACCESS_CLIENT_SECRET` (secrets, both or neither): an optional
+ * Cloudflare Access service token, attached to requests to an HA instance behind Access -- only
+ * when its hostname is listed exactly in `CF_ACCESS_HOSTS` (see `cfAccessHeaders`).
+ */
+type Env = Cloudflare.Env & CfAccessEnv & {
   BASE_URL?: string;
 };
 
@@ -471,9 +478,8 @@ export class UserAccount extends DurableObject<Env> {
     this.ctx.storage.kv.put<StoredNonce>("nonce", { ...stored, connecting: true });
 
     // Validate that the URL+token can actually talk to HA.
-    const creds: HomeAssistantCredentials = { baseUrl, token };
     try {
-      const rest = new HomeAssistantRest(creds);
+      const rest = new HomeAssistantRest(withAccessHeaders({ baseUrl, token }, this.env));
       await rest.ping();
     } catch (e: any) {
       this.#releaseNonceClaim(nonce);
@@ -542,7 +548,8 @@ export class UserAccount extends DurableObject<Env> {
     if (!creds) {
       throw new Error("Home Assistant credentials are not configured for this account.");
     }
-    return creds;
+    // Every other path to HA gets its credentials here, so the Access headers ride along.
+    return withAccessHeaders(creds, this.env);
   }
 
   async noteCredentialsExpired(): Promise<void> {

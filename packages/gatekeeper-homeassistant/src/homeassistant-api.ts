@@ -32,6 +32,74 @@ export interface HomeAssistantCredentials {
   baseUrl: string;
   /** A long-lived access token. */
   token: string;
+  /**
+   * Extra headers for every request to the instance (REST and the WebSocket upgrade): the
+   * deployment's Cloudflare Access service token, when HA sits behind Access. Never stored with
+   * the account; attached from the Worker's env by `withAccessHeaders()`.
+   */
+  accessHeaders?: Record<string, string>;
+}
+
+/** The Worker-level settings for an optional Cloudflare Access service token. */
+export interface CfAccessEnv {
+  /** Secrets: the service token pair. */
+  CF_ACCESS_CLIENT_ID?: string;
+  CF_ACCESS_CLIENT_SECRET?: string;
+  /** Comma-separated exact hostnames the token may be sent to. Unset or empty: none. */
+  CF_ACCESS_HOSTS?: string;
+}
+
+/**
+ * The Access service-token headers to send to the HA instance at `baseUrl`, or `undefined`. The
+ * token is a deployment-wide secret while `baseUrl` is user-supplied, so it goes only to a host
+ * listed in `CF_ACCESS_HOSTS` by exact (case-insensitive) hostname -- no wildcard or suffix
+ * matching -- and to none when the list is unset or empty. The token is a pair; one half without
+ * the other is a deployment mistake that would otherwise surface as an unexplained Access login
+ * redirect on every request, so it fails here by name (never by value).
+ */
+export function cfAccessHeaders(env: CfAccessEnv, baseUrl: string): Record<string, string> | undefined {
+  if (!!env.CF_ACCESS_CLIENT_ID !== !!env.CF_ACCESS_CLIENT_SECRET) {
+    throw new Error("CF_ACCESS_CLIENT_ID and CF_ACCESS_CLIENT_SECRET must be set together (or neither).");
+  }
+  if (!env.CF_ACCESS_CLIENT_ID || !env.CF_ACCESS_CLIENT_SECRET) return undefined;
+  const allowed = (env.CF_ACCESS_HOSTS ?? "").split(",").map(h => h.trim().toLowerCase()).filter(Boolean);
+  let hostname: string;
+  try {
+    hostname = new URL(baseUrl).hostname.toLowerCase();
+  } catch {
+    return undefined;
+  }
+  if (!allowed.includes(hostname)) return undefined;
+  return {
+    "CF-Access-Client-Id": env.CF_ACCESS_CLIENT_ID,
+    "CF-Access-Client-Secret": env.CF_ACCESS_CLIENT_SECRET,
+  };
+}
+
+/**
+ * `creds` with the deployment's Access headers attached when its host is allowed (see
+ * `cfAccessHeaders`); unchanged otherwise. Every request URL is built from `creds.baseUrl`, so
+ * the host checked here is the host the headers are sent to.
+ */
+export function withAccessHeaders(
+  creds: HomeAssistantCredentials,
+  env: CfAccessEnv,
+): HomeAssistantCredentials {
+  const accessHeaders = cfAccessHeaders(env, creds.baseUrl);
+  return accessHeaders ? { ...creds, accessHeaders } : creds;
+}
+
+/**
+ * The single place outbound requests to the instance pick up `creds.accessHeaders`. As a second
+ * line of defence it re-checks that `requestUrl` is on the host `withAccessHeaders` approved.
+ */
+function applyAccessHeaders(headers: Headers, creds: HomeAssistantCredentials, requestUrl: string): Headers {
+  if (!creds.accessHeaders) return headers;
+  if (new URL(requestUrl).hostname !== new URL(creds.baseUrl).hostname) return headers;
+  for (const [name, value] of Object.entries(creds.accessHeaders)) {
+    headers.set(name, value);
+  }
+  return headers;
 }
 
 function joinUrl(baseUrl: string, path: string): string {
@@ -54,13 +122,17 @@ const HA_WS_AUTH_TIMEOUT_MS = 15_000;
  * so the long-lived access token can never end up in error logs / UI text. */
 const HA_ERROR_BODY_MAX_BYTES = 200;
 
-function sanitizeErrorBody(text: string, token: string): string {
+function sanitizeErrorBody(text: string, creds: HomeAssistantCredentials): string {
   let clean = text.slice(0, HA_ERROR_BODY_MAX_BYTES).replace(/\s+/g, " ").trim();
   // Belt-and-suspenders: scrub anything that looks like the bearer token or an Authorization
   // header echo. We replace the literal token with [redacted-token] first, then any
   // remaining "Bearer ..." / "Authorization: ..." substrings.
-  if (token) {
-    clean = clean.split(token).join("[redacted-token]");
+  if (creds.token) {
+    clean = clean.split(creds.token).join("[redacted-token]");
+  }
+  // Same for an echoed Access service token.
+  for (const value of Object.values(creds.accessHeaders ?? {})) {
+    if (value) clean = clean.split(value).join("[redacted]");
   }
   clean = clean.replace(/Bearer\s+[A-Za-z0-9._\-+/=]+/gi, "Bearer [redacted]");
   clean = clean.replace(/Authorization\s*:\s*[^\s,;]+/gi, "Authorization: [redacted]");
@@ -73,7 +145,7 @@ async function fetchJson<T>(
   init: RequestInit = {},
 ): Promise<T> {
   const url = joinUrl(creds.baseUrl, path);
-  const headers = new Headers(init.headers ?? {});
+  const headers = applyAccessHeaders(new Headers(init.headers ?? {}), creds, url);
   headers.set("Authorization", `Bearer ${creds.token}`);
   if (init.body && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
@@ -113,7 +185,7 @@ async function fetchJson<T>(
   }
   if (!response.ok) {
     const rawText = await response.text().catch(() => "");
-    const safeText = sanitizeErrorBody(rawText, creds.token);
+    const safeText = sanitizeErrorBody(rawText, creds);
     throw new HomeAssistantError(
       `Home Assistant returned HTTP ${response.status}: ${safeText || response.statusText}`,
       { status: response.status },
@@ -227,6 +299,30 @@ function websocketUrl(baseUrl: string): string {
   return url.toString();
 }
 
+/**
+ * `new WebSocket()` cannot carry request headers, so when Access headers are configured the
+ * upgrade goes through `fetch()` with `Upgrade: websocket` instead (the Workers way to open a
+ * client WebSocket with headers).
+ */
+async function openWebSocketWithHeaders(
+  wsUrl: string,
+  creds: HomeAssistantCredentials,
+): Promise<WebSocket> {
+  const httpUrl = wsUrl.replace(/^ws/, "http");
+  const headers = applyAccessHeaders(new Headers({ Upgrade: "websocket" }), creds, httpUrl);
+  const response = await fetch(httpUrl, {
+    headers,
+    signal: AbortSignal.timeout(HA_WS_AUTH_TIMEOUT_MS),
+  });
+  const ws = response.webSocket;
+  if (!ws) {
+    await response.body?.cancel();
+    throw new Error(`upgrade refused with HTTP ${response.status}`);
+  }
+  ws.accept();
+  return ws;
+}
+
 /** Lightweight WebSocket client for Home Assistant. Holds an authenticated connection. */
 export class HomeAssistantWebSocket {
   #ws: WebSocket;
@@ -283,7 +379,7 @@ export class HomeAssistantWebSocket {
     const wsUrl = websocketUrl(creds.baseUrl);
     let ws: WebSocket;
     try {
-      ws = new WebSocket(wsUrl);
+      ws = creds.accessHeaders ? await openWebSocketWithHeaders(wsUrl, creds) : new WebSocket(wsUrl);
     } catch (e: any) {
       throw new HomeAssistantError(
         `Failed to open WebSocket to ${wsUrl}: ${e?.message ?? e}`,
