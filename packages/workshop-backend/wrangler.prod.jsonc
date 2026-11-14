@@ -102,6 +102,7 @@
     { "binding": "GATEKEEPER_SUPABASE", "service": "cloudflareos-gk-supabase", "entrypoint": "GatekeeperVendor" },
     { "binding": "GATEKEEPER_UNIFI", "service": "cloudflareos-gk-unifi", "entrypoint": "GatekeeperVendor" },
     { "binding": "GATEKEEPER_VONBUSCH_ROBOMON", "service": "cloudflareos-gk-robomon", "entrypoint": "GatekeeperVendor" },
+    { "binding": "GATEKEEPER_WEBSEARCH", "service": "cloudflareos-gk-websearch", "entrypoint": "GatekeeperVendor" },
     { "binding": "GATEKEEPER_ZOOMINFO", "service": "cloudflareos-gk-zoominfo", "entrypoint": "GatekeeperVendor" }
   ],
 

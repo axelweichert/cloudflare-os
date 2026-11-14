@@ -40,6 +40,8 @@
     { "binding": "GATEKEEPER_GOOGLE", "service": "cloudflareos-gk-google" },
     { "binding": "GATEKEEPER_HOMEASSISTANT", "service": "cloudflareos-gk-homeassistant" },
     { "binding": "GATEKEEPER_LINEAR", "service": "cloudflareos-gk-linear" },
+    { "binding": "GATEKEEPER_M365", "service": "cloudflareos-gk-m365" },
+    { "binding": "GATEKEEPER_MAILARCHIVER", "service": "cloudflareos-gk-mailarchiver" },
     { "binding": "GATEKEEPER_MCP", "service": "cloudflareos-gk-mcp" },
     { "binding": "GATEKEEPER_MCP_PORTAL", "service": "cloudflareos-gk-mcp-portal" },
     { "binding": "GATEKEEPER_NOTION", "service": "cloudflareos-gk-notion" },
@@ -51,6 +53,8 @@
     { "binding": "GATEKEEPER_SPOTIFY", "service": "cloudflareos-gk-spotify" },
     { "binding": "GATEKEEPER_SUPABASE", "service": "cloudflareos-gk-supabase" },
     { "binding": "GATEKEEPER_UNIFI", "service": "cloudflareos-gk-unifi" },
+    { "binding": "GATEKEEPER_VONBUSCH_ROBOMON", "service": "cloudflareos-gk-robomon" },
+    { "binding": "GATEKEEPER_WEBSEARCH", "service": "cloudflareos-gk-websearch" },
     { "binding": "GATEKEEPER_ZOOMINFO", "service": "cloudflareos-gk-zoominfo" }
   ],
 

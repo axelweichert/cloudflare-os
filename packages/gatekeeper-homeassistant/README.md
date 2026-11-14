@@ -17,6 +17,8 @@ When the user connects an account, they paste their HA URL and an LLAT into a fo
 
 The gatekeeper makes HTTP and WebSocket calls to the configured HA URL. On a Cloudflare-hosted Gadgets deployment, that means HA must be publicly reachable (via Nabu Casa, Cloudflare Tunnel, port-forwarding, etc.). On a self-hosted (workerd) deployment, LAN addresses like `http://homeassistant.local:8123` and `http://192.168.x.x:8123` work fine — that's the intended setup for users running Gadgets on the same network as their HA.
 
+If HA sits behind Cloudflare Access, give the Worker a [service token](https://developers.cloudflare.com/cloudflare-one/identity/service-tokens/) through the optional secrets `CF_ACCESS_CLIENT_ID` and `CF_ACCESS_CLIENT_SECRET` (set both or neither; `wrangler secret put ...`), plus the required variable `CF_ACCESS_HOSTS`, a comma-separated list of exact hostnames the token may be sent to (e.g. `homeassistant.weichert.at`). Every request to an HA instance whose URL hostname exactly matches one of them (case-insensitive; no wildcard or suffix matching) — REST calls, the connect-time check, and the WebSocket upgrade — carries the token as `CF-Access-Client-Id` / `CF-Access-Client-Secret`; requests to any other host never do, and with `CF_ACCESS_HOSTS` unset or empty the token is never sent. The Access policy needs a *Service Auth* rule that accepts that token.
+
 ## Resource granularities
 
 Five granularities are exposed; each comes with its own configurator UI for picking a specific resource from the connected HA instance:

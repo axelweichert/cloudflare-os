@@ -682,6 +682,109 @@
         "BASE_URL": "$PUBLIC_BASE_URL/gatekeeper/linear"
       }
     },
+    "gatekeeper-m365": {
+      "bindings": [
+        {
+          "name": "CLIENT_ID",
+          "text": "$SECRET(CLIENT_ID)",
+          "type": "secret_text"
+        },
+        {
+          "name": "CLIENT_SECRET",
+          "text": "$SECRET(CLIENT_SECRET)",
+          "type": "secret_text"
+        }
+      ],
+      "compatibilityDate": "2026-09-04",
+      "compatibilityFlags": [
+        "allow_irrevocable_stub_storage"
+      ],
+      "inputs": [
+        {
+          "kind": "secret",
+          "label": "OAuth client ID",
+          "name": "CLIENT_ID"
+        },
+        {
+          "kind": "secret",
+          "label": "OAuth client secret",
+          "name": "CLIENT_SECRET"
+        }
+      ],
+      "installable": true,
+      "kind": "gatekeeper",
+      "mainModule": "m365.js",
+      "migrations": [
+        {
+          "new_sqlite_classes": [
+            "UserAccount",
+            "M365GatekeeperImpl"
+          ],
+          "tag": "v0"
+        }
+      ],
+      "modules": [
+        {
+          "name": "m365.js",
+          "r2Key": "blobs/modules/8dfc8beace1c5c2f675f3fbf9273c799166245fa49751c472514b69198c682f5",
+          "sha256": "8dfc8beace1c5c2f675f3fbf9273c799166245fa49751c472514b69198c682f5",
+          "size": 57,
+          "type": "esm"
+        }
+      ],
+      "observability": {
+        "enabled": true,
+        "head_sampling_rate": 1,
+        "logs": {
+          "invocation_logs": false
+        }
+      },
+      "shortName": "m365",
+      "vars": {
+        "BASE_URL": "$PUBLIC_BASE_URL/gatekeeper/m365"
+      }
+    },
+    "gatekeeper-mailarchiver": {
+      "bindings": [],
+      "compatibilityDate": "2026-09-04",
+      "compatibilityFlags": [
+        "allow_irrevocable_stub_storage"
+      ],
+      "inputs": [],
+      "installable": true,
+      "kind": "gatekeeper",
+      "mainModule": "mailarchiver.js",
+      "migrations": [
+        {
+          "new_sqlite_classes": [
+            "UserAccount",
+            "MailArchiverGatekeeperImpl"
+          ],
+          "tag": "v0"
+        }
+      ],
+      "modules": [
+        {
+          "name": "mailarchiver.js",
+          "r2Key": "blobs/modules/1cba5e119c9bc160250f0fbc6049011acf559ddf0f0d84bf74edc2fe449005f3",
+          "sha256": "1cba5e119c9bc160250f0fbc6049011acf559ddf0f0d84bf74edc2fe449005f3",
+          "size": 65,
+          "type": "esm"
+        }
+      ],
+      "observability": {
+        "enabled": true,
+        "head_sampling_rate": 1,
+        "logs": {
+          "invocation_logs": false
+        }
+      },
+      "shortName": "mailarchiver",
+      "singleton": true,
+      "vars": {
+        "BASE_URL": "$PUBLIC_BASE_URL/gatekeeper/mailarchiver"
+      }
+    },
     "gatekeeper-mcp": {
       "bindings": [],
       "compatibilityDate": "2026-09-04",
@@ -1068,6 +1171,88 @@
         "BASE_URL": "$PUBLIC_BASE_URL/gatekeeper/pagerduty"
       }
     },
+    "gatekeeper-proxmox-bs": {
+      "bindings": [],
+      "compatibilityDate": "2026-09-04",
+      "compatibilityFlags": [
+        "allow_irrevocable_stub_storage"
+      ],
+      "inputs": [],
+      "installable": true,
+      "kind": "gatekeeper",
+      "mainModule": "proxmox.js",
+      "migrations": [
+        {
+          "new_sqlite_classes": [
+            "UserAccount",
+            "ProxmoxGatekeeperImpl"
+          ],
+          "tag": "v0"
+        }
+      ],
+      "modules": [
+        {
+          "name": "proxmox.js",
+          "r2Key": "blobs/modules/e8fe1589a0868ed3c84ba87d872c130e694adb1db8a4d1465bb17025869a5875",
+          "sha256": "e8fe1589a0868ed3c84ba87d872c130e694adb1db8a4d1465bb17025869a5875",
+          "size": 63,
+          "type": "esm"
+        }
+      ],
+      "observability": {
+        "enabled": true,
+        "head_sampling_rate": 1,
+        "logs": {
+          "invocation_logs": false
+        }
+      },
+      "shortName": "proxmoxbs",
+      "singleton": true,
+      "vars": {
+        "BASE_URL": "$PUBLIC_BASE_URL/gatekeeper/proxmoxbs"
+      }
+    },
+    "gatekeeper-proxmox-ve": {
+      "bindings": [],
+      "compatibilityDate": "2026-09-04",
+      "compatibilityFlags": [
+        "allow_irrevocable_stub_storage"
+      ],
+      "inputs": [],
+      "installable": true,
+      "kind": "gatekeeper",
+      "mainModule": "proxmox.js",
+      "migrations": [
+        {
+          "new_sqlite_classes": [
+            "UserAccount",
+            "ProxmoxGatekeeperImpl"
+          ],
+          "tag": "v0"
+        }
+      ],
+      "modules": [
+        {
+          "name": "proxmox.js",
+          "r2Key": "blobs/modules/2d0d2b54c7e26ac6617d01b0d31ec1a3d4d69119bc44d250b239d2a176790d5a",
+          "sha256": "2d0d2b54c7e26ac6617d01b0d31ec1a3d4d69119bc44d250b239d2a176790d5a",
+          "size": 63,
+          "type": "esm"
+        }
+      ],
+      "observability": {
+        "enabled": true,
+        "head_sampling_rate": 1,
+        "logs": {
+          "invocation_logs": false
+        }
+      },
+      "shortName": "proxmoxve",
+      "singleton": true,
+      "vars": {
+        "BASE_URL": "$PUBLIC_BASE_URL/gatekeeper/proxmoxve"
+      }
+    },
     "gatekeeper-scheduler": {
       "bindings": [],
       "compatibilityDate": "2026-09-04",
@@ -1343,6 +1528,53 @@
       "singleton": true,
       "vars": {
         "BASE_URL": "$PUBLIC_BASE_URL/gatekeeper/unifi"
+      }
+    },
+    "gatekeeper-vonbusch-robomon": {
+      "bindings": [],
+      "compatibilityDate": "2026-09-04",
+      "compatibilityFlags": [
+        "allow_irrevocable_stub_storage"
+      ],
+      "inputs": [],
+      "installable": true,
+      "kind": "gatekeeper",
+      "mainModule": "robomon.js",
+      "migrations": [
+        {
+          "tag": "v0"
+        },
+        {
+          "deleted_classes": [
+            "RobomonGatekeeper"
+          ],
+          "new_sqlite_classes": [
+            "UserAccount",
+            "RoboMonGatekeeperImpl"
+          ],
+          "tag": "v1"
+        }
+      ],
+      "modules": [
+        {
+          "name": "robomon.js",
+          "r2Key": "blobs/modules/18856affcbde5b84041ae66e26dbf3bd3023e0a5e98c7503a4fed18f80ba9621",
+          "sha256": "18856affcbde5b84041ae66e26dbf3bd3023e0a5e98c7503a4fed18f80ba9621",
+          "size": 69,
+          "type": "esm"
+        }
+      ],
+      "observability": {
+        "enabled": true,
+        "head_sampling_rate": 1,
+        "logs": {
+          "invocation_logs": false
+        }
+      },
+      "shortName": "vonbuschrobomon",
+      "singleton": true,
+      "vars": {
+        "BASE_URL": "$PUBLIC_BASE_URL/gatekeeper/vonbuschrobomon"
       }
     },
     "gatekeeper-websearch": {
