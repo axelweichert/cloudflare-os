@@ -94,6 +94,9 @@ export function withAccessHeaders(
  * line of defence it re-checks that `requestUrl` is on the host `withAccessHeaders` approved.
  */
 function applyAccessHeaders(headers: Headers, creds: HomeAssistantCredentials, requestUrl: string): Headers {
+  // Workers `fetch()` sends no User-Agent, and zone WAF rules commonly block an empty one
+  // before Access is even consulted.
+  if (!headers.has("User-Agent")) headers.set("User-Agent", "gadgets-gatekeeper-homeassistant");
   if (!creds.accessHeaders) return headers;
   if (new URL(requestUrl).hostname !== new URL(creds.baseUrl).hostname) return headers;
   for (const [name, value] of Object.entries(creds.accessHeaders)) {
