@@ -52,9 +52,11 @@ function requestHeaders(
   if (creds.cfAccess) {
     headers["CF-Access-Client-Id"] = creds.cfAccess.clientId;
     headers["CF-Access-Client-Secret"] = creds.cfAccess.clientSecret;
+    headers["X-Gk-Access-Source"] = "connection";
   } else if (env?.PROXMOX_CF_ACCESS_CLIENT_ID && env?.PROXMOX_CF_ACCESS_CLIENT_SECRET) {
     headers["CF-Access-Client-Id"] = env.PROXMOX_CF_ACCESS_CLIENT_ID;
     headers["CF-Access-Client-Secret"] = env.PROXMOX_CF_ACCESS_CLIENT_SECRET;
+    headers["X-Gk-Access-Source"] = "env";
   }
   return headers;
 }
@@ -63,12 +65,16 @@ async function fetchJson(url: string, init: RequestInit): Promise<{ status: numb
   const resp = await fetch(url, { ...init, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
   const text = await resp.text();
   let path = url;
+  let host = "?";
   try {
-    path = new URL(url).pathname;
+    ({ pathname: path, host } = new URL(url));
   } catch {
     // Keep the raw URL for the log line.
   }
-  console.log(`[${PRODUCT.vendorId}] upstream ${init?.method ?? "GET"} ${path} -> HTTP ${resp.status} body=${text.slice(0, 200)}`);
+  // The Access client id is an identifier, not a secret; its prefix tells which token was sent.
+  const sent = new Headers(init.headers);
+  const accessId = `${sent.get("CF-Access-Client-Id")?.slice(0, 8) ?? "none"}/${sent.get("X-Gk-Access-Source") ?? "-"}`;
+  console.log(`[${PRODUCT.vendorId}] upstream ${init?.method ?? "GET"} ${host}${path} access=${accessId} -> HTTP ${resp.status} body=${text.slice(0, 200)}`);
   let body: any = null;
   try {
     body = text ? JSON.parse(text) : null;
