@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { normalizeCfAccess, normalizeToken, ProxmoxError } from "./token.ts";
+import { effectiveCfAccess, normalizeCfAccess, normalizeToken, ProxmoxError } from "./token.ts";
 
 test("normalizeToken accepts a well-formed Proxmox token", () => {
   const t = "root@pam!cloudflareos=1234abcd-5678-90ef-ghij-klmnopqrstuv";
@@ -48,4 +48,27 @@ test("normalizeCfAccess rejects whitespace inside a value", () => {
     () => normalizeCfAccess("abc .access", "s3cret"),
     new ProxmoxError("Client ID und Client Secret des Cloudflare-Access-Tokens dürfen keine Leerzeichen enthalten."),
   );
+});
+
+test("effectiveCfAccess sends the current env secret for a stored copy of the deployment token", () => {
+  assert.deepEqual(effectiveCfAccess({ clientId: "shared.access", clientSecret: "stale" }, "shared.access", "rotated"), {
+    access: { clientId: "shared.access", clientSecret: "rotated" },
+    source: "env",
+  });
+});
+
+test("effectiveCfAccess keeps a connection's own Access token", () => {
+  assert.deepEqual(effectiveCfAccess({ clientId: "own.access", clientSecret: "own" }, "shared.access", "rotated"), {
+    access: { clientId: "own.access", clientSecret: "own" },
+    source: "connection",
+  });
+  assert.deepEqual(effectiveCfAccess({ clientId: "shared.access", clientSecret: "own" }, "shared.access", undefined), {
+    access: { clientId: "shared.access", clientSecret: "own" },
+    source: "connection",
+  });
+});
+
+test("effectiveCfAccess falls back to the env token, or none", () => {
+  assert.deepEqual(effectiveCfAccess(undefined, "shared.access", "s"), { access: { clientId: "shared.access", clientSecret: "s" }, source: "env" });
+  assert.equal(effectiveCfAccess(undefined, "shared.access", undefined), undefined);
 });

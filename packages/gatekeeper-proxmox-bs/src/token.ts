@@ -46,3 +46,19 @@ export function normalizeCfAccess(id?: string, secret?: string): CfAccessCredent
   }
   return { clientId, clientSecret };
 }
+
+/**
+ * The Access service token to send. A connection's own token wins, except when it is the
+ * deployment's token (same client id) and the env holds that token's secret: rotating a token keeps
+ * its client id and changes only the secret, so a copy stored at connect time would otherwise be
+ * rejected by Access forever (OWL-2477).
+ */
+export function effectiveCfAccess(
+  own: CfAccessCredentials | undefined,
+  envClientId?: string,
+  envClientSecret?: string,
+): { access: CfAccessCredentials; source: "connection" | "env" } | undefined {
+  const env = envClientId && envClientSecret ? { clientId: envClientId, clientSecret: envClientSecret } : undefined;
+  if (own && own.clientId !== env?.clientId) return { access: own, source: "connection" };
+  return env ? { access: env, source: "env" } : undefined;
+}
