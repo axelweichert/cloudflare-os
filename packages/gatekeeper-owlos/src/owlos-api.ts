@@ -128,6 +128,8 @@ export async function verifyCredentials(
   );
 }
 
+export type HttpMethod = "GET" | "POST" | "PATCH";
+
 /** Authenticated client for a connected owlOS instance. */
 export class OwlosClient {
   #creds: OwlosCredentials;
@@ -136,20 +138,46 @@ export class OwlosClient {
     this.#creds = creds;
   }
 
-  #headers(): Record<string, string> {
-    return { Accept: "application/json", ...authHeader(this.#creds.authScheme, this.#creds.apiToken) };
+  #headers(hasBody: boolean): Record<string, string> {
+    return {
+      Accept: "application/json",
+      ...(hasBody ? { "Content-Type": "application/json" } : {}),
+      ...authHeader(this.#creds.authScheme, this.#creds.apiToken),
+    };
+  }
+
+  /**
+   * One request against a `/api/*` route of the connected instance. `path` is an absolute API path
+   * (e.g. `/api/erp/quotes`) — callers own the path so the S2 session methods, not the agent, decide
+   * which routes exist (all routes are the ones locked in S2-CONTRACT.md; nothing is guessed here).
+   * A 401/403 means the stored token is dead; any other non-2xx surfaces as an OwlosError.
+   */
+  async request(method: HttpMethod, path: string, body?: unknown): Promise<any> {
+    const hasBody = body !== undefined && method !== "GET";
+    const { status, body: respBody } = await fetchJson(`${this.#creds.instanceUrl}${path}`, {
+      method,
+      headers: this.#headers(hasBody),
+      ...(hasBody ? { body: JSON.stringify(body) } : {}),
+    });
+    if (status < 200 || status >= 300) {
+      // Log the exact owlOS response so a live approve (applyAction) leaves the real 4xx + body in
+      // Workers Logs / `wrangler tail` — the RPC boundary only surfaces a generic "Failed to approve
+      // action" toast, which hid the true cause in OWL-1671. Body is truncated to stay bounded.
+      const raw = typeof respBody === "string" ? respBody : JSON.stringify(respBody);
+      console.warn(`owlOS ${method} ${path} -> HTTP ${status} body=${(raw ?? "").slice(0, 800)}`);
+      if (status === 401 || status === 403) {
+        throw new OwlosError("owlOS credentials are no longer valid.");
+      }
+      // owlOS may report the reason under error/message or a bare string/field map — fall back to the
+      // whole body so the message is never empty (which is what made OWL-1671 undiagnosable).
+      const detail = respBody?.error ?? respBody?.message ?? (raw && raw !== "{}" ? raw.slice(0, 300) : "");
+      throw new OwlosError(`owlOS ${method} ${path} returned HTTP ${status}${detail ? `: ${detail}` : "."}`);
+    }
+    return respBody ?? null;
   }
 
   /** GET {base}/api/auth/me — the authenticated workspace identity. Shape is passthrough (S2 types it). */
   async me(): Promise<Record<string, unknown>> {
-    const { status, body } = await fetchJson(`${this.#creds.instanceUrl}/api/auth/me`, {
-      method: "GET",
-      headers: this.#headers(),
-    });
-    if (status === 401 || status === 403) {
-      throw new OwlosError("owlOS credentials are no longer valid.");
-    }
-    if (status !== 200) throw new OwlosError(`owlOS /api/auth/me returned HTTP ${status}.`);
-    return (body ?? {}) as Record<string, unknown>;
+    return ((await this.request("GET", "/api/auth/me")) ?? {}) as Record<string, unknown>;
   }
 }
