@@ -37,6 +37,7 @@ import { McpSessionBase } from "@gadgets/mcp-shared/session";
 import { McpFacetBase } from "@gadgets/mcp-shared/facet";
 import { asVerifier, observerAccessVerifier } from "@gadgets/gatekeeper-kit/observers";
 import { formatSubresourceId, parseSubresourceId } from "@gadgets/gatekeeper-kit/subresource-ids";
+import { readTextCapped } from "@gadgets/gatekeeper-kit/response-body";
 import {
   looksLikePortal,
   parsePortalServers,
@@ -245,7 +246,12 @@ export default {
         // us skip Dynamic Client Registration against a portal that won't allowlist our redirect URI.
         let manualClient: StoredOAuthClientInformation | undefined;
         if (request.method === "POST") {
-          const form = await request.formData();
+          let form: URLSearchParams;
+          try {
+            form = new URLSearchParams(await readTextCapped(request, 16 * 1024));
+          } catch {
+            return new Response("Invalid form submission.", { status: 400 });
+          }
           const clientId = String(form.get("client_id") ?? "").trim();
           if (clientId) {
             const clientSecret = String(form.get("client_secret") ?? "").trim();
