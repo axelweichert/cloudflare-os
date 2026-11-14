@@ -23,7 +23,7 @@ owlOS ships a new version; the health probe reports the running version at `/api
 | Blueprint | Read (list) | Create | Minimal create body (from SPA) |
 |---|---|---|---|
 | **Kunde** (company) | `GET /api/companies` | `POST /api/companies` | `{name, …}`; assign number via `POST /api/companies/assign-kundennr` |
-| **Angebot** (quote) | `GET /api/erp/quotes` | `POST /api/erp/quotes` | `{title}` **required** ("Titel ist Pflicht"); then `PATCH /api/erp/quotes/{id}` sets `company_id`, `status`, `valid_until` |
+| **Angebot** (quote) | `GET /api/erp/quotes` | `POST /api/erp/quotes` | `{title, status:"quote_draft"}` — **both** required. The SPA's own create POST sends `{title, status:"quote_draft"}` (bundle `index-BISW9feO.js`, v0.32.84); a `{title}`-only body is rejected (OWL-1671). Then `PATCH /api/erp/quotes/{id}` sets `company_id`, `status`, `valid_until` |
 | **Rechnung** (outgoing invoice) | `GET /api/faktura/outgoing` | `POST /api/faktura/outgoing` | invoice header (`doc_type` defaults to invoice; `credit_note` variant); line items via `POST /api/faktura/outgoing/{id}/items`; commit via `POST /api/faktura/outgoing/{id}/finalize` |
 
 Related read-only context the create flows may want: `GET /api/contacts`, `GET /api/erp/offers`,
