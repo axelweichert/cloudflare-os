@@ -180,6 +180,23 @@ async function fetchJson<T>(
     clearTimeout(timeoutHandle);
   }
 
+  // A proxy in front of HA (e.g. Cloudflare WAF/Access) answers with an HTML page or a redirect
+  // to its login host; reporting that as a rejected HA token sends the user after the wrong cause.
+  if (response.url && new URL(response.url).hostname !== new URL(url).hostname) {
+    throw new HomeAssistantError(
+      `The request to ${creds.baseUrl} was redirected to ${new URL(response.url).hostname} before reaching Home Assistant (e.g. a Cloudflare Access login), so the access token was never checked.`,
+      { status: response.status },
+    );
+  }
+  if (
+    (response.status === 401 || response.status === 403) &&
+    (response.headers.get("Content-Type") ?? "").includes("text/html")
+  ) {
+    throw new HomeAssistantError(
+      `A proxy in front of Home Assistant blocked the request (HTTP ${response.status}, e.g. a Cloudflare WAF rule or Access), so the access token was never checked.`,
+      { status: response.status },
+    );
+  }
   if (response.status === 401 || response.status === 403) {
     throw new HomeAssistantError(
       "Home Assistant rejected the access token. The token may have been revoked.",
