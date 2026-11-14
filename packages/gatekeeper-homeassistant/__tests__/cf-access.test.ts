@@ -189,3 +189,24 @@ describe("WebSocket upgrade", () => {
     await ws.close();
   });
 });
+
+describe("errors from a proxy in front of HA", () => {
+  const respond = (res: Response) => vi.stubGlobal("fetch", vi.fn(async () => res));
+
+  it("report an HTML 403 (WAF/Access page) as a proxy block, not a rejected token", async () => {
+    respond(new Response("<html>Attention Required</html>", { status: 403, headers: { "Content-Type": "text/html" } }));
+    await expect(new HomeAssistantRest(BASE).ping()).rejects.toThrow(/proxy in front of Home Assistant blocked/);
+  });
+
+  it("report a redirect to another host (Access login) as never reaching HA", async () => {
+    const res = new Response("<html>login</html>", { status: 200, headers: { "Content-Type": "text/html" } });
+    Object.defineProperty(res, "url", { value: "https://team.cloudflareaccess.com/cdn-cgi/access/login" });
+    respond(res);
+    await expect(new HomeAssistantRest(BASE).ping()).rejects.toThrow(/redirected to team\.cloudflareaccess\.com/);
+  });
+
+  it("still report HA's own 401 as a rejected token", async () => {
+    respond(new Response("401: Unauthorized", { status: 401, headers: { "Content-Type": "text/plain" } }));
+    await expect(new HomeAssistantRest(BASE).ping()).rejects.toThrow(/rejected the access token/);
+  });
+});
