@@ -54,7 +54,7 @@ function decodeFiles(gzipped: Uint8Array): Record<string, string> {
 
 const srcDir = join(here, "src");
 const names = (await readdir(srcDir, { withFileTypes: true }))
-  .filter((d) => d.isDirectory()).map((d) => d.name).sort();
+  .filter((d) => d.isDirectory()).map((d) => d.name).toSorted();
 
 assert.ok(names.length >= 2, "es sollten mindestens zwei Workflow-Blueprints existieren");
 
@@ -70,8 +70,8 @@ for (const name of names) {
 
     // --- Snapshot dekodiert zu genau den Quell-Dateien (ohne blueprint.json) ---
     const files = decodeFiles(content);
-    const srcFiles = (await readdir(dir)).filter((f) => f !== "blueprint.json").sort();
-    assert.deepEqual(Object.keys(files).sort(), srcFiles, "Dateimenge im Snapshot != Quelle");
+    const srcFiles = (await readdir(dir)).filter((f) => f !== "blueprint.json").toSorted();
+    assert.deepEqual(Object.keys(files).toSorted(), srcFiles, "Dateimenge im Snapshot != Quelle");
     for (const f of srcFiles) {
       assert.equal(files[f], await readFile(join(dir, f), "utf8"), `${f} weicht ab`);
     }

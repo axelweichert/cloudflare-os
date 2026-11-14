@@ -4,8 +4,13 @@ import {
   GatekeeperVendor as GatekeeperVendorIface, Gatekeeper, GatekeeperUserVerifier, VendorDescription,
   GatekeeperConnectCallback, GatekeeperConnectOptions, AccountDescription,
   SupportedResource, ResourceConfiguratorFrame, ResourceDescription, ApprovalQueue, ActionKind,
-  stripTrailingSlashes,
+  GitCache, stripTrailingSlashes, workerVersionTag, type ConnectHandoff,
 } from "@gadgets/workshop-shared/gatekeeper";
+import { KvTtlCache } from "@gadgets/gatekeeper-kit/cache";
+import { connectHandoffPageHtml, escapeHtml, htmlResponse } from "@gadgets/gatekeeper-kit/connect-pages";
+import { commitStagedCredentials, stageCredentials } from "@gadgets/gatekeeper-kit/credential-stage";
+import { observerAccessVerifier } from "@gadgets/gatekeeper-kit/observers";
+import { readTextCapped } from "@gadgets/gatekeeper-kit/response-body";
 import { CloudflareGatekeeperUser } from "@gadgets/workshop-shared/cloudflare-gatekeeper";
 import { verifyToken, listAccounts } from "./cloudflare-api";
 import {
@@ -15,6 +20,8 @@ import {
   accountObservabilityUrl,
   workerObservabilityUrl,
   parseObservabilityResourceUrl,
+  observabilitySubresourceId,
+  parseObservabilitySubresourceId,
 } from "./resources.js";
 import { CloudflareObservabilityApi, deniesAccess } from "./observability-api.js";
 import { CloudflareObservabilitySessionImpl } from "./observability-session.js";
@@ -40,11 +47,32 @@ const logger = obsContext.createLogger({
 // token is a long-lived bearer credential used directly against api.cloudflare.com.
 
 // A short-lived nonce stored in UserAccount KV, protecting the connect link (same shape as UniFi).
-type StoredNonce = { value: string; expiresAt: number };
+type StoredNonce = {
+  value: string;
+  expiresAt: number;
+  /**
+   * Set when this flow reconnects an existing account, so its token is staged rather than made
+   * live. The mode travels with the flow instead of living on the account: committing one
+   * reconnect while another is in flight must not change how that other flow lands.
+   */
+  reconnect?: true;
+  /** Set while a submission is verifying the token, so a concurrent one can't reuse the nonce. */
+  connecting?: true;
+};
 type StoredCredentials = { apiToken: string };
 
 const NONCE_BYTES = 32;
 const NONCE_LIFETIME_MS = 10 * 60 * 1000;
+
+// The route checks only path shape before reading the form; the account checks the nonce after.
+const MAX_CONNECT_FORM_BYTES = 16 * 1024;
+
+// How long an observer's account reuses its answer about reading an account's telemetry, counted
+// from when it asked Cloudflare. Cloudflare doesn't say when access changes: a revoked role is
+// noticed only once the answer that allowed it expires, while a denial is kept briefly so that a
+// new grant is noticed soon.
+const TELEMETRY_ACCESS_ALLOWED_TTL_MS = 15 * 60_000;
+const TELEMETRY_ACCESS_DENIED_TTL_MS = 15_000;
 
 // Official Cloudflare logomark (orange cloud on a transparent background), as a data URI so it can
 // be rendered directly as the vendor/account avatar.
@@ -87,10 +115,6 @@ function getBasePath(env: Env) {
 // All observability resources are grantable by any account-scoped token that carries the required
 // read permissions, so a connected token is treated as granting the whole set.
 const ALL_RESOURCE_PATTERNS = OBSERVABILITY_RESOURCES.map(r => r.urlPattern);
-
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
-}
 
 const CONNECT_FORM_HTML = (params: { actionUrl: string; error?: string }) => `<!DOCTYPE html>
 <html lang="en">
@@ -148,13 +172,6 @@ const CONNECT_FORM_HTML = (params: { actionUrl: string; error?: string }) => `<!
 </body>
 </html>`;
 
-const SELF_CLOSING_HTML = `<!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8"><title>Connected</title></head>
-<body style="font-family: system-ui, sans-serif; text-align: center; padding: 2rem;">
-<script type="text/javascript">window.close();</script>
-<h2 style="color:#f4801f;">Connected!</h2>
-<p>Your Cloudflare account has been linked to Cloudflare OS. You may close this tab.</p></body></html>`;
-
 const INVALID_LINK_HTML = `<!DOCTYPE html>
 <html lang="en"><head><meta charset="UTF-8"><title>Link Expired</title></head>
 <body style="font-family: system-ui, sans-serif; text-align: center; padding: 3rem;">
@@ -189,9 +206,9 @@ export default {
       }
 
       if (req.method === "POST") {
-        let formData: FormData;
+        let formData: URLSearchParams;
         try {
-          formData = await req.formData();
+          formData = new URLSearchParams(await readTextCapped(req, MAX_CONNECT_FORM_BYTES));
         } catch {
           return new Response("Invalid form submission.", { status: 400 });
         }
@@ -210,7 +227,7 @@ export default {
             headers: { "Content-Type": "text/html; charset=utf-8" }, status: 400,
           });
         }
-        return new Response(SELF_CLOSING_HTML, { headers: { "Content-Type": "text/html; charset=utf-8" } });
+        return htmlResponse(connectHandoffPageHtml(result.handoff));
       }
     }
     return new Response("Not Found", { status: 404 });
@@ -235,6 +252,10 @@ export class GatekeeperVendor extends WorkerEntrypoint<Env> implements Gatekeepe
     };
   }
 
+  async versionTag(): Promise<string | undefined> {
+    return workerVersionTag(this.env);
+  }
+
   async connectAccount(callback: Fetcher<GatekeeperConnectCallback>,
                        _options?: GatekeeperConnectOptions): Promise<{ url: string }> {
     const userObjectId = this.ctx.exports.UserAccount.newUniqueId();
@@ -253,11 +274,19 @@ export class GatekeeperVendor extends WorkerEntrypoint<Env> implements Gatekeepe
 }
 
 type CompleteConnectionResult =
-  | { kind: "ok" }
+  | { kind: "ok"; handoff: ConnectHandoff }
   | { kind: "invalid_nonce" }
   | { kind: "error"; message: string };
 
 export class UserAccount extends DurableObject<Env> {
+  // Bumped by every credential write, so a telemetry check that a reconnect overtakes is detected.
+  #grantGeneration = 0;
+  // This account's answers about reading accounts' telemetry (see checkTelemetryAccess). One
+  // partition while connected: every install of credentials invalidates it instead
+  // (#writeCredentials), so no answer outlives the token that learned it.
+  readonly #access = new KvTtlCache(this.ctx.storage.kv,
+    () => this.hasCredentials() ? "connected" : undefined, { name: "access" });
+
   async setCallback(callback: Fetcher<GatekeeperConnectCallback>, nonce: string) {
     if (!this.ctx.storage.kv.get<StoredCredentials>("credentials")) {
       this.ctx.storage.setAlarm(Date.now() + 3600 * 1000);
@@ -270,14 +299,17 @@ export class UserAccount extends DurableObject<Env> {
   }
 
   async prepareReconnect(nonce: string) {
-    this.ctx.storage.kv.put<boolean>("reconnecting", true);
     this.ctx.storage.kv.put<StoredNonce>("nonce", {
       value: nonce,
       expiresAt: Date.now() + NONCE_LIFETIME_MS,
+      reconnect: true,
     });
   }
 
-  /** Validate the nonce without consuming it (so the user can resubmit if verification fails). */
+  /**
+   * Validates the nonce without claiming it, for the GET preview of the form. A submission that
+   * fails validation releases its claim (see completeConnection), so the user can resubmit.
+   */
   async verifyNonceWithoutConsuming(nonce: string): Promise<boolean> {
     const stored = this.ctx.storage.kv.get<StoredNonce>("nonce");
     if (!stored || Date.now() >= stored.expiresAt) return false;
@@ -286,42 +318,51 @@ export class UserAccount extends DurableObject<Env> {
 
   async completeConnection(nonce: string, apiToken: string): Promise<CompleteConnectionResult> {
     const stored = this.ctx.storage.kv.get<StoredNonce>("nonce");
-    if (!stored || Date.now() >= stored.expiresAt || !constantTimeEqual(stored.value, nonce)) {
+    if (!stored || stored.connecting || Date.now() >= stored.expiresAt
+        || !constantTimeEqual(stored.value, nonce)) {
       return { kind: "invalid_nonce" };
     }
+    // Claim the nonce before the first await. The Durable Object's input gate does not cover the
+    // outbound verification, so a second submission arriving meanwhile would otherwise validate the
+    // same nonce and complete the connection a second time.
+    this.ctx.storage.kv.put<StoredNonce>("nonce", { ...stored, connecting: true });
 
     // Validate the token can actually authenticate before we store it.
     let valid = false;
     try {
       valid = await verifyToken(apiToken);
     } catch (e: any) {
+      this.#releaseNonceClaim(nonce);
       return { kind: "error", message: `Unable to reach the Cloudflare API: ${e?.message ?? e}` };
     }
     if (!valid) {
+      this.#releaseNonceClaim(nonce);
       return { kind: "error", message: "Cloudflare rejected the API token. It may be invalid, revoked, or inactive." };
     }
 
     // Consume the nonce now that we've validated.
     this.ctx.storage.kv.delete("nonce");
-    this.ctx.storage.kv.put<StoredCredentials>("credentials", { apiToken });
 
     const callback = this.ctx.storage.kv.get<Fetcher<GatekeeperConnectCallback>>("callback");
     if (!callback) {
-      this.ctx.storage.kv.delete("credentials");
       return { kind: "error", message: "Connection callback expired. Please restart." };
     }
 
-    const reconnecting = this.ctx.storage.kv.get<boolean>("reconnecting");
-    if (reconnecting) {
-      this.ctx.storage.kv.delete("reconnecting");
+    let handoff: ConnectHandoff;
+    if (stored.reconnect) {
+      // The reconnect URL is a bearer capability, so the new token is only staged until the Workshop
+      // has confirmed the browser that finished the flow is the owner's (see commitReconnect). Bound
+      // gadgets keep reading the current token meanwhile.
+      const stageId = stageCredentials<StoredCredentials>(this.ctx.storage.kv, { apiToken }, Date.now());
       try {
-        await callback.credentialsRestored();
+        handoff = await callback.reconnectComplete(stageId);
       } catch (e: any) {
         return { kind: "error", message: `Failed to notify workshop: ${e?.message ?? e}` };
       }
     } else {
+      this.#writeCredentials({ apiToken });
       try {
-        await callback.complete(this.ctx.exports.GatekeeperUserImpl({ props: { userObjectId: this.ctx.id.toString() } }));
+        handoff = await callback.complete(this.ctx.exports.GatekeeperUserImpl({ props: { userObjectId: this.ctx.id.toString() } }));
       } catch (e: any) {
         this.ctx.storage.kv.delete("credentials");
         return { kind: "error", message: `Failed to notify workshop: ${e?.message ?? e}` };
@@ -329,11 +370,64 @@ export class UserAccount extends DurableObject<Env> {
     }
 
     await this.ctx.storage.deleteAlarm();
-    return { kind: "ok" };
+    return { kind: "ok", handoff };
+  }
+
+  // Releases a failed submission's claim without reopening a nonce that another flow replaced while
+  // this request was suspended. Synchronous storage makes the check and put one step.
+  #releaseNonceClaim(nonce: string): void {
+    const stored = this.ctx.storage.kv.get<StoredNonce>("nonce");
+    if (!stored || !stored.connecting || !constantTimeEqual(stored.value, nonce)) return;
+    const { connecting: _, ...released } = stored;
+    this.ctx.storage.kv.put<StoredNonce>("nonce", released);
+  }
+
+  /** Makes the token staged under `stageId` live; see GatekeeperUser.commitReconnect. */
+  async commitReconnect(stageId: string): Promise<void> {
+    const creds = commitStagedCredentials<StoredCredentials>(this.ctx.storage.kv, Date.now(), stageId);
+    if (!creds) throw new Error("No reconnect is awaiting confirmation. Please try again.");
+    this.#writeCredentials(creds);
+  }
+
+  #writeCredentials(creds: StoredCredentials) {
+    this.#grantGeneration++;
+    this.ctx.storage.kv.put<StoredCredentials>("credentials", creds);
+    this.#access.invalidateAll();
   }
 
   hasCredentials() {
     return this.ctx.storage.kv.get<StoredCredentials>("credentials") !== undefined;
+  }
+
+  /**
+   * Whether these credentials can read telemetry in each account, in order, as
+   * CloudflareVerifier.hasObservabilityAccess asks it of one account, reusing an allowed answer for
+   * up to TELEMETRY_ACCESS_ALLOWED_TTL_MS and a denial for up to TELEMETRY_ACCESS_DENIED_TTL_MS. A
+   * connection with no token is denied without reusing anything. A pasted token records no scopes,
+   * so the live probe is the only check of its permissions. Throws when Cloudflare can't answer,
+   * which is never reused, or when the account is reconnected mid-check.
+   */
+  async checkTelemetryAccess(accountIds: string[]): Promise<boolean[]> {
+    // Every answer must come from the token installed when the check began, or one principal's
+    // answer for one account could be paired with another's for the next.
+    const generation = this.#grantGeneration;
+    const token = await this.getAccessToken();
+    const allowed: boolean[] = [];
+    if (!token) {
+      allowed.push(...accountIds.map(() => false));
+    } else {
+      // Asked one at a time, so a long list doesn't trip Cloudflare's per-user rate limit. Each
+      // probe reads the token live, so an answer is stored only under the token that gave it.
+      for (const accountId of accountIds) {
+        allowed.push(await this.#access.cached(accountId,
+          granted => granted ? TELEMETRY_ACCESS_ALLOWED_TTL_MS : TELEMETRY_ACCESS_DENIED_TTL_MS,
+          () => canReadTelemetry(() => this.getAccessToken(), accountId)));
+      }
+    }
+    if (this.#grantGeneration !== generation) {
+      throw new Error("This Cloudflare connection was reconnected while its access was being checked.");
+    }
+    return allowed;
   }
 
   /**
@@ -451,6 +545,10 @@ export class GatekeeperUserImpl extends WorkerEntrypoint<Env, GatekeeperUserImpl
     return { url: `${getBaseUrl(this.env)}/${this.ctx.props.userObjectId}/${nonce}` };
   }
 
+  async commitReconnect(stageId: string): Promise<void> {
+    await this.#account().commitReconnect(stageId);
+  }
+
   @skipRpcValidation()
   async getVerifier(): Promise<Fetcher<GatekeeperUserVerifier>> {
     return this.ctx.exports.CloudflareVerifier({
@@ -459,10 +557,37 @@ export class GatekeeperUserImpl extends WorkerEntrypoint<Env, GatekeeperUserImpl
   }
 }
 
+/**
+ * Whether a telemetry read with these credentials succeeds, in the account or only for one Worker
+ * in it: false when Cloudflare denies access, throwing when it can't tell.
+ */
+async function canReadTelemetry(
+    getToken: () => Promise<string | null>, accountId: string, workerName?: string): Promise<boolean> {
+  try {
+    await new CloudflareObservabilityApi(getToken, accountId, workerName).listKeys({ limit: 1 });
+    return true;
+  } catch (error) {
+    if (deniesAccess(error)) {
+      logger.info("observer denied access to bound telemetry", {
+        event: "observer.denied", status: error.status,
+      });
+      return false;
+    }
+    throw error;
+  }
+}
+
 /** Vendor-specific verifier methods trusted only after the overseer's same-vendor handoff. */
 export interface CloudflareVerifierApi extends GatekeeperUserVerifier {
   /** Check whether this connected Cloudflare account can read the bound telemetry resource. */
   hasObservabilityAccess(accountId: string, workerName?: string): Promise<boolean>;
+
+  /**
+   * Whether this connected Cloudflare account can read telemetry in each account, in order,
+   * reusing recent answers (see UserAccount.checkTelemetryAccess). Throws when access can't be
+   * determined.
+   */
+  checkTelemetryAccess(accountIds: string[]): Promise<boolean[]>;
 }
 
 /** Verifies an observer's access using that observer's own Cloudflare credentials. */
@@ -472,22 +597,22 @@ export class CloudflareVerifier extends WorkerEntrypoint<Env, GatekeeperUserImpl
   async hasObservabilityAccess(accountId: string, workerName?: string): Promise<boolean> {
     const id = this.ctx.exports.UserAccount.idFromString(this.ctx.props.userObjectId);
     const account = this.ctx.exports.UserAccount.get(id);
-    try {
-      await new CloudflareObservabilityApi(
-        () => account.getAccessToken(), accountId, workerName,
-      ).listKeys({ limit: 1 });
-      return true;
-    } catch (error) {
-      if (deniesAccess(error)) {
-        logger.info("observer denied access to bound telemetry", {
-          event: "observer.denied", status: error.status,
-        });
-        return false;
-      }
-      throw error;
-    }
+    return canReadTelemetry(() => account.getAccessToken(), accountId, workerName);
+  }
+
+  async checkTelemetryAccess(accountIds: string[]): Promise<boolean[]> {
+    const id = this.ctx.exports.UserAccount.idFromString(this.ctx.props.userObjectId);
+    return this.ctx.exports.UserAccount.get(id).checkTelemetryAccess(accountIds);
   }
 }
+
+// Admits an observer only if a telemetry read through their own connection succeeds in every
+// account the reads reported, as their UserAccount last learned (see checkTelemetryAccess). Each
+// ID is parsed before anything is asked, so one this gatekeeper never reports fails the whole call.
+const verifyObservabilityAccess = observerAccessVerifier({
+  hasCollectionAccess: (verifier: Fetcher<CloudflareVerifierApi>, subresources: readonly string[]) =>
+    verifier.checkTelemetryAccess(subresources.map(parseObservabilitySubresourceId)),
+});
 
 type CloudflareObservabilityGatekeeperProps = {
   userObjectId: string;
@@ -535,7 +660,8 @@ export class CloudflareObservabilityGatekeeper
     const target = this.ctx.props.workerName
       ? `Worker ${this.ctx.props.workerName}`
       : `Cloudflare account ${this.ctx.props.accountId}`;
-    return new CloudflareObservabilitySessionImpl(this.#api(), approvalQueue.dup(), target);
+    return new CloudflareObservabilitySessionImpl(this.#api(), approvalQueue.dup(), target,
+      observabilitySubresourceId(this.ctx.props.accountId));
   }
 
   async addObserver(_id: string, user: Fetcher<GatekeeperUserVerifier>): Promise<void> {
@@ -551,7 +677,24 @@ export class CloudflareObservabilityGatekeeper
     // Strategy B verifies on each admission and retains no observer state to remove.
   }
 
-  async applyAction(_action: number): Promise<void> { throw new Error("This resource is read-only."); }
+  /**
+   * Every read, through an account or a Worker binding alike, reports `account/<accountId>`, which
+   * this checks as addObserver() checks an account binding; any other ID fails the whole call.
+   */
+  async verifyObserverAccess(
+      observers: {id: string, verifier: Fetcher<GatekeeperUserVerifier>}[],
+      subresources: string[]): Promise<{allowedObserverIds: string[]}> {
+    return verifyObservabilityAccess(observers, subresources);
+  }
+
+  /**
+   * `_cache` is unused (a read-only resource applies nothing), but declaring it keeps the
+   * signature aligned with the `Gatekeeper` interface, which is also what lets the workerd test
+   * suite pass a stand-in cache through the class-typed facet stub.
+   */
+  async applyAction(_action: number, _cache: RpcStub<GitCache>): Promise<void> {
+    throw new Error("This resource is read-only.");
+  }
   async rejectAction(_action: number): Promise<void> { throw new Error("This resource is read-only."); }
   async revertAction(_action: number): Promise<void> { throw new Error("This resource is read-only."); }
 }

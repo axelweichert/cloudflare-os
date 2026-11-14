@@ -3,7 +3,7 @@
 
 import { act, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import { newMessagePortRpcSession, RpcStub, RpcTarget } from 'capnweb'
+import { newMessagePortRpcSession, RpcPromise, RpcStub, RpcTarget } from 'capnweb'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { GadgetClient, UiBundle } from '@gadgets/workshop-shared/api'
 
@@ -100,6 +100,16 @@ class TestGadgetTarget extends RpcTarget implements TestGadget {
   }
 }
 
+class TestGadgetClientTarget extends RpcTarget {
+  constructor(private value: string) {
+    super()
+  }
+
+  connectToGadget() {
+    return new TestGadgetTarget(this.value)
+  }
+}
+
 class TestCallbacks extends RpcTarget implements TestSubscriber {
   closed = false
 
@@ -123,7 +133,7 @@ function fakeGadget(
     async () => new RpcStub(new TestGadgetTarget(value)) as unknown as RpcStub<TestGadget>,
   ),
 ) {
-  const getUiBundle = vi.fn<() => Promise<UiBundle>>(async () => ({ jsCode: bundleCode }))
+  const getUiBundle = vi.fn<() => Promise<UiBundle | null>>(async () => ({ jsCode: bundleCode }))
   return {
     connectToGadget,
     getUiBundle,
@@ -340,6 +350,59 @@ describe('GadgetUI RPC recovery', () => {
     await vi.waitFor(() => expect(disposed).toHaveBeenCalledOnce())
   })
 
+  it('keeps the iframe for as long as the replacement gadget client is unresolved', async () => {
+    const first = fakeGadget('first', 'document.body.textContent = "first"')
+    await act(async () => {
+      root.render(<GadgetUI gadget={first.stub} height="100px" />)
+    })
+    await vi.waitFor(() => expect(container.querySelector('iframe')).not.toBeNull())
+    const iframe = container.querySelector('iframe')!
+    const child = connectIframe(iframe)
+    await expect(child.read()).resolves.toBe('first')
+
+    // As during an outage: a client pipelined on a connection that has not been made yet.
+    const connection = deferred<RpcStub<GadgetClient>>()
+    const pending = new RpcPromise<GadgetClient>(connection.promise)
+    vi.useFakeTimers()
+    await act(async () => {
+      root.render(<GadgetUI gadget={pending} height="100px" />)
+    })
+    const read = child.read()
+    await act(async () => vi.advanceTimersByTimeAsync(60_000))
+    vi.useRealTimers()
+    expect(container.querySelector('iframe')).toBe(iframe)
+
+    connection.resolve(
+      new RpcStub(new TestGadgetClientTarget('restored')) as unknown as RpcStub<GadgetClient>,
+    )
+    await expect(read).resolves.toBe('restored')
+    expect(container.querySelector('iframe')).toBe(iframe)
+  })
+
+  it('connects a replacement gadget client after a handshake on a failed one', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const failed = fakeGadget(
+      'failed',
+      'document.body.textContent = "bundle"',
+      vi.fn(async () => { throw new Error('workspace failed to reopen') }),
+    )
+    await act(async () => {
+      root.render(<GadgetUI gadget={failed.stub} height="100px" />)
+    })
+    await vi.waitFor(() => expect(container.querySelector('iframe')).not.toBeNull())
+    dispatchIframeHandshake(container.querySelector('iframe')!, new MessageChannel().port2)
+    await vi.waitFor(() => expect(container.querySelector('iframe')).toBeNull())
+    consoleError.mockRestore()
+
+    const replacement = fakeGadget('replacement', 'unused')
+    await act(async () => {
+      root.render(<GadgetUI gadget={replacement.stub} height="100px" />)
+    })
+    const child = connectIframe(container.querySelector('iframe')!)
+    await expect(child.read()).resolves.toBe('replacement')
+    expect(replacement.getUiBundle).not.toHaveBeenCalled()
+  })
+
   it('ignores a superseded replacement connection', async () => {
     const first = fakeGadget('first', 'document.body.textContent = "first"')
     await act(async () => {
@@ -498,5 +561,94 @@ describe('GadgetUI RPC recovery', () => {
 
     const reloadedChild = connectIframe(container.querySelector('iframe')!)
     await expect(reloadedChild.read()).resolves.toBe('reloaded')
+  })
+})
+
+// GadgetEditor auto-switches to the code tab only while this reports true, so a gadget whose UI
+// is merely reloading must never report it.
+describe('GadgetUI no-UI placeholder reporting', () => {
+  let container: HTMLDivElement
+  let root: Root
+
+  beforeEach(() => {
+    container = document.createElement('div')
+    document.body.append(container)
+    root = createRoot(container)
+  })
+
+  afterEach(async () => {
+    await act(async () => root.unmount())
+    container.remove()
+  })
+
+  it('reports the placeholder only once a load confirms there is no UI, and retracts it', async () => {
+    const gadget = fakeGadget('draft', 'document.body.textContent = "ui"')
+    const noUi = deferred<UiBundle | null>()
+    gadget.getUiBundle.mockReturnValueOnce(noUi.promise)
+    const onNoUiChange = vi.fn<(showsNoUi: boolean) => void>()
+    const render = (reloadTrigger: number) => root.render(
+      <GadgetUI gadget={gadget.stub} height="100px" reloadTrigger={reloadTrigger}
+        onNoUiChange={onNoUiChange} />,
+    )
+
+    await act(async () => render(0))
+    expect(onNoUiChange).not.toHaveBeenCalled()
+
+    await act(async () => {
+      noUi.resolve(null)
+      await noUi.promise
+    })
+    await vi.waitFor(() => expect(onNoUiChange).toHaveBeenLastCalledWith(true))
+
+    await act(async () => render(1))
+    await vi.waitFor(() => expect(container.querySelector('iframe')).not.toBeNull())
+    expect(onNoUiChange).toHaveBeenLastCalledWith(false)
+  })
+
+  it('retracts the placeholder as soon as a reload starts', async () => {
+    const gadget = fakeGadget('draft', 'document.body.textContent = "ui"')
+    gadget.getUiBundle.mockResolvedValueOnce(null)
+    const onNoUiChange = vi.fn<(showsNoUi: boolean) => void>()
+    const render = (reloadTrigger: number) => root.render(
+      <GadgetUI gadget={gadget.stub} height="100px" reloadTrigger={reloadTrigger}
+        onNoUiChange={onNoUiChange} />,
+    )
+
+    await act(async () => render(0))
+    await vi.waitFor(() => expect(onNoUiChange).toHaveBeenLastCalledWith(true))
+
+    const reload = deferred<UiBundle | null>()
+    gadget.getUiBundle.mockReturnValueOnce(reload.promise)
+    await act(async () => render(1))
+    expect(onNoUiChange).toHaveBeenLastCalledWith(false)
+
+    await act(async () => {
+      reload.resolve({ jsCode: 'document.body.textContent = "ui v2"' })
+      await reload.promise
+    })
+    await vi.waitFor(() => expect(container.querySelector('iframe')).not.toBeNull())
+    expect(onNoUiChange).toHaveBeenLastCalledWith(false)
+  })
+
+  it('never reports the placeholder while an existing UI reloads', async () => {
+    const gadget = fakeGadget('live', 'document.body.textContent = "ui"')
+    const reload = deferred<UiBundle | null>()
+    const onNoUiChange = vi.fn<(showsNoUi: boolean) => void>()
+    const render = (reloadTrigger: number) => root.render(
+      <GadgetUI gadget={gadget.stub} height="100px" reloadTrigger={reloadTrigger}
+        onNoUiChange={onNoUiChange} />,
+    )
+
+    await act(async () => render(0))
+    await vi.waitFor(() => expect(container.querySelector('iframe')).not.toBeNull())
+
+    gadget.getUiBundle.mockReturnValueOnce(reload.promise)
+    await act(async () => render(1))
+    await act(async () => {
+      reload.resolve({ jsCode: 'document.body.textContent = "ui v2"' })
+      await reload.promise
+    })
+    await vi.waitFor(() => expect(container.querySelector('iframe')?.srcdoc).toContain('v2'))
+    expect(onNoUiChange).not.toHaveBeenCalled()
   })
 })

@@ -6,11 +6,12 @@ import {
   AuthenticatedApi,
   Overseer,
   GadgetClient,
-  GadgetMetadata,
+  WorkspaceMetadata,
   WorkpieceId,
-  WorkpieceSummary,
+  GadgetSummary,
 } from '@gadgets/workshop-shared/api'
 import GadgetUI from './GadgetUI'
+import { WorkshopButton } from './components/WorkshopControls'
 import UserMenu from './components/UserMenu'
 import { GadgetPresence } from './components/GadgetPresence'
 import TopBarNotice from './TopBarNotice'
@@ -21,7 +22,7 @@ import GadgetExportMenu from './GadgetExportMenu'
 // else. Collaborators with the "use" role may only render and interact with the gadget's mainline
 // UI (see UseOverseerInterface in the backend), so we deliberately omit the chat sidebar, the
 // Gadget/Code/Connections controls, workspace activity, and every editor-only control. The
-// overseer and gadget passed in here are the restricted capabilities returned by openGadget() for
+// overseer and gadget passed in here are the restricted capabilities returned by openWorkspace() for
 // "use" sessions; calling anything outside getMetadata()/subscribeToMetadata()/subscribeToPresence()/
 // subscribeToWorkpieces()/getGadget() (and, on the gadget, UI connection and export methods)
 // would throw.
@@ -31,12 +32,17 @@ import GadgetExportMenu from './GadgetExportMenu'
 // never listed: the restricted overseer's workpiece subscription withholds them.
 type Props = {
   overseer: RpcStub<Overseer>
-  // The selected gadget's client, or null if the workspace has no gadgets.
+  // Null while the selected gadget is being admitted, or while the workspace has no gadgets.
   gadget: RpcStub<GadgetClient> | null
   selectedGadgetId: WorkpieceId | null
-  gadgets: WorkpieceSummary[]
+  // Why the selected gadget couldn't be opened, such as declining to choose connected accounts;
+  // the collaborator can retry it or pick another gadget.
+  gadgetOpenFailure: string | null
+  onRetryGadget: () => void
+  // Use-role subscriptions receive gadgets only (worktrees, like pending gadgets, are withheld).
+  gadgets: GadgetSummary[]
   onSelectGadget: (id: WorkpieceId) => void
-  metadata: GadgetMetadata
+  metadata: WorkspaceMetadata
   authenticatedApi: RpcStub<AuthenticatedApi>
   currentUserId: string | null
 }
@@ -49,6 +55,8 @@ export default function GadgetUseView({
   gadget,
   selectedGadgetId,
   gadgets,
+  gadgetOpenFailure,
+  onRetryGadget,
   onSelectGadget,
   metadata,
   authenticatedApi,
@@ -110,7 +118,7 @@ export default function GadgetUseView({
         {/* Right: presence and user menu */}
         <div className="flex items-center gap-2 flex-shrink-0">
           <GadgetExportMenu
-            gadget={gadget}
+            gadget={gadgetOpenFailure === null ? gadget : null}
             gadgetTitle={gadgets.find(g => g.id === selectedGadgetId)?.title ?? 'Gadget'}
           />
           <span className="hidden md:inline-flex">
@@ -146,7 +154,15 @@ export default function GadgetUseView({
 
       {/* ═══ GADGET UI ══════════════════════════════════════════════════════════ */}
       <div className="flex-1 min-h-0 overflow-hidden">
-        {gadget ? (
+        {gadgetOpenFailure !== null ? (
+          <div className="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
+            {/* Verification denials list one line per failed connection, so preserve newlines. */}
+            <p className="max-w-lg whitespace-pre-line text-sm text-kumo-danger">{gadgetOpenFailure}</p>
+            <WorkshopButton tone="primary" onClick={onRetryGadget}>
+              Try again
+            </WorkshopButton>
+          </div>
+        ) : gadget ? (
           <GadgetUI
             key={selectedGadgetId}
             gadget={gadget}
@@ -155,7 +171,9 @@ export default function GadgetUseView({
           />
         ) : (
           <div className="flex h-full items-center justify-center px-6 text-center">
-            <p className="text-sm text-kumo-subtle">Dieser Arbeitsbereich enthält noch keine Gadgets.</p>
+            <p className="text-sm text-kumo-subtle">
+              {selectedGadgetId === null ? 'Dieser Arbeitsbereich enthält noch keine Gadgets.' : 'Gadget wird geladen…'}
+            </p>
           </div>
         )}
       </div>

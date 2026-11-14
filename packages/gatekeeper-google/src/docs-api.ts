@@ -4,6 +4,7 @@
 // It follows the same pattern as google-api.ts (which wraps the Gmail API).
 
 import { AccessTokenProvider, fetchWithAuthRetry } from "./auth-retry";
+import { GoogleApiError, readGoogleJson } from "./google-response";
 
 // ---------------------------------------------------------------------------
 // Types modeling the Google Docs API response.
@@ -11,14 +12,43 @@ import { AccessTokenProvider, fetchWithAuthRetry } from "./auth-retry";
 // use are included.
 // ---------------------------------------------------------------------------
 
-/** Top-level document response from `documents.get`. */
+/**
+ * A document from `documents.get`, with Google's recursive tab tree flattened in preorder.
+ *
+ * Content lives on the tabs: a document itself has none, and every tab body has its own index
+ * space, so nothing outside one tab may be read or written with that tab's indices.
+ */
 export type GoogleDocsDocument = {
   documentId: string;
   title: string;
-  revisionId: string;
-  body: { content: StructuralElement[] };
-  lists: Record<string, DocList>;
+  /** Google populates this only for callers with edit access, so a reader sees no revision. */
+  revisionId?: string;
+  /** Every tab, depth-first, parents before children. Never empty. */
+  tabs: GoogleDocsTab[];
 }
+
+/** One tab's content and its place in the document's tab tree. */
+export type GoogleDocsTab = {
+  /** Google's immutable tab ID, which every write coordinate into this tab must carry. */
+  tabId: string;
+  title: string;
+  /** The containing tab, absent for a top-level tab. */
+  parentTabId?: string;
+  /** Position among the tabs sharing this parent. */
+  index: number;
+  /** Depth in the tab tree; 0 for a top-level tab. */
+  nestingLevel: number;
+  body: { content: StructuralElement[] };
+  /** List definitions this tab's paragraphs reference. */
+  lists: Record<string, DocList>;
+  /** Named ranges anchored in this tab. */
+  namedRanges: NamedRanges;
+}
+
+/** Named ranges grouped by name, as `documents.get` returns them. */
+export type NamedRanges = Record<string, {
+  namedRanges: { namedRangeId: string; name?: string }[];
+}>
 
 /** A list definition, referenced by paragraphs that are list items. */
 export type DocList = {
@@ -31,6 +61,8 @@ export type DocList = {
 export type NestingLevel = {
   /** If set, this is an ordered (numbered) list level. Values: "DECIMAL", "ALPHA", etc. */
   glyphType?: string;
+  /** Number assigned to the first item at this level. */
+  startNumber?: number;
   /** If set, this is an unordered (bullet) list level. e.g. "●" */
   glyphSymbol?: string;
 }
@@ -41,8 +73,34 @@ export type StructuralElement = {
   endIndex: number;
   paragraph?: Paragraph;
   sectionBreak?: {};
-  table?: {};
+  table?: Table;
   tableOfContents?: {};
+}
+
+// The collections in the table types below are optional: the API omits an empty one from its
+// JSON rather than sending `[]`.
+
+/** A table embedded in a document body or table cell. */
+export type Table = {
+  tableRows?: TableRow[];
+}
+
+/** One row in a Google Docs table. */
+export type TableRow = {
+  startIndex: number;
+  endIndex: number;
+  tableCells?: TableCell[];
+}
+
+/** One table cell, whose contents use the same recursive structure as the document body. */
+export type TableCell = {
+  startIndex: number;
+  endIndex: number;
+  content?: StructuralElement[];
+  tableCellStyle?: {
+    rowSpan?: number;
+    columnSpan?: number;
+  };
 }
 
 /** A paragraph (including headings, list items, etc.). */
@@ -50,24 +108,49 @@ export type Paragraph = {
   elements: ParagraphElement[];
   paragraphStyle: ParagraphStyle;
   bullet?: Bullet;
+  /** Positioned objects tethered to this paragraph. */
+  positionedObjectIds?: string[];
 }
 
 export type ParagraphStyle = {
   namedStyleType: string;
+  /** Set on a title or heading paragraph, and only there: the target of a `#heading=` link. */
+  headingId?: string;
 }
 
 /** Present on paragraphs that are list items. */
 export type Bullet = {
   listId: string;
-  nestingLevel: number;
+  nestingLevel?: number;
 }
 
-/** An element within a paragraph (text run, horizontal rule, etc.). */
+/** An element within a paragraph (text run, smart chip, horizontal rule, etc.). */
 export type ParagraphElement = {
   startIndex: number;
   endIndex: number;
   textRun?: TextRun;
+  autoText?: {
+    type?: string;
+    textStyle?: TextStyle;
+  };
   horizontalRule?: {};
+  pageBreak?: { textStyle?: TextStyle };
+  columnBreak?: { textStyle?: TextStyle };
+  footnoteReference?: { footnoteId?: string; footnoteNumber?: string; textStyle?: TextStyle };
+  equation?: {};
+  inlineObjectElement?: { inlineObjectId?: string; textStyle?: TextStyle };
+  person?: {
+    textStyle?: TextStyle;
+    personProperties?: { name?: string; email?: string };
+  };
+  richLink?: {
+    textStyle?: TextStyle;
+    richLinkProperties?: { title?: string; uri?: string };
+  };
+  dateElement?: {
+    textStyle?: TextStyle;
+    dateElementProperties?: { displayText?: string };
+  };
 }
 
 export type TextRun = {
@@ -75,11 +158,97 @@ export type TextRun = {
   textStyle: TextStyle;
 }
 
+type GoogleDocsLink =
+  | { url: string }
+  | { tabId: string }
+  | { bookmark: { id: string; tabId: string } }
+  | { heading: { id: string; tabId: string } }
+  | { bookmarkId: string }
+  | { headingId: string };
+
 export type TextStyle = {
   bold?: boolean;
   italic?: boolean;
   strikethrough?: boolean;
-  link?: { url: string };
+  link?: GoogleDocsLink;
+}
+
+type GoogleDocsResponse = Pick<
+  GoogleDocsDocument, "documentId" | "title" | "revisionId"
+> & { tabs?: unknown };
+
+/** One reply of a `batchUpdate`, with the fields a caller reads. */
+export type DocsBatchReply = { addDocumentTab?: { tabProperties?: { tabId?: unknown } } };
+
+/** Where one write's marker range goes: one character at `rangeStart` inside tab `tabId`. */
+type GoogleDocsWriteMarker = { name: string; rangeStart: number; tabId: string };
+
+const INVALID_TAB = "Google Docs returned an invalid tab";
+
+/** An optional provider collection, which must be a plain object when present. */
+function tabCollection<T>(value: unknown): T {
+  if (value === undefined) return {} as T;
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(INVALID_TAB);
+  return value as T;
+}
+
+/**
+ * Flatten Google's recursive `tabs`/`childTabs` tree into a preorder list.
+ *
+ * Ancestry, sibling order and depth are derived from the tree actually returned rather than read
+ * from `tabProperties`, and tab IDs must be unique document-wide, because everything downstream
+ * addresses a tab by ID alone.
+ */
+function normalizeDocumentTabs(tabs: unknown): GoogleDocsTab[] {
+  if (!Array.isArray(tabs) || tabs.length === 0) {
+    throw new Error("Google Docs returned no document tab");
+  }
+
+  let normalized: GoogleDocsTab[] = [];
+  let seen = new Set<string>();
+
+  let visit = (siblings: unknown[], parentTabId: string | undefined, nestingLevel: number) => {
+    for (let [index, raw] of siblings.entries()) {
+      if (!raw || typeof raw !== "object") throw new Error(INVALID_TAB);
+      let { tabProperties, documentTab, childTabs } = raw as Record<string, unknown>;
+      if (!tabProperties || typeof tabProperties !== "object") throw new Error(INVALID_TAB);
+      let { tabId, title } = tabProperties as Record<string, unknown>;
+      if (typeof tabId !== "string" || tabId.length === 0 || typeof title !== "string") {
+        throw new Error(INVALID_TAB);
+      }
+      if (seen.has(tabId)) throw new Error("Google Docs returned a duplicate tab ID");
+      seen.add(tabId);
+
+      if (!documentTab || typeof documentTab !== "object") throw new Error(INVALID_TAB);
+      let { body, lists, namedRanges } = documentTab as Record<string, unknown>;
+      // A real body always holds at least a section break, and `bodyEndIndex` arithmetic assumes
+      // it: an empty one would place an append at index -1.
+      if (!body || typeof body !== "object" || !("content" in body) ||
+          !Array.isArray(body.content) || body.content.length === 0) {
+        throw new Error(INVALID_TAB);
+      }
+      // Structural elements stay unvalidated here; the converter reads them defensively.
+      let content = body.content as StructuralElement[];
+
+      normalized.push({
+        tabId,
+        title,
+        ...parentTabId === undefined ? {} : { parentTabId },
+        index,
+        nestingLevel,
+        body: { content },
+        lists: tabCollection<GoogleDocsTab["lists"]>(lists),
+        namedRanges: tabCollection<NamedRanges>(namedRanges),
+      });
+
+      if (childTabs === undefined) continue;
+      if (!Array.isArray(childTabs)) throw new Error(INVALID_TAB);
+      visit(childTabs, tabId, nestingLevel + 1);
+    }
+  };
+
+  visit(tabs, undefined, 0);
+  return normalized;
 }
 
 // ---------------------------------------------------------------------------
@@ -87,90 +256,539 @@ export type TextStyle = {
 // ---------------------------------------------------------------------------
 
 const DOCS_API_BASE = "https://docs.googleapis.com/v1/documents";
+// A native Doc is limited to roughly one million characters; 10 MiB bounds its expanded JSON form.
+const MAX_RESPONSE_BYTES = 10 * 1024 * 1024;
+const REQUEST_TIMEOUT_MS = 30_000;
+
+/**
+ * The longest a Docs write's requests can take before it settles or is abandoned: three attempts
+ * (the first, one after an auth refresh, one after a reconnect changed the stored token).
+ */
+export const DOCS_WRITE_MAX_MS = 3 * REQUEST_TIMEOUT_MS;
+
+/**
+ * A Docs write Google answered with success while reporting that its comment update was not
+ * saved (`commentUpdateState`), so that comment or reply was not posted.
+ */
+export class DocsCommentNotSavedError extends Error {}
 
 export class GoogleDocsApi {
   constructor(private getAccessToken: AccessTokenProvider) {}
 
-  /** Fetch the full document. */
-  async getDocument(documentId: string): Promise<GoogleDocsDocument> {
+  async #request<T>(
+    url: string,
+    init: RequestInit,
+    operation: string,
+  ): Promise<T> {
     let response = await fetchWithAuthRetry(
-      `${DOCS_API_BASE}/${encodeURIComponent(documentId)}`,
-      {},
-      this.getAccessToken,
+      url, init, this.getAccessToken, { timeoutMs: REQUEST_TIMEOUT_MS },
     );
+    return readGoogleJson<T>(response, {
+      provider: "Google Docs", operation, maxBytes: MAX_RESPONSE_BYTES,
+    });
+  }
 
-    if (!response.ok) {
-      let errorText = await response.text();
-      throw new Error(`Failed to get document: ${response.status} ${errorText}`);
+  /** Create an empty document titled `title` in the caller's My Drive, returning its ID. */
+  async createDocument(title: string): Promise<string> {
+    let { documentId } = await this.#request<{ documentId?: unknown }>(
+      `${DOCS_API_BASE}?fields=documentId`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title }),
+      },
+      "create document",
+    );
+    if (typeof documentId !== "string" || documentId.length === 0) {
+      throw new Error("Google Docs returned no document ID");
     }
+    return documentId;
+  }
 
-    return await response.json() as GoogleDocsDocument;
+  /** Fetch a document and flatten its tab tree. */
+  async getDocument(documentId: string): Promise<GoogleDocsDocument> {
+    let { documentId: id, title, revisionId, tabs } = await this.#request<GoogleDocsResponse>(
+      `${DOCS_API_BASE}/${encodeURIComponent(documentId)}?includeTabsContent=true`,
+      {},
+      "get document",
+    );
+    if (id !== documentId) {
+      throw new Error("Google Docs returned a different document");
+    }
+    return { documentId: id, title, revisionId, tabs: normalizeDocumentTabs(tabs) };
   }
 
   /**
-   * Lightweight revision check. Uses the `fields` query parameter to request
-   * only the revisionId, avoiding downloading the full document body.
+   * Fetch document metadata without loading or validating tab content.
    *
-   * If the API doesn't support field filtering (returns the full doc anyway),
-   * that's fine — we just parse revisionId from whatever comes back.
+   * `revisionId` comes along because callers need a change token: `documents.get` exposes no
+   * modification time, so the revision is the only signal that the document actually changed.
    */
-  async getRevisionId(documentId: string): Promise<string> {
-    let response = await fetchWithAuthRetry(
+  async getDocumentMetadata(
+    documentId: string,
+  ): Promise<Pick<GoogleDocsDocument, "documentId" | "title" | "revisionId">> {
+    let document = await this.#request<
+      Pick<GoogleDocsDocument, "documentId" | "title" | "revisionId">
+    >(
+      `${DOCS_API_BASE}/${encodeURIComponent(documentId)}?fields=documentId,title,revisionId`,
+      {},
+      "get document metadata",
+    );
+    if (document.documentId !== documentId) {
+      throw new Error("Google Docs returned a different document");
+    }
+    return document;
+  }
+
+  /**
+   * Lightweight revision check, requesting only the revisionId rather than the whole body.
+   *
+   * Absent when the caller cannot edit the document, in which case there is no change token and
+   * a reader has to refetch to see whether anything moved.
+   */
+  async getRevisionId(documentId: string): Promise<string | undefined> {
+    let data = await this.#request<{ revisionId?: string }>(
       `${DOCS_API_BASE}/${encodeURIComponent(documentId)}?fields=revisionId`,
       {},
-      this.getAccessToken,
+      "get revision ID",
     );
-
-    if (!response.ok) {
-      let errorText = await response.text();
-      throw new Error(`Failed to get revision ID: ${response.status} ${errorText}`);
-    }
-
-    let data = await response.json() as { revisionId: string };
     return data.revisionId;
   }
 
   /**
-   * Send a batchUpdate request to modify the document.
-   *
-   * If `targetRevisionId` is provided, the update is applied against that
-   * revision. Google Docs will merge the changes with any concurrent edits
-   * (OT-style). The revision ID should come from a previous `getDocument()`
-   * call.
-   *
-   * Returns the new revision ID after the update.
+   * Send document updates, revision-locking marked writes. Returns the replies to `requests`, in
+   * their order, without the marker's.
    */
   async batchUpdate(
     documentId: string,
-    requests: any[],
-    targetRevisionId?: string,
-  ): Promise<string> {
-    let body: any = { requests };
-    if (targetRevisionId) {
-      body.writeControl = { targetRevisionId };
+    requests: unknown[],
+    revisionId?: string,
+    writeMarker?: GoogleDocsWriteMarker,
+  ): Promise<{ revisionId: string; writeMarkerId?: string; replies: DocsBatchReply[] }> {
+    let markedRequests = writeMarker
+      ? [{
+          createNamedRange: {
+            name: writeMarker.name,
+            range: {
+              startIndex: writeMarker.rangeStart,
+              endIndex: writeMarker.rangeStart + 1,
+              tabId: writeMarker.tabId,
+            },
+          },
+        }, ...requests]
+      : requests;
+    let body: {
+      requests: unknown[];
+      writeControl?: { requiredRevisionId: string } | { targetRevisionId: string };
+    } = { requests: markedRequests };
+    if (revisionId) {
+      body.writeControl = writeMarker
+        ? { requiredRevisionId: revisionId }
+        : { targetRevisionId: revisionId };
     }
 
-    let response = await fetchWithAuthRetry(
+    let result = await this.#request<{
+      replies?: ({ createNamedRange?: { namedRangeId?: string } } & DocsBatchReply)[];
+      writeControl?: { requiredRevisionId?: string };
+    }>(
       `${DOCS_API_BASE}/${encodeURIComponent(documentId)}:batchUpdate`,
       {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       },
-      this.getAccessToken,
+      "batch update document",
     );
-
-    if (!response.ok) {
-      let errorText = await response.text();
-      throw new Error(`Failed to batch update document: ${response.status} ${errorText}`);
-    }
-
-    let result = await response.json() as {
-      writeControl?: { requiredRevisionId?: string };
+    let markerId = result.replies?.[0]?.createNamedRange?.namedRangeId;
+    let update: { revisionId: string; writeMarkerId?: string; replies: DocsBatchReply[] } = {
+      revisionId: result.writeControl?.requiredRevisionId ?? "",
+      replies: result.replies?.slice(writeMarker ? 1 : 0) ?? [],
     };
+    if (writeMarker && typeof markerId === "string" && markerId.length > 0) {
+      update.writeMarkerId = markerId;
+    }
+    return update;
+  }
 
-    return result.writeControl?.requiredRevisionId ?? "";
+  /**
+   * Delete one named range by its exact provider ID, in tab `tabId`. Google finds the range only
+   * in the tabs a deletion names once the document has more than one tab: without them it answers
+   * that no range has that ID.
+   */
+  async deleteNamedRange(documentId: string, namedRangeId: string, tabId: string): Promise<void> {
+    await this.#request(
+      `${DOCS_API_BASE}/${encodeURIComponent(documentId)}:batchUpdate`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          requests: [{ deleteNamedRange: { namedRangeId, tabsCriteria: { tabIds: [tabId] } } }],
+        }),
+      },
+      "delete named range",
+    );
+  }
+
+  /**
+   * Fetch a document as a write must be based on it, suggestions inline, with the suggestion
+   * threads the caller can see. Comment threads come along too but are not kept: Drive lists the
+   * same comments under the same IDs.
+   */
+  async getDocumentWithSuggestions(
+    documentId: string,
+  ): Promise<{ document: GoogleDocsDocument; suggestions: DocsSuggestionRecord[] }> {
+    let raw = await this.#request<GoogleDocsResponse & { suggestions?: unknown }>(
+      `${DOCS_API_BASE}/${encodeURIComponent(documentId)}?includeTabsContent=true&` +
+        "suggestionsViewMode=SUGGESTIONS_INLINE&commentsViewMode=COMMENTS_VIEW_MODE_INCLUDED",
+      {},
+      "get document with suggestions",
+    );
+    if (raw.documentId !== documentId) throw new Error("Google Docs returned a different document");
+    let { title, revisionId, tabs, suggestions } = raw;
+    if (suggestions !== undefined && !Array.isArray(suggestions)) throw new Error(INVALID_THREADS);
+    return {
+      document: { documentId, title, revisionId, tabs: normalizeDocumentTabs(tabs) },
+      suggestions: (suggestions ?? []).map(parseSuggestion),
+    };
+  }
+
+  /**
+   * Insert one comment anchored to `range`, refused unless the document is still at
+   * `requiredRevisionId` when given. Returns the comment's ID, which Drive lists it under too.
+   */
+  async insertComment(
+    documentId: string, content: string, range: DocsRange, requiredRevisionId?: string,
+  ): Promise<string> {
+    let result = await this.#write(documentId,
+      [{ insertComment: { content, range } }], { requiredRevisionId }, "insert comment");
+    requireCommentSaved(result.commentUpdateState);
+    let id = result.replies?.[0]?.insertComment?.commentThread?.commentId;
+    if (typeof id !== "string" || !id) throw new Error("Google Docs returned no comment ID");
+    return id;
+  }
+
+  /**
+   * Send `requests` as one suggestion, refused unless the document is still at
+   * `requiredRevisionId` when given. Returns the suggestion's ID, and whether Google saved its
+   * comment thread (`commentUpdateState`): the suggestion is made either way, but a note can be
+   * posted only on a saved thread.
+   */
+  async suggest(
+    documentId: string, requests: unknown[], requiredRevisionId?: string,
+  ): Promise<{ id: string; threadSaved: boolean }> {
+    let result = await this.#write(documentId, requests,
+      { writeMode: "SUGGEST", requiredRevisionId }, "suggest edit");
+    let created = new Set((result.suggestionResponses ?? [])
+      .flatMap(response => response?.createdSuggestionIds ?? []));
+    let [id, ...more] = created;
+    if (typeof id !== "string" || !id || more.length) {
+      throw new Error("Google Docs did not return the one suggestion it made");
+    }
+    return { id, threadSaved: result.commentUpdateState !== COMMENT_NOT_SAVED_STATE };
+  }
+
+  /** Reply to suggestion `suggestionId`'s thread with `content`. */
+  async replyToSuggestion(documentId: string, suggestionId: string, content: string): Promise<void> {
+    let result = await this.#write(documentId,
+      [{ addCommentReply: { suggestionId, post: { content } } }], {}, "reply to suggestion");
+    requireCommentSaved(result.commentUpdateState);
+  }
+
+  /**
+   * The document's comment threads, every one the caller can see, anchored or not, and nothing
+   * else: one small read. Google lists comments only with suggestions inline, which it refuses an
+   * account that can only view the document (403 `PERMISSION_DENIED`), and leaves deleted threads
+   * and posts out rather than flagging them.
+   */
+  async getCommentThreads(documentId: string): Promise<DocsCommentRecord[]> {
+    let raw = await this.#request<{ documentId?: unknown; comments?: unknown }>(
+      `${DOCS_API_BASE}/${encodeURIComponent(documentId)}?includeTabsContent=true&` +
+        "suggestionsViewMode=SUGGESTIONS_INLINE&commentsViewMode=COMMENTS_VIEW_MODE_INCLUDED&" +
+        `fields=${encodeURIComponent(COMMENT_THREADS_FIELDS)}`,
+      {},
+      "get comment threads",
+    );
+    if (raw.documentId !== documentId) throw new Error("Google Docs returned a different document");
+    if (raw.comments !== undefined && !Array.isArray(raw.comments)) throw new Error(INVALID_COMMENTS);
+    return (raw.comments ?? []).map(parseCommentThread);
+  }
+
+  /**
+   * Reply to comment `commentId` with `content`, resolving or reopening it with `action`. Google
+   * refuses a reply to a comment attached to no text (one made through Drive) as invalid, and one
+   * to a deleted comment as not found. Returns the reply's post ID.
+   */
+  async replyToComment(
+    documentId: string, commentId: string, content: string, action?: "RESOLVE" | "REOPEN",
+  ): Promise<string> {
+    let result = await this.#write(documentId, [{
+      addCommentReply: { commentId, post: { content, ...(action ? { commentAction: action } : {}) } },
+    }], {}, "reply to comment");
+    requireCommentSaved(result.commentUpdateState);
+    let id = result.replies?.[0]?.addCommentReply?.post?.postId;
+    if (typeof id !== "string" || !id) throw new Error("Google Docs returned no reply ID");
+    return id;
+  }
+
+  async #write(
+    documentId: string,
+    requests: unknown[],
+    writeControl: { writeMode?: "SUGGEST"; requiredRevisionId?: string | undefined },
+    operation: string,
+  ) {
+    let control = Object.fromEntries(Object.entries(writeControl).filter(([, v]) => v !== undefined));
+    return this.#request<{
+      replies?: {
+        insertComment?: { commentThread?: { commentId?: unknown } };
+        addCommentReply?: { post?: { postId?: unknown } };
+      }[];
+      suggestionResponses?: { createdSuggestionIds?: unknown[] }[];
+      commentUpdateState?: unknown;
+    }>(
+      `${DOCS_API_BASE}/${encodeURIComponent(documentId)}:batchUpdate`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          requests, ...(Object.keys(control).length ? { writeControl: control } : {}),
+        }),
+      },
+      operation,
+    );
+  }
+}
+
+/** The `commentUpdateState` of a write whose comment update Google did not save. */
+const COMMENT_NOT_SAVED_STATE = "ALL_FAILED_UNKNOWN_REASON";
+
+/** Refuses a comment update Google answered as not saved. */
+function requireCommentSaved(state: unknown): void {
+  if (state === COMMENT_NOT_SAVED_STATE) {
+    throw new DocsCommentNotSavedError("Google Docs did not save the comment.");
+  }
+}
+
+/**
+ * How a Docs write failed: refused before it applied (`absent`), refused for rate (`rateLimited`),
+ * or with no answer that says whether it applied (`unknown`). Google checks a batch whole before
+ * it applies any of it, so every answer of a status it gives is a refusal.
+ */
+export function docsWriteFailure(error: unknown): "absent" | "rateLimited" | "unknown" {
+  // Google said what it did not save, and nothing else was in the batch.
+  if (error instanceof DocsCommentNotSavedError) return "absent";
+  if (!(error instanceof GoogleApiError)) return "unknown";
+  let { providerStatus, providerReasons } = error;
+  if (providerStatus === "RESOURCE_EXHAUSTED" ||
+      providerReasons.some(reason => /rate.?limit/i.test(reason))) {
+    return "rateLimited";
+  }
+  return providerStatus !== undefined && DOCS_REFUSALS.has(providerStatus) ? "absent" : "unknown";
+}
+
+const DOCS_REFUSALS = new Set([
+  "INVALID_ARGUMENT", "FAILED_PRECONDITION", "PERMISSION_DENIED", "NOT_FOUND", "UNAUTHENTICATED",
+]);
+
+/** Whether a Docs request was refused because the token lacks a scope it needs. */
+export function docsLacksScope(error: unknown): boolean {
+  return error instanceof GoogleApiError &&
+    error.providerReasons.includes("ACCESS_TOKEN_SCOPE_INSUFFICIENT");
+}
+
+/** Whether a Docs request was refused because the document is gone or not shown to the caller. */
+export function docsFileInvisible(error: unknown): boolean {
+  return error instanceof GoogleApiError && !docsLacksScope(error) &&
+    (error.providerStatus === "NOT_FOUND" || error.providerStatus === "PERMISSION_DENIED");
+}
+
+/** Whether a Docs write was refused as invalid, which a document changed since it was read is too. */
+export function docsWriteInvalid(error: unknown): boolean {
+  return error instanceof GoogleApiError && error.providerStatus === "INVALID_ARGUMENT";
+}
+
+/** A range of one tab's body, in UTF-16 code units. */
+export type DocsRange = { startIndex: number; endIndex: number; tabId: string };
+
+/** One post of a suggestion thread, as `documents.get` shows it to the caller. */
+export type DocsPostRecord = {
+  content: string;
+  /** Whether the caller wrote it. */
+  me: boolean;
+  createTime: string;
+  deleted: boolean;
+};
+
+/** One suggestion thread, as `documents.get` shows it with comments included. */
+export type DocsSuggestionRecord = {
+  suggestionId: string;
+  /** What the suggestion changes, as Google sums it up, such as `Replace: “a” with “b”`. */
+  summaryText: string;
+  headPost: DocsPostRecord;
+  replies: DocsPostRecord[];
+};
+
+const INVALID_THREADS = "Google Docs returned invalid suggestions";
+
+function parsePost(value: unknown): DocsPostRecord {
+  if (!value || typeof value !== "object") throw new Error(INVALID_THREADS);
+  let { content, author, createTime, deleted } = value as Record<string, unknown>;
+  let me = !!author && typeof author === "object" && (author as Record<string, unknown>).me === true;
+  if (typeof createTime !== "string") throw new Error(INVALID_THREADS);
+  return {
+    content: typeof content === "string" ? content : "", me, createTime, deleted: deleted === true,
+  };
+}
+
+function parseSuggestion(value: unknown): DocsSuggestionRecord {
+  if (!value || typeof value !== "object") throw new Error(INVALID_THREADS);
+  let { suggestionId, summaryText, headPost, replies } = value as Record<string, unknown>;
+  if (typeof suggestionId !== "string" || !suggestionId) throw new Error(INVALID_THREADS);
+  if (replies !== undefined && !Array.isArray(replies)) throw new Error(INVALID_THREADS);
+  return {
+    suggestionId,
+    summaryText: typeof summaryText === "string" ? summaryText : "",
+    headPost: parsePost(headPost),
+    replies: (replies ?? []).map(parsePost),
+  };
+}
+
+/** One post of a comment thread: the comment itself, or a reply to it. */
+export type DocsCommentPost = {
+  postId: string;
+  /** As sent, but for white space at its ends, which Google trims. */
+  content: string;
+  author: { displayName: string; me: boolean };
+  createTime: string;
+  updateTime?: string;
+  /** Set on a post that resolved or reopened its thread; a plain reply to a resolved one reopens it. */
+  action?: "resolve" | "reopen";
+};
+
+/** One comment thread, as `documents.get` shows it to the caller. Its ID is Drive's for it too. */
+export type DocsCommentRecord = {
+  commentId: string;
+  /**
+   * Whether it is attached to text, as one made in the editor or with `insertComment` is. It
+   * stays attached after its text is deleted. Google Docs takes replies only to these.
+   */
+  anchored: boolean;
+  /** The text it was attached to, when it was. */
+  quote?: string;
+  resolved: boolean;
+  headPost: DocsCommentPost;
+  replies: DocsCommentPost[];
+};
+
+/** What a comment threads read asks Google for: the threads alone, not the document. */
+const COMMENT_POST_FIELDS =
+  "postId,content,author(displayName,me),createTime,updateTime,commentAction";
+const COMMENT_THREADS_FIELDS = "documentId,comments(commentId,anchorId,status,plainTextQuote," +
+  `headPost(${COMMENT_POST_FIELDS}),replies(${COMMENT_POST_FIELDS}))`;
+
+const INVALID_COMMENTS = "Google Docs returned invalid comments";
+
+const COMMENT_ACTIONS: Record<string, DocsCommentPost["action"]> = {
+  RESOLVE: "resolve", REOPEN: "reopen",
+};
+
+function parseCommentPost(value: unknown): DocsCommentPost {
+  if (!value || typeof value !== "object") throw new Error(INVALID_COMMENTS);
+  let { postId, content, author, createTime, updateTime, commentAction } =
+    value as Record<string, unknown>;
+  if (typeof postId !== "string" || !postId || typeof createTime !== "string") {
+    throw new Error(INVALID_COMMENTS);
+  }
+  let { displayName, me } = author && typeof author === "object"
+    ? author as Record<string, unknown> : {};
+  let action = typeof commentAction === "string" ? COMMENT_ACTIONS[commentAction] : undefined;
+  return {
+    postId,
+    content: typeof content === "string" ? content : "",
+    author: { displayName: typeof displayName === "string" ? displayName : "", me: me === true },
+    createTime,
+    ...(typeof updateTime === "string" ? { updateTime } : {}),
+    ...(action ? { action } : {}),
+  };
+}
+
+function parseCommentThread(value: unknown): DocsCommentRecord {
+  if (!value || typeof value !== "object") throw new Error(INVALID_COMMENTS);
+  let { commentId, anchorId, status, plainTextQuote, headPost, replies } =
+    value as Record<string, unknown>;
+  if (typeof commentId !== "string" || !commentId) throw new Error(INVALID_COMMENTS);
+  if (replies !== undefined && !Array.isArray(replies)) throw new Error(INVALID_COMMENTS);
+  let anchored = typeof anchorId === "string" && anchorId.length > 0;
+  return {
+    commentId,
+    anchored,
+    ...(anchored && typeof plainTextQuote === "string" ? { quote: plainTextQuote } : {}),
+    resolved: status === "RESOLVED",
+    headPost: parseCommentPost(headPost),
+    replies: (replies ?? []).map(parseCommentPost),
+  };
+}
+
+/** The reads a Google Doc session makes. */
+export type GoogleDocReader = Pick<GoogleDocsApi,
+  "getDocument" | "getDocumentMetadata" | "getRevisionId" | "getCommentThreads">;
+
+/** The tab ID Google gives a new document's only tab, and so the blank stand-in's. */
+export const BLANK_DOC_TAB_ID = "t.0";
+
+/** Revision of the blank stand-in, which never changes. */
+const BLANK_DOC_REVISION = "blank";
+
+/**
+ * A top-level tab as Google adds it to a new document or with `addDocumentTab`: one empty
+ * paragraph after the section break.
+ */
+export function blankDocsTab(tabId: string, title: string): GoogleDocsTab {
+  return {
+    tabId,
+    title,
+    index: 0,
+    nestingLevel: 0,
+    lists: {},
+    namedRanges: {},
+    body: {
+      content: [
+        { startIndex: 0, endIndex: 1, sectionBreak: {} },
+        {
+          startIndex: 1,
+          endIndex: 2,
+          paragraph: {
+            elements: [{ startIndex: 1, endIndex: 2, textRun: { content: "\n", textStyle: {} } }],
+            paragraphStyle: { namedStyleType: "NORMAL_TEXT" },
+          },
+        },
+      ],
+    },
+  };
+}
+
+/** A document not yet created, read as Google returns a new one: one blank tab. Makes no request. */
+export class BlankGoogleDoc implements GoogleDocReader {
+  constructor(private title: string) {}
+
+  async getDocument(documentId: string): Promise<GoogleDocsDocument> {
+    return {
+      documentId, title: this.title, revisionId: BLANK_DOC_REVISION,
+      tabs: [blankDocsTab(BLANK_DOC_TAB_ID, "Tab 1")],
+    };
+  }
+
+  async getDocumentMetadata(
+    documentId: string,
+  ): Promise<Pick<GoogleDocsDocument, "documentId" | "title" | "revisionId">> {
+    return { documentId, title: this.title, revisionId: BLANK_DOC_REVISION };
+  }
+
+  async getRevisionId(): Promise<string | undefined> {
+    return BLANK_DOC_REVISION;
+  }
+
+  /** A document not yet created has no comments. */
+  async getCommentThreads(): Promise<DocsCommentRecord[]> {
+    return [];
   }
 }

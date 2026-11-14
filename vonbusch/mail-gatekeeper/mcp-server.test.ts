@@ -31,7 +31,7 @@ test("initialize gibt serverInfo + Protokoll", async () => {
 test("tools/list exponiert propose_email", async () => {
   const r = await handleMcpMessage(makeCtx(), { jsonrpc: "2.0", id: 2, method: "tools/list" });
   const names = (r as any).result.tools.map((t: any) => t.name);
-  assert.deepEqual(names.sort(), ["list_my_proposals", "propose_email"]);
+  assert.deepEqual(names.toSorted(), ["list_my_proposals", "propose_email"]);
 });
 
 test("notifications/initialized liefert keine Antwort", async () => {

@@ -17,6 +17,8 @@ import {
 import { WorkshopButton } from './components/WorkshopControls'
 import Avatar from './components/Avatar'
 import { AccountsSubscriberAdapter } from './accountsSubscriber'
+import { openConnectWindow } from './connectHandoff'
+import { AuthPopupCancelledError } from './features/native-app/authPopup'
 
 // Shown when a non-owner opens a shared Gadget that reads data through one or more gatekeeper
 // bindings, and they haven't yet chosen which of their own connected accounts to use for each one.
@@ -24,7 +26,7 @@ import { AccountsSubscriberAdapter } from './accountsSubscriber'
 // to the data the Gadget read — that's how we uphold the "observers can't see data they couldn't
 // otherwise read" invariant. See observers-implementation-plan.md §5 Step 4.
 //
-// The overseer invokes ObserverConfigCallback.configure(needs) during openGadget(); this modal is
+// The overseer invokes ObserverConfigCallback.configure(needs) during openWorkspace(); this modal is
 // what fulfills that call. Resolving with one ObserverAccountChoice per need lets the open proceed;
 // cancelling rejects it (the open is denied and the caller shows an access-denied page).
 
@@ -167,8 +169,8 @@ export default function ObserverConfigModal({
   // ── keep choices in sync with the available accounts ──────────────────────────
   // Default each binding to its first matching account, and drop a choice whose account has
   // disappeared (e.g. disconnected in another tab). When a binding is being re-prompted because it
-  // just failed, prefer the account that failed: re-authenticating it in place is usually the fix,
-  // so it should be what the re-authenticate affordance is aimed at.
+  // just failed, prefer the account that failed, so the reason shown is about the selected account
+  // and an expired one can be re-authenticated in place.
   useEffect(() => {
     setChoices(prev => {
       let changed = false
@@ -202,15 +204,15 @@ export default function ObserverConfigModal({
         await authenticatedApi.provisionAmbientAccount(vendorId)
       } else {
         const required = requiredResourceUrlPatterns(need, vendor)
-        const { url } = await authenticatedApi.connectAccount(
+        await openConnectWindow(await authenticatedApi.connectAccount(
           vendorId,
           required.length > 0 ? required : undefined,
-        )
-        window.open(url, '_blank', 'noopener,noreferrer')
+        ), authenticatedApi)
       }
     } catch (err) {
+      if (err instanceof AuthPopupCancelledError) return
       console.error('Failed to initiate connection:', err)
-      toasts.add({ title: 'Verbindungsvorgang konnte nicht gestartet werden', variant: 'error' })
+      toasts.add({ title: err instanceof Error ? err.message : 'Verbindungsvorgang konnte nicht abgeschlossen werden', variant: 'error' })
     } finally {
       setConnecting(null)
     }
@@ -219,12 +221,12 @@ export default function ObserverConfigModal({
   const handleReconnect = async (accountId: number) => {
     setReconnecting(accountId)
     try {
-      // The popup redeems the ticket itself; the restored account arrives through the subscription.
-      const { url } = await authenticatedApi.reconnectAccount(accountId)
-      window.open(url, '_blank', 'noopener,noreferrer')
+      // After ticket redemption the restored account arrives through the subscription.
+      await openConnectWindow(await authenticatedApi.reconnectAccount(accountId), authenticatedApi)
     } catch (err) {
+      if (err instanceof AuthPopupCancelledError) return
       console.error('Failed to initiate reconnection:', err)
-      toasts.add({ title: 'Erneute Authentifizierung konnte nicht gestartet werden', variant: 'error' })
+      toasts.add({ title: err instanceof Error ? err.message : 'Erneute Authentifizierung konnte nicht abgeschlossen werden', variant: 'error' })
     } finally {
       setReconnecting(null)
     }
@@ -240,8 +242,8 @@ export default function ObserverConfigModal({
     if (missing.length === 0) return
     setGranting(account.id)
     try {
-      const { url } = await authenticatedApi.ensureAccountResources(account.id, missing)
-      if (url) window.open(url, '_blank', 'noopener,noreferrer')
+      const flow = await authenticatedApi.ensureAccountResources(account.id, missing)
+      if (flow) await openConnectWindow(flow, authenticatedApi)
       else {
         // The gatekeeper confirmed this account already has access. Update the modal so the user can
         // continue without an OAuth flow.
@@ -265,8 +267,9 @@ export default function ObserverConfigModal({
         })
       }
     } catch (err) {
+      if (err instanceof AuthPopupCancelledError) return
       console.error('Failed to request additional access:', err)
-      toasts.add({ title: 'Zusätzlicher Zugriff konnte nicht angefordert werden', variant: 'error' })
+      toasts.add({ title: err instanceof Error ? err.message : 'Zusätzlicher Zugriff konnte nicht angefordert werden', variant: 'error' })
     } finally {
       setGranting(null)
     }
@@ -300,195 +303,202 @@ export default function ObserverConfigModal({
   }
 
   // The overseer re-prompts with `failure` set when an already-configured binding failed
-  // verification on this open (typically expired credentials).
+  // verification on this open: expired credentials, or an account without access to the data.
   const isRetry = needs.some(n => n.failure)
 
   return (
     <Dialog.Root open disablePointerDismissal onOpenChange={open => { if (!open) onCancel() }}>
-      <Dialog className="responsive-dialog overflow-y-auto p-6" size="lg">
-        <Dialog.Title className="mb-2 text-lg font-semibold">
-          {isRetry ? 'Deinen Zugriff erneut überprüfen' : 'Deinen Zugriff überprüfen'}
-        </Dialog.Title>
-        <Text variant="secondary" size="sm" as="p">
-          {isRetry
-            ? 'Wir konnten deinen Zugriff auf alles, was dieser Arbeitsbereich gelesen hat, nicht ' +
-              'bestätigen. Authentifiziere das Konto unten erneut oder wähle ein anderes und versuche ' +
-              'es dann noch einmal.'
-            : 'Bevor du diesen Arbeitsbereich öffnest, bestätige, dass deine eigenen Konten auf die ' +
-              'verbundenen Daten zugreifen können, die er verwendet.'}
-        </Text>
+      <Dialog className="responsive-dialog !top-[clamp(24px,10vh,80px)] !flex !max-h-[calc(100vh-clamp(24px,10vh,80px)-24px)] !-translate-y-0 flex-col overflow-hidden p-0" size="lg">
+        <div className="shrink-0 px-6 pt-6">
+          <Dialog.Title className="mb-2 text-lg font-semibold">
+            {isRetry ? 'Deinen Zugriff erneut überprüfen' : 'Deinen Zugriff überprüfen'}
+          </Dialog.Title>
+          <Text variant="secondary" size="sm" as="p">
+            {isRetry
+              ? 'Wir konnten deinen Zugriff auf alles, was dieser Arbeitsbereich gelesen hat, nicht ' +
+                'bestätigen. Je nach unten genanntem Grund: Authentifiziere ein abgelaufenes Konto erneut, ' +
+                'wähle ein anderes oder bitte den Eigentümer des Arbeitsbereichs, mit dir zu teilen, ' +
+                'worauf dein Konto keinen Zugriff hat.'
+              : 'Bevor du diesen Arbeitsbereich öffnest, bestätige, dass deine eigenen Konten auf die ' +
+                'verbundenen Daten zugreifen können, die er verwendet.'}
+          </Text>
+        </div>
 
-        {!ready || !vendorsReady ? (
-          <div className="text-center py-10">
-            <Loader />
-          </div>
-        ) : (
-          <div className="flex flex-col gap-4 mt-5">
-            {needs.map(need => {
-              const matching = [...accounts.values()].filter(a => a.vendorId === need.vendorId)
-              const vendorInfo = vendorsById.get(need.vendorId)
-              const vendor = matching[0]?.vendor ?? vendorInfo?.description
-              const vendorName = vendor?.displayName || need.vendorId || 'Dienst'
-              const chosen = accountFor(need.gatekeeperId)
-              const required = requiredResourceUrlPatterns(need, vendorInfo, chosen)
-              const missing = chosen ? missingResourceUrlPatterns(chosen, required) : []
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+          {!ready || !vendorsReady ? (
+            <div className="text-center py-10">
+              <Loader />
+            </div>
+          ) : (
+            <div className="flex flex-col gap-4">
+              {needs.map(need => {
+                const matching = [...accounts.values()].filter(a => a.vendorId === need.vendorId)
+                const vendorInfo = vendorsById.get(need.vendorId)
+                const vendor = matching[0]?.vendor ?? vendorInfo?.description
+                const vendorName = vendor?.displayName || need.vendorId || 'Dienst'
+                const chosen = accountFor(need.gatekeeperId)
+                const required = requiredResourceUrlPatterns(need, vendorInfo, chosen)
+                const missing = chosen ? missingResourceUrlPatterns(chosen, required) : []
 
-              return (
-                <div key={need.gatekeeperId} className="rounded-xl border border-kumo-line bg-kumo-base p-4">
-                  <div className={`flex items-center gap-3${matching.length === 0 && !need.failure ? '' : ' mb-3'}`}>
-                    <Avatar
-                      src={vendor?.logo?.url}
-                      background={vendor?.color}
-                      size={32}
-                      fallback={<Plus size={16} />}
-                    />
-                    <div className="min-w-0 flex-1">
-                      <div className="text-[14px] font-medium text-kumo-default truncate">
-                        {need.resourceTitle}
-                      </div>
-                      {need.resourceUrl && (
-                        <div className="text-xs font-mono text-kumo-subtle truncate">
-                          {need.resourceUrl.replace(/^https?:\/\//, '')}
+                return (
+                  <div key={need.gatekeeperId} className="rounded-xl border border-kumo-line bg-kumo-base p-4">
+                    <div className={`flex items-center gap-3${matching.length === 0 && !need.failure ? '' : ' mb-3'}`}>
+                      <Avatar
+                        src={vendor?.logo?.url}
+                        background={vendor?.color}
+                        size={32}
+                        fallback={<Plus size={16} />}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[14px] font-medium text-kumo-default truncate">
+                          {need.resourceTitle}
                         </div>
-                      )}
-                    </div>
-                    {matching.length === 0 && vendor && (
-                      <WorkshopButton
-                        tone="primary"
-                        onClick={() => handleConnect(need)}
-                        disabled={connecting === need.vendorId}
-                      >
-                        {connecting === need.vendorId ? 'Warte auf Verbindung …' : 'Verbinden'}
-                      </WorkshopButton>
-                    )}
-                  </div>
-
-                  {/* Name the account that was refused and why. The reason is free text, either from
-                      the gatekeeper or authored by the overseer, and must not be parsed. */}
-                  {need.failure && (
-                    <div className={`flex items-start gap-2 px-3 py-2 rounded-md text-xs text-kumo-warning bg-kumo-warning-tint border border-kumo-warning/20${matching.length === 0 ? '' : ' mb-3'}`}>
-                      <Warning size={14} className="mt-0.5 shrink-0" />
-                      <div className="min-w-0">
-                        <span className="font-medium">
-                          {accountLabel(accounts.get(need.failure.accountId), need.failure.accountId)}
-                        </span>
-                        {' — '}
-                        {need.failure.reason}
-                      </div>
-                    </div>
-                  )}
-
-                  {matching.length > 0 && (
-                    <div className="flex flex-col gap-2">
-                      {matching.length === 1 ? (
-                        <div className="flex min-h-10 items-center gap-3 rounded-lg border border-kumo-line bg-kumo-elevated/50 px-3 py-2">
-                          <div className="min-w-0 flex-1">
-                            <div className="text-[11px] leading-4 text-kumo-subtle">Verwendet dein Konto</div>
-                            <div className="truncate text-sm font-medium text-kumo-default">
-                              {accountLabel(matching[0], matching[0].id)}
-                            </div>
+                        {need.resourceUrl && (
+                          <div className="text-xs font-mono text-kumo-subtle truncate">
+                            {need.resourceUrl.replace(/^https?:\/\//, '')}
                           </div>
-                          {/* Nie für das Konto, dessen Verifizierung gerade abgelehnt wurde, egal was es sonst gewährt bekommen hat. */}
-                          {accountSatisfies(need, matching[0]) &&
-                            matching[0].id !== need.failure?.accountId && (
-                            <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-kumo-success">
-                              <CheckCircle size={15} weight="fill" /> Bereit
-                            </span>
-                          )}
-                        </div>
-                      ) : (
-                        <Select
-                          className="w-full text-sm"
-                          value={
-                            choices[need.gatekeeperId] !== undefined
-                              ? String(choices[need.gatekeeperId])
-                              : undefined
-                          }
-                          placeholder={`Wähle ein ${vendorName}-Konto …`}
-                          onValueChange={v =>
-                            setChoices(prev => ({ ...prev, [need.gatekeeperId]: Number(v) }))
-                          }
-                          renderValue={v => accountLabel(accounts.get(Number(v)), Number(v))}
-                        >
-                          {matching.map(acct => (
-                            <Select.Option key={acct.id} value={String(acct.id)}>
-                              {accountLabel(acct, acct.id)}
-                              {!acct.credentialsValid ? ' (abgelaufen)' : ''}
-                            </Select.Option>
-                          ))}
-                        </Select>
-                      )}
-
-                      {/* Scope expansion also replaces expired credentials, so prefer this over the
-                          plain re-authentication path when both apply. */}
-                      {chosen && missing.length > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => handleGrantResourceAccess(need, chosen)}
-                          disabled={granting === chosen.id}
-                          className="flex items-center gap-1.5 text-xs text-kumo-warning hover:underline disabled:opacity-60"
-                        >
-                          {granting === chosen.id ? (
-                            <ArrowClockwise size={12} className="animate-spin" />
-                          ) : (
-                            <Warning size={12} />
-                          )}
-                          {granting === chosen.id
-                            ? 'Warte auf Zugriff …'
-                            : 'Erteile den Zugriff, der zum Überprüfen dieser Ressource nötig ist'}
-                        </button>
-                      )}
-
-                      {/* Offer re-authentication when we know the credentials are stale, and also
-                          when this is the account that just failed verification: a gatekeeper that
-                          rejects an observer on an auth error doesn't always tell the Workshop, so
-                          `credentialsValid` can still read true. reconnectAccount() is documented as
-                          safe for an account that merely *may* be expiring. */}
-                      {chosen && missing.length === 0 &&
-                        (!chosen.credentialsValid || chosen.id === need.failure?.accountId) && (
-                        <button
-                          type="button"
-                          onClick={() => handleReconnect(chosen.id)}
-                          disabled={reconnecting === chosen.id}
-                          className={chosen.credentialsValid
-                            ? 'flex items-center gap-1 text-xs text-kumo-subtle hover:text-kumo-default disabled:opacity-60 self-start'
-                            : 'flex items-center gap-1.5 text-xs text-kumo-warning hover:underline disabled:opacity-60'}
-                        >
-                          {reconnecting === chosen.id ? (
-                            <ArrowClockwise size={12} className="animate-spin" />
-                          ) : chosen.credentialsValid ? (
-                            <ArrowClockwise size={12} />
-                          ) : (
-                            <Warning size={12} />
-                          )}
-                          {reconnecting === chosen.id
-                            ? 'Wird erneut authentifiziert …'
-                            : chosen.credentialsValid
-                              ? 'Zum erneuten Authentifizieren dieses Kontos klicken'
-                              : 'Dieses Konto ist abgelaufen – zum erneuten Authentifizieren klicken'}
-                        </button>
-                      )}
-
-                      {!vendor?.autoProvisionsAccount && (
-                        <button
-                          type="button"
+                        )}
+                      </div>
+                      {matching.length === 0 && vendor && (
+                        <WorkshopButton
+                          tone="primary"
                           onClick={() => handleConnect(need)}
                           disabled={connecting === need.vendorId}
-                          className="flex items-center gap-1 text-xs text-kumo-subtle hover:text-kumo-default disabled:opacity-60 self-start"
                         >
-                          <Plus size={11} />
-                          {connecting === need.vendorId ? 'Warte auf Verbindung …' : 'Ein anderes Konto verbinden'}
-                        </button>
+                          {connecting === need.vendorId ? 'Wird verbunden …' : 'Verbinden'}
+                        </WorkshopButton>
                       )}
                     </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        )}
 
-        <div className="flex justify-end gap-2 mt-6">
+                    {/* Name the account that was refused and why. The reason is free text, either from
+                        the gatekeeper or authored by the overseer, and must not be parsed. */}
+                    {need.failure && (
+                      <div className={`flex items-start gap-2 px-3 py-2 rounded-md text-xs text-kumo-warning bg-kumo-warning-tint border border-kumo-warning/20${matching.length === 0 ? '' : ' mb-3'}`}>
+                        <Warning size={14} className="mt-0.5 shrink-0" />
+                        <div className="min-w-0">
+                          <span className="font-medium">
+                            {accountLabel(accounts.get(need.failure.accountId), need.failure.accountId)}
+                          </span>
+                          {' — '}
+                          {need.failure.reason}
+                        </div>
+                      </div>
+                    )}
+
+                    {matching.length > 0 && (
+                      <div className="flex flex-col gap-2">
+                        {matching.length === 1 ? (
+                          <div className="flex min-h-10 items-center gap-3 rounded-lg border border-kumo-line bg-kumo-elevated/50 px-3 py-2">
+                            <div className="min-w-0 flex-1">
+                              <div className="text-[11px] leading-4 text-kumo-subtle">Verwendet dein Konto</div>
+                              <div className="truncate text-sm font-medium text-kumo-default">
+                                {accountLabel(matching[0], matching[0].id)}
+                              </div>
+                            </div>
+                            {/* Nie für das Konto, dessen Verifizierung gerade abgelehnt wurde, egal was es sonst gewährt bekommen hat. */}
+                            {accountSatisfies(need, matching[0]) &&
+                              matching[0].id !== need.failure?.accountId && (
+                              <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-kumo-success">
+                                <CheckCircle size={15} weight="fill" /> Bereit
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <Select
+                            className="w-full text-sm"
+                            value={
+                              choices[need.gatekeeperId] !== undefined
+                                ? String(choices[need.gatekeeperId])
+                                : undefined
+                            }
+                            placeholder={`Wähle ein ${vendorName}-Konto …`}
+                            onValueChange={v =>
+                              setChoices(prev => ({ ...prev, [need.gatekeeperId]: Number(v) }))
+                            }
+                            renderValue={v => accountLabel(accounts.get(Number(v)), Number(v))}
+                          >
+                            {matching.map(acct => (
+                              <Select.Option key={acct.id} value={String(acct.id)}>
+                                {accountLabel(acct, acct.id)}
+                                {!acct.credentialsValid ? ' (abgelaufen)' : ''}
+                              </Select.Option>
+                            ))}
+                          </Select>
+                        )}
+
+                        {/* Scope expansion also replaces expired credentials, so prefer this over the
+                            plain re-authentication path when both apply. */}
+                        {chosen && missing.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => handleGrantResourceAccess(need, chosen)}
+                            disabled={granting === chosen.id}
+                            className="flex items-center gap-1.5 text-xs text-kumo-warning hover:underline disabled:opacity-60"
+                          >
+                            {granting === chosen.id ? (
+                              <ArrowClockwise size={12} className="animate-spin" />
+                            ) : (
+                              <Warning size={12} />
+                            )}
+                            {granting === chosen.id
+                              ? 'Zugriff wird angefordert …'
+                              : 'Erteile den Zugriff, der zum Überprüfen dieser Ressource nötig ist'}
+                          </button>
+                        )}
+
+                        {/* Offer re-authentication when we know the credentials are stale, and also
+                            when this is the account that just failed verification: a gatekeeper that
+                            rejects an observer on an auth error doesn't always tell the Workshop, so
+                            `credentialsValid` can still read true. reconnectAccount() is documented as
+                            safe for an account that merely *may* be expiring. The second case is not
+                            styled as a warning: a refusal of valid credentials usually means the
+                            account lacks access, which re-authenticating cannot fix. */}
+                        {chosen && missing.length === 0 &&
+                          (!chosen.credentialsValid || chosen.id === need.failure?.accountId) && (
+                          <button
+                            type="button"
+                            onClick={() => handleReconnect(chosen.id)}
+                            disabled={reconnecting === chosen.id}
+                            className={chosen.credentialsValid
+                              ? 'flex items-center gap-1 text-xs text-kumo-subtle hover:text-kumo-default disabled:opacity-60 self-start'
+                              : 'flex items-center gap-1.5 text-xs text-kumo-warning hover:underline disabled:opacity-60'}
+                          >
+                            {reconnecting === chosen.id ? (
+                              <ArrowClockwise size={12} className="animate-spin" />
+                            ) : chosen.credentialsValid ? (
+                              <ArrowClockwise size={12} />
+                            ) : (
+                              <Warning size={12} />
+                            )}
+                            {reconnecting === chosen.id
+                              ? 'Wird erneut authentifiziert …'
+                              : chosen.credentialsValid
+                                ? 'Dieses Konto erneut authentifizieren'
+                                : 'Dieses Konto ist abgelaufen – zum erneuten Authentifizieren klicken'}
+                          </button>
+                        )}
+
+                        {!vendor?.autoProvisionsAccount && (
+                          <button
+                            type="button"
+                            onClick={() => handleConnect(need)}
+                            disabled={connecting === need.vendorId}
+                            className="flex items-center gap-1 text-xs text-kumo-subtle hover:text-kumo-default disabled:opacity-60 self-start"
+                          >
+                            <Plus size={11} />
+                            {connecting === need.vendorId ? 'Wird verbunden …' : 'Ein anderes Konto verbinden'}
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="flex shrink-0 justify-end gap-2 border-t border-kumo-line px-6 py-4">
           <WorkshopButton tone="secondary" onClick={onCancel}>
             Abbrechen
           </WorkshopButton>

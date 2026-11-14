@@ -52,9 +52,11 @@ class DoWriteQueueStore implements WriteQueueStore {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Durable Object: eine Instanz hält die gesamte Firmen-Schreib-Queue (Singleton per idFromName).
-// Die D1-Bindung liegt am Worker; das DO bekommt sie über env (DOs teilen sich env).
+/**
+ * ---------------------------------------------------------------------------
+ * Durable Object: eine Instanz hält die gesamte Firmen-Schreib-Queue (Singleton per idFromName).
+ * Die D1-Bindung liegt am Worker; das DO bekommt sie über env (DOs teilen sich env).
+ */
 export class CrmGatekeeper extends DurableObject<Env> {
   private queue: WriteApprovalQueue;
   private crm: CrmStore;
@@ -163,8 +165,10 @@ function decode(s: string): string {
   try { return decodeURIComponent(s); } catch { return s; }
 }
 
-// ---------------------------------------------------------------------------
-// Worker: alle Requests an die Singleton-DO-Instanz "default" routen.
+/**
+ * ---------------------------------------------------------------------------
+ * Worker: alle Requests an die Singleton-DO-Instanz "default" routen.
+ */
 export default class CrmGatekeeperWorker extends WorkerEntrypoint<Env> {
   async fetch(request: Request): Promise<Response> {
     const id = this.env.CrmGatekeeper.idFromName("default");

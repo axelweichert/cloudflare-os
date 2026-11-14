@@ -16,7 +16,7 @@ import {
   type LiveWorkerSettings,
 } from "./live-vars-lib.ts";
 import {
-  buildWorkerEntry, findDeployablePackages, readDeployInputs, readWranglerConfig,
+  buildWorkerEntry, readDeployablePackages, readDeployInputs,
 } from "./manifest-lib.ts";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -37,12 +37,12 @@ test("expectedLiveVars derives BASE_URL from the real manifest, not a re-impleme
   // Build the etsy manifest entry from its actual wrangler.jsonc (no bundle needed: vars do not
   // depend on modules). This is the reuse the ticket asks for -- the /gatekeeper/<short> template
   // lives only in manifest-lib.ts.
-  const pkg = findDeployablePackages(join(ROOT, "packages"))
+  const pkg = readDeployablePackages(join(ROOT, "packages"))
     .find((p) => p.name === "gatekeeper-etsy");
   assert.ok(pkg, "gatekeeper-etsy must exist");
   const entry = buildWorkerEntry({
     pkgName: pkg.name,
-    config: readWranglerConfig(pkg.dir),
+    config: pkg.config,
     mainModule: "index.js",
     modules: [],
     deployInputs: readDeployInputs(pkg.dir),
@@ -82,11 +82,11 @@ test("a live gatekeeper pointing at the wrong origin is a mismatch, not a pass",
 });
 
 test("a trailing slash on the origin does not produce a phantom mismatch", () => {
-  const pkg = findDeployablePackages(join(ROOT, "packages"))
+  const pkg = readDeployablePackages(join(ROOT, "packages"))
     .find((p) => p.name === "gatekeeper-github");
   assert.ok(pkg);
   const entry = buildWorkerEntry({
-    pkgName: pkg.name, config: readWranglerConfig(pkg.dir),
+    pkgName: pkg.name, config: pkg.config,
     mainModule: "index.js", modules: [], deployInputs: readDeployInputs(pkg.dir),
   });
   const expected = expectedLiveVars(entry, "https://acme.workers.dev/");

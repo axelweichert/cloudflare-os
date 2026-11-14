@@ -134,7 +134,8 @@ export function AgentSpawnerConfigForm({
       >
         {env.length === 0 ? (
           <p className="text-[12px] leading-4 font-normal tracking-[-0.2px] text-kumo-subtle">
-            {t('gk.spawner.empty')}
+            Noch keine Verbindungen. Der Chat-Agent kann später welche vorschlagen, die du mit
+            seinen Änderungen annimmst.
           </p>
         ) : (
           <div className="grid gap-2">

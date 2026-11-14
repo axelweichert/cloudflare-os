@@ -16,8 +16,10 @@
  *   alarm  : json    — aktiver Alarm { kind, level, since, lastNotifiedAt } | fehlt (kein Alarm)
  */
 
-// Schwellen 1:1 aus von-authmon übernommen, damit die abgeleitete Bewertung mit
-// dem tatsächlichen Alarm-Verhalten des Monitors konsistent ist.
+/**
+ * Schwellen 1:1 aus von-authmon übernommen, damit die abgeleitete Bewertung mit
+ * dem tatsächlichen Alarm-Verhalten des Monitors konsistent ist.
+ */
 export const STALE_MS = 45 * 60 * 1000; // kein Heartbeat > 45 min -> Pusher/Host/Runtime down
 export const FAIL_RATE_ALERT = 25; // Fehlerquote im Fenster [%] -> kritisch
 export const MIN_TOTAL_FOR_RATE = 5; // unter so wenig Runs keine Quoten-Bewertung

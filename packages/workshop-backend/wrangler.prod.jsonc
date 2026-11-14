@@ -23,7 +23,9 @@
     "command": "pnpm run build:worker",
     "watch_dir": "src"
   },
-  "compatibility_date": "2026-02-02",
+  // Upstream's repo-wide date (scripts/worker-config.ts COMPATIBILITY_DATE); the code is tested
+  // against it (OWL-2477).
+  "compatibility_date": "2026-09-04",
   "compatibility_flags": [
     "allow_irrevocable_stub_storage",
     "enhanced_error_serialization",
@@ -31,16 +33,23 @@
     "nodejs_compat"
   ],
 
+  // Board rule OWL-2362: never reachable on workers.dev or preview URLs.
+  "workers_dev": false,
+  "preview_urls": false,
+
   "browser": { "binding": "BROWSER" },
   "ai": { "binding": "WORKERS_AI" },
 
   // Match the committed dev migrations exactly. v0-v2 are already applied to the live worker, so a
   // deploy carrying the same tags runs no migration and leaves DO state (UserDurableObject,
-  // OverseerDurableObject, AdminSettings, PendingLogin) untouched.
+  // OverseerDurableObject, AdminSettings, PendingLogin) untouched. v3/v4 arrive with the upstream
+  // sync (OWL-2477) and create two new, empty classes on the first deploy.
   "migrations": [
     { "tag": "v0", "new_sqlite_classes": ["UserDurableObject", "OverseerDurableObject"] },
     { "tag": "v1", "new_sqlite_classes": ["AdminSettings"] },
-    { "tag": "v2", "new_sqlite_classes": ["PendingLogin"] }
+    { "tag": "v2", "new_sqlite_classes": ["PendingLogin"] },
+    { "tag": "v3", "new_sqlite_classes": ["UserDirectoryDurableObject"] },
+    { "tag": "v4", "new_sqlite_classes": ["AdminAuditDurableObject"] }
   ],
 
   // Live namespace/bucket IDs (not the dev preview_id aliases).
@@ -54,6 +63,9 @@
   "worker_loaders": [
     { "binding": "LOADER" }
   ],
+  // This version's id, which the frontend compares to notice a session left on an older version
+  // after a deploy (upstream, OWL-2477).
+  "version_metadata": { "binding": "CF_VERSION_METADATA" },
 
   // "entrypoint" IST PFLICHT. Ohne ihn zeigt das Binding auf den Default-Export des Gatekeepers
   // (ein fetch-Handler) statt auf die WorkerEntrypoint-Klasse. Jeder RPC-Aufruf scheitert dann mit

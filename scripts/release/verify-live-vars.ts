@@ -14,7 +14,7 @@
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  buildWorkerEntry, findDeployablePackages, readDeployInputs, readWranglerConfig,
+  buildWorkerEntry, readDeployablePackages, readDeployInputs,
 } from "./manifest-lib.ts";
 import {
   compareVars, describeDeviation, expectedLiveVars, extractLiveVars,
@@ -82,11 +82,11 @@ async function main(): Promise<number> {
   // Soll: every gatekeeper's manifest entry, built from its real wrangler.jsonc (vars do not depend
   // on modules, so no bundle is needed). expectedLiveVars reads entry.vars -- the manifest's own
   // BASE_URL template -- so the /gatekeeper/<short> rule lives only in manifest-lib.ts.
-  const gatekeepers = findDeployablePackages(join(ROOT, "packages"))
+  const gatekeepers = readDeployablePackages(join(ROOT, "packages"))
     .filter((pkg) => pkg.name.startsWith("gatekeeper-"))
     .map((pkg) => buildWorkerEntry({
       pkgName: pkg.name,
-      config: readWranglerConfig(pkg.dir),
+      config: pkg.config,
       mainModule: "index.js",
       modules: [],
       deployInputs: readDeployInputs(pkg.dir),

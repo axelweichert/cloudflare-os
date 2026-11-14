@@ -2,20 +2,27 @@ import { DurableObject, RpcStub, RpcTarget, WorkerEntrypoint } from "cloudflare:
 import { skipRpcValidation, validateRpc } from "capnweb-validate";
 import {
   stripTrailingSlashes,
+  workerVersionTag,
   type AccountDescription,
   type ActionKind,
   type ApprovalQueue,
   type AvatarImage,
+  type ConnectHandoff,
   type Gatekeeper,
   type GatekeeperConnectCallback,
   type GatekeeperUser,
   type GatekeeperUserVerifier,
   type GatekeeperVendor as GatekeeperVendorIface,
+  type ObservationDescription,
   type ResourceConfiguratorFrame,
   type ResourceDescription,
   type SupportedResource,
   type VendorDescription,
 } from "@gadgets/workshop-shared/gatekeeper";
+import { connectHandoffPageHtml, htmlResponse } from "@gadgets/gatekeeper-kit/connect-pages";
+import { commitStagedCredentials, stageCredentials } from "@gadgets/gatekeeper-kit/credential-stage";
+import { clearCredentialExpiryLatch, notifyCredentialsExpiredOnce } from "@gadgets/gatekeeper-kit/credential-expiry";
+import { readTextCapped } from "@gadgets/gatekeeper-kit/response-body";
 import INSTANCE_CONFIGURATOR_HTML from "./generated/instance-configurator-ui.txt";
 import type { UnifiInstanceConfiguratorRpc } from "./configurator/instance-configurator-types";
 import {
@@ -26,6 +33,14 @@ import {
 } from "./unifi-api";
 import type { UnifiHost, UnifiHostDevices, UnifiSession, UnifiSite } from "./types";
 import TYPES_CODE from "./types.txt";
+
+/** Observation that must state its subresources, so an omitted list is a type error. */
+type ObservationWithSubresources = ObservationDescription & { subresources: string[] };
+
+/** Reports a read; this gatekeeper's reads expose no tracked subresources, so callers pass `[]`. */
+function authorizeRead(queue: RpcStub<ApprovalQueue>, observation: ObservationWithSubresources): Promise<void> {
+  return queue.authorizeObservation(observation);
+}
 
 // ---------------------------------------------------------------------------
 // Configuration & nonce helpers
@@ -140,16 +155,6 @@ const CONNECT_FORM_HTML = (params: { actionUrl: string; error?: string }) => `<!
 </body>
 </html>`;
 
-const SELF_CLOSING_HTML = `<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="UTF-8"><title>Connected</title></head>
-<body style="font-family: system-ui, sans-serif; padding: 2rem; text-align: center;">
-  <script>window.close();</script>
-  <h2 style="color: #0559C9;">Connected!</h2>
-  <p>Your UniFi account has been linked to Cloudflare OS. You may close this tab.</p>
-</body>
-</html>`;
-
 const INVALID_LINK_HTML = `<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="UTF-8"><title>Link Expired</title></head>
@@ -169,6 +174,9 @@ function escapeAttr(s: string): string {
 
 // ---------------------------------------------------------------------------
 // fetch handler: serves the connect form and accepts its POST
+
+// The route checks only path shape before reading the form; the account checks the nonce after.
+const MAX_CONNECT_FORM_BYTES = 16 * 1024;
 
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -199,9 +207,9 @@ export default {
       }
 
       if (req.method === "POST") {
-        let formData: FormData;
+        let formData: URLSearchParams;
         try {
-          formData = await req.formData();
+          formData = new URLSearchParams(await readTextCapped(req, MAX_CONNECT_FORM_BYTES));
         } catch {
           return new Response("Invalid form submission.", { status: 400 });
         }
@@ -225,9 +233,7 @@ export default {
             { headers: { "Content-Type": "text/html; charset=utf-8" }, status: 400 },
           );
         }
-        return new Response(SELF_CLOSING_HTML, {
-          headers: { "Content-Type": "text/html; charset=utf-8" },
-        });
+        return htmlResponse(connectHandoffPageHtml(result.handoff));
       }
     }
 
@@ -251,6 +257,10 @@ export class GatekeeperVendor extends WorkerEntrypoint<Env> implements Gatekeepe
         "sites, and adopted devices. Build agents that inventory your network, watch for offline " +
         "gear, or report on firmware across every UniFi site. Read-only.",
     };
+  }
+
+  async versionTag(): Promise<string | undefined> {
+    return workerVersionTag(this.env);
   }
 
   async connectAccount(callback: Fetcher<GatekeeperConnectCallback>): Promise<{ url: string }> {
@@ -279,10 +289,21 @@ interface StoredCredentials {
 interface StoredNonce {
   value: string;
   expiresAt: number;
+  /**
+   * Set when this flow reconnects an existing account, so its key is staged rather than made
+   * live. The mode travels with the flow instead of living on the account: committing one
+   * reconnect while another is in flight must not change how that other flow lands.
+   */
+  reconnect?: true;
+  /**
+   * Set while a submission is being validated against UniFi, so a concurrent submission cannot
+   * pass the same nonce; cleared again when validation fails so the user can resubmit.
+   */
+  connecting?: true;
 }
 
 type CompleteConnectionResult =
-  | { kind: "ok" }
+  | { kind: "ok"; handoff: ConnectHandoff }
   | { kind: "invalid_nonce" }
   | { kind: "error"; message: string };
 
@@ -299,15 +320,18 @@ export class UserAccount extends DurableObject<Env> {
   }
 
   async prepareReconnect(nonce: string): Promise<void> {
-    this.ctx.storage.kv.put("reconnecting", true);
-    this.ctx.storage.kv.put("expiredNotified", false);
+    clearCredentialExpiryLatch(this.ctx.storage.kv);
     this.ctx.storage.kv.put<StoredNonce>("nonce", {
       value: nonce,
       expiresAt: Date.now() + NONCE_LIFETIME_MS,
+      reconnect: true,
     });
   }
 
-  /** Validates the nonce but does not consume it (so the user can resubmit if validation fails). */
+  /**
+   * Validates the nonce without claiming it, for the GET preview of the form. A submission that
+   * fails validation releases its claim (see completeConnection), so the user can resubmit.
+   */
   async verifyNonceWithoutConsuming(nonce: string): Promise<boolean> {
     const stored = this.ctx.storage.kv.get<StoredNonce>("nonce");
     if (!stored || Date.now() >= stored.expiresAt) return false;
@@ -316,14 +340,20 @@ export class UserAccount extends DurableObject<Env> {
 
   async completeConnection(nonce: string, apiKey: string): Promise<CompleteConnectionResult> {
     const stored = this.ctx.storage.kv.get<StoredNonce>("nonce");
-    if (!stored || Date.now() >= stored.expiresAt || !constantTimeEqual(stored.value, nonce)) {
+    if (!stored || stored.connecting || Date.now() >= stored.expiresAt
+        || !constantTimeEqual(stored.value, nonce)) {
       return { kind: "invalid_nonce" };
     }
+    // Claim the nonce before the first await. The Durable Object's input gate does not cover the
+    // outbound ping, so a second submission arriving meanwhile would otherwise validate the same
+    // nonce and complete the connection a second time.
+    this.ctx.storage.kv.put<StoredNonce>("nonce", { ...stored, connecting: true });
 
     // Validate that the key can actually talk to the Site Manager API.
     try {
       await new UnifiClient({ apiKey }).ping();
     } catch (e: any) {
+      this.#releaseNonceClaim(nonce);
       const msg = e instanceof UnifiError
         ? e.message
         : `Unable to reach the UniFi Site Manager API: ${e?.message ?? e}`;
@@ -333,27 +363,28 @@ export class UserAccount extends DurableObject<Env> {
     // Consume the nonce now that we've validated.
     this.ctx.storage.kv.delete("nonce");
 
-    this.ctx.storage.kv.put<StoredCredentials>("credentials", { apiKey });
-    this.ctx.storage.kv.put("expiredNotified", false);
-
     const callback = this.ctx.storage.kv.get<Fetcher<GatekeeperConnectCallback>>("callback");
     if (!callback) {
-      this.ctx.storage.kv.delete("credentials");
       return { kind: "error", message: "Connection callback expired. Please restart." };
     }
 
-    const reconnecting = this.ctx.storage.kv.get<boolean>("reconnecting");
-    if (reconnecting) {
-      this.ctx.storage.kv.delete("reconnecting");
+    let handoff: ConnectHandoff;
+    if (stored.reconnect) {
+      // The reconnect URL is a bearer capability, so the new key is only staged until the Workshop
+      // has confirmed the browser that finished the flow is the owner's (see commitReconnect).
+      // Bound gadgets keep reading the current key meanwhile.
+      const stageId = stageCredentials<StoredCredentials>(this.ctx.storage.kv, { apiKey }, Date.now());
       try {
-        await callback.credentialsRestored();
+        handoff = await callback.reconnectComplete(stageId);
       } catch (e: any) {
         return { kind: "error", message: `Failed to notify workshop: ${e?.message ?? e}` };
       }
     } else {
+      this.ctx.storage.kv.put<StoredCredentials>("credentials", { apiKey });
+      clearCredentialExpiryLatch(this.ctx.storage.kv);
       try {
         const props: UnifiUserImplProps = { userObjectId: this.ctx.id.toString() };
-        await callback.complete(this.ctx.exports.UnifiUserImpl({ props }));
+        handoff = await callback.complete(this.ctx.exports.UnifiUserImpl({ props }));
       } catch (e: any) {
         this.ctx.storage.kv.delete("credentials");
         return { kind: "error", message: `Failed to notify workshop: ${e?.message ?? e}` };
@@ -361,7 +392,24 @@ export class UserAccount extends DurableObject<Env> {
     }
 
     await this.ctx.storage.deleteAlarm();
-    return { kind: "ok" };
+    return { kind: "ok", handoff };
+  }
+
+  // Releases a failed submission's claim without reopening a nonce that another flow replaced while
+  // this request was suspended. Synchronous storage makes the check and put one step.
+  #releaseNonceClaim(nonce: string): void {
+    const stored = this.ctx.storage.kv.get<StoredNonce>("nonce");
+    if (!stored || !stored.connecting || !constantTimeEqual(stored.value, nonce)) return;
+    const { connecting: _, ...released } = stored;
+    this.ctx.storage.kv.put<StoredNonce>("nonce", released);
+  }
+
+  /** Makes the key staged under `stageId` live; see GatekeeperUser.commitReconnect. */
+  async commitReconnect(stageId: string): Promise<void> {
+    const creds = commitStagedCredentials<StoredCredentials>(this.ctx.storage.kv, Date.now(), stageId);
+    if (!creds) throw new Error("No reconnect is awaiting confirmation. Please try again.");
+    this.ctx.storage.kv.put<StoredCredentials>("credentials", creds);
+    clearCredentialExpiryLatch(this.ctx.storage.kv);
   }
 
   getCredentials(): UnifiCredentials {
@@ -373,12 +421,8 @@ export class UserAccount extends DurableObject<Env> {
   }
 
   async noteCredentialsExpired(): Promise<void> {
-    if (this.ctx.storage.kv.get<boolean>("expiredNotified")) return;
-    this.ctx.storage.kv.put("expiredNotified", true);
-    const callback = this.ctx.storage.kv.get<Fetcher<GatekeeperConnectCallback>>("callback");
-    if (callback) {
-      await callback.credentialsExpired();
-    }
+    await notifyCredentialsExpiredOnce(this.ctx.storage.kv,
+      this.ctx.storage.kv.get<Fetcher<GatekeeperConnectCallback>>("callback"), "unifi");
   }
 
   async alarm(): Promise<void> {
@@ -489,6 +533,10 @@ export class UnifiUserImpl
     return { url: `${getBaseUrl(this.env)}/${this.ctx.props.userObjectId}/${nonce}` };
   }
 
+  async commitReconnect(stageId: string): Promise<void> {
+    await this.#userAccount().commitReconnect(stageId);
+  }
+
   async ensureResources(_resourceUrlPatterns: string[]): Promise<{ url?: string }> {
     return {};
   }
@@ -582,8 +630,10 @@ export class UnifiGatekeeperImpl
     );
   }
 
-  // This gatekeeper is read-only: it never submits an action, so these never fire in practice.
-  // They throw clearly if the overseer ever calls back with an id we never issued.
+  /**
+   * This gatekeeper is read-only: it never submits an action, so these never fire in practice.
+   * They throw clearly if the overseer ever calls back with an id we never issued.
+   */
   async applyAction(actionId: number): Promise<void> {
     throw new Error(`No queued UniFi action exists with id ${actionId}; this gatekeeper is read-only.`);
   }
@@ -600,10 +650,21 @@ export class UnifiGatekeeperImpl
    * Observer tracking: UniFi uses the "low-stakes" strategy. A Site Manager key grants the same
    * all-or-nothing account-wide read access to anyone holding it, and the cloud API has no per-user
    * ACL oracle we could verify an observer against. So any collaborator may observe:
-   * addObserver/removeObserver are no-ops and we never set excludeObservers on observations.
+   * addObserver/removeObserver are no-ops and reads report `subresources: []`, so
+   * verifyObserverAccess allows every observer.
    */
   async addObserver(_id: string, _user: Fetcher<GatekeeperUserVerifier>): Promise<void> {}
   async removeObserver(_id: string): Promise<void> {}
+  /** addObserver never restricted anyone, so there is no historical requirement to export. */
+  async getHistoricalSubresources(): Promise<string[]> { return []; }
+
+  /** Allows every observer under the low-stakes observer policy. */
+  async verifyObserverAccess(
+    observers: { id: string; verifier: Fetcher<GatekeeperUserVerifier> }[],
+    _subresources: string[],
+  ): Promise<{ allowedObserverIds: string[] }> {
+    return { allowedObserverIds: observers.map((observer) => observer.id) };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -652,7 +713,8 @@ class UnifiSessionImpl extends RpcTarget implements UnifiSession {
 
   async listHosts(): Promise<UnifiHost[]> {
     const hosts = await this.#read((c) => c.listHosts());
-    await this.#approvalQueue.authorizeObservation({
+    await authorizeRead(this.#approvalQueue, {
+      subresources: [],
       title: "List UniFi consoles",
       description: `Listed ${hosts.length} UniFi console${hosts.length === 1 ? "" : "s"} on the account.`,
     });
@@ -662,7 +724,8 @@ class UnifiSessionImpl extends RpcTarget implements UnifiSession {
   async getHost(hostId: string): Promise<UnifiHost> {
     const host = await this.#read((c) => c.getHost(hostId));
     const name = host?.reportedState?.hostname ?? host?.hostname ?? hostId;
-    await this.#approvalQueue.authorizeObservation({
+    await authorizeRead(this.#approvalQueue, {
+      subresources: [],
       title: `Read UniFi console "${name}"`,
       description: `Fetched details for UniFi console \`${hostId}\` ("${name}").`,
     });
@@ -671,7 +734,8 @@ class UnifiSessionImpl extends RpcTarget implements UnifiSession {
 
   async listSites(): Promise<UnifiSite[]> {
     const sites = await this.#read((c) => c.listSites());
-    await this.#approvalQueue.authorizeObservation({
+    await authorizeRead(this.#approvalQueue, {
+      subresources: [],
       title: "List UniFi sites",
       description: `Listed ${sites.length} UniFi site${sites.length === 1 ? "" : "s"} across the account.`,
     });
@@ -684,7 +748,8 @@ class UnifiSessionImpl extends RpcTarget implements UnifiSession {
       (n: number, g: any) => n + (Array.isArray(g?.devices) ? g.devices.length : 0),
       0,
     );
-    await this.#approvalQueue.authorizeObservation({
+    await authorizeRead(this.#approvalQueue, {
+      subresources: [],
       title: hostId ? `List UniFi devices on console ${hostId}` : "List UniFi devices",
       description:
         `Listed ${total} adopted device${total === 1 ? "" : "s"}` +

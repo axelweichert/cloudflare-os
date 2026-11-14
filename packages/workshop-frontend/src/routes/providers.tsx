@@ -2,29 +2,25 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useState, useEffect, useRef } from 'react'
 import { DropdownMenu, useKumoToastManager } from '@cloudflare/kumo'
 import { useAuthenticatedApi } from '../AuthContext'
-import {
-  AiChatAuthorInfo,
-  AiGatewayInfo,
-  AiModelProvider,
-  SUGGESTED_MODELS,
-} from '@gadgets/workshop-shared/api'
+import { AiChatAuthorInfo, AiGatewayInfo } from '@gadgets/workshop-shared/api'
 import {
   Plus,
   Trash,
   Lightning,
   MagnifyingGlass,
   DotsThreeVertical,
+  PencilSimple,
+  Copy,
 } from '@phosphor-icons/react'
-import AddModelModal from '../AddModelModal'
+import AddModelModal, { type ModelModalMode } from '../AddModelModal'
 import { useDocumentTitle } from '../useDocumentTitle'
 import { useT } from '../i18n/useT'
+import { useCloudflareLimitsEnabled } from '../ServerConfigContext'
 import { MENU_CONTENT, MENU_ITEM, MENU_ITEM_DANGER } from '../components/menuStyles'
 
 export const Route = createFileRoute('/providers')({ component: ProvidersPage })
 
 // ─── constants ────────────────────────────────────────────────────────────────
-
-const PROVIDER_ORDER = Object.keys(SUGGESTED_MODELS) as AiModelProvider[]
 
 const PRIMARY_BTN =
   'press inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-lg bg-kumo-brand px-3.5 text-[13px] font-medium tracking-[-0.25px] text-white transition-colors hover:bg-kumo-brand-hover'
@@ -32,33 +28,42 @@ const PRIMARY_BTN =
 // ─── model row ─────────────────────────────────────────────────────────────────
 
 // Rows mirror the Blueprints list: a clickable row (here, clicking sets/clears the quick model)
-// plus a kebab for the rest. The whole row is the primary affordance, so it shows a pointer.
+// plus a kebab for the rest. The whole row is the primary affordance, so it shows a pointer. A
+// decision model can't be the quick model, and neither can any model on a deployment that applies
+// Cloudflare limits, so such a row has no primary affordance.
 function ModelRow({
   model,
   isQuick,
   isBuiltIn,
+  canEdit,
+  onEdit,
+  onClone,
   onDelete,
   onSetQuick,
 }: {
   model: AiChatAuthorInfo
   isQuick: boolean
   isBuiltIn: boolean
+  /** Whether Edit and Clone are offered. Both save a model of the user's own. */
+  canEdit: boolean
+  onEdit: () => void
+  onClone: () => void
   onDelete: () => void
-  onSetQuick: () => void
+  onSetQuick?: () => void
 }) {
   return (
     <div
-      role="button"
-      tabIndex={0}
+      role={onSetQuick && 'button'}
+      tabIndex={onSetQuick && 0}
       onClick={onSetQuick}
-      onKeyDown={(e) => {
+      onKeyDown={onSetQuick && ((e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
           onSetQuick()
         }
-      }}
-      title={isQuick ? 'Schnellmodell. Zum Zurücksetzen klicken' : 'Zum Festlegen als Schnellmodell klicken'}
-      className="group flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 transition-colors duration-150 ease-out hover:bg-kumo-tint"
+      })}
+      title={onSetQuick && (isQuick ? 'Schnellmodell. Zum Zurücksetzen klicken' : 'Zum Festlegen als Schnellmodell klicken')}
+      className={`group flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors duration-150 ease-out hover:bg-kumo-tint ${onSetQuick ? 'cursor-pointer' : ''}`}
     >
       {/* Neutral monogram — matches the sidebar/workspaces treatment */}
       <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-kumo-fill text-[12px] font-medium text-kumo-subtle">
@@ -102,13 +107,27 @@ function ModelRow({
             }
           />
           <DropdownMenu.Content className={MENU_CONTENT}>
-            <DropdownMenu.Item onClick={onSetQuick} className={MENU_ITEM}>
-              <Lightning size={13} className="mr-2" weight={isQuick ? 'fill' : 'regular'} />
-              {isQuick ? 'Schnellmodell zurücksetzen' : 'Als Schnellmodell festlegen'}
-            </DropdownMenu.Item>
+            {onSetQuick && (
+              <DropdownMenu.Item onClick={onSetQuick} className={MENU_ITEM}>
+                <Lightning size={13} weight={isQuick ? 'fill' : 'regular'} />
+                {isQuick ? 'Schnellmodell zurücksetzen' : 'Als Schnellmodell festlegen'}
+              </DropdownMenu.Item>
+            )}
+            {!isBuiltIn && canEdit && (
+              <>
+                <DropdownMenu.Item onClick={onEdit} className={MENU_ITEM}>
+                  <PencilSimple size={13} />
+                  Anbieter bearbeiten
+                </DropdownMenu.Item>
+                <DropdownMenu.Item onClick={onClone} className={MENU_ITEM}>
+                  <Copy size={13} />
+                  Anbieter duplizieren
+                </DropdownMenu.Item>
+              </>
+            )}
             {!isBuiltIn && (
               <DropdownMenu.Item variant="danger" onClick={onDelete} className={MENU_ITEM_DANGER}>
-                <Trash size={13} className="mr-2" />
+                <Trash size={13} />
                 Anbieter löschen
               </DropdownMenu.Item>
             )}
@@ -137,7 +156,11 @@ function ProvidersPage() {
 
   const { authenticatedApi } = useAuthenticatedApi()
   const toasts = useKumoToastManager()
-  const [models, setModels] = useState<AiChatAuthorInfo[]>([])
+  // A deployment that applies Cloudflare limits runs quick tasks on its own model, so the server
+  // refuses a quick model of the user's there.
+  const quickModelChoosable = !useCloudflareLimitsEnabled()
+  const [chatModels, setChatModels] = useState<AiChatAuthorInfo[]>([])
+  const [decisionModels, setDecisionModels] = useState<AiChatAuthorInfo[]>([])
   const [quickModel, setQuickModel] = useState<string | null>(null)
   const [aiConfig, setAiConfig] = useState<AiGatewayInfo | null>(null)
   const [search, setSearch] = useState('')
@@ -145,18 +168,29 @@ function ProvidersPage() {
   const [loadError, setLoadError] = useState(false)
   const [sheetOpen, setSheetOpen] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  // The stored model being edited or cloned, once its configuration has loaded.
+  const [sourceMode, setSourceMode] = useState<Exclude<ModelModalMode, { type: 'add' }> | null>(null)
 
   const fetchAll = async () => {
     setLoadError(false)
     try {
-      const [modelList, qm, cfg] = await Promise.all([
+      const [chatList, decisionList, qm, cfg] = await Promise.all([
         authenticatedApi.listModels(),
+        authenticatedApi.listModels('decision'),
         authenticatedApi.getQuickModel(),
         authenticatedApi.getAiConfig(),
       ])
-      setModels(modelList)
+      setChatModels(chatList)
+      setDecisionModels(decisionList)
       setQuickModel(qm)
       setAiConfig(cfg)
+      // Each dialog saves a model of the user's own, so none stays open, or opens late, once the
+      // deployment says users may not add theirs.
+      if (cfg.enabled && !cfg.userModelsEnabled) {
+        ++openRequest.current
+        setSheetOpen(false)
+        setSourceMode(null)
+      }
     } catch (err) {
       console.error('Failed to load providers:', err)
       setLoadError(true)
@@ -168,11 +202,32 @@ function ProvidersPage() {
   useEffect(() => { fetchAll() }, [authenticatedApi])
 
   const gatewayMode = aiConfig?.enabled === true
+  // False only on an AI Gateway deployment whose administrator turned adding models off.
+  const canAddModels = aiConfig?.enabled !== true || aiConfig.userModelsEnabled
+  const models = [...chatModels, ...decisionModels]
+  // Only a chat model can be the quick model, so the quick-model notice needs one.
+  const hasChatModel = chatModels.length > 0
 
-  const isBuiltIn = (modelId: string): boolean => {
-    if (!aiConfig?.enabled) return false
-    const enabled = new Set((aiConfig as Extract<AiGatewayInfo, { enabled: true }>).enabledProviders)
-    return PROVIDER_ORDER.some((p) => enabled.has(p) && modelId in SUGGESTED_MODELS[p])
+  const isBuiltIn = (modelId: string): boolean =>
+    aiConfig?.enabled === true && aiConfig.builtInModelIds.includes(modelId)
+
+  // Bumped whenever the user opens a dialog, so a configuration that finishes loading after a later
+  // click doesn't open its editor over the dialog the user chose.
+  const openRequest = useRef(0)
+  const openAdd = () => {
+    ++openRequest.current
+    setSheetOpen(true)
+  }
+  const openWithSource = async (type: 'edit' | 'clone', model: AiChatAuthorInfo) => {
+    const request = ++openRequest.current
+    try {
+      const source = await authenticatedApi.getModelConfig(model.id)
+      if (request === openRequest.current) setSourceMode({ type, source })
+    } catch (err) {
+      if (request !== openRequest.current) return
+      console.error('Failed to load model configuration:', err)
+      toasts.add({ title: 'Failed to load provider configuration', variant: 'error' })
+    }
   }
 
   const handleDelete = async (model: AiChatAuthorInfo) => {
@@ -223,10 +278,18 @@ function ProvidersPage() {
             {t('routes.providers.subtitle')}
           </p>
         </div>
-        <button type="button" onClick={() => setSheetOpen(true)} className={`${PRIMARY_BTN} h-11 justify-center text-[14px] sm:h-9 sm:text-[13px]`}>
-          <Plus size={14} weight="bold" />
-          {t('routes.providers.add')}
-        </button>
+        {canAddModels && (
+          <button
+            type="button"
+            onClick={openAdd}
+            // Until the deployment's configuration loads, nothing says whether adding is allowed.
+            disabled={aiConfig === null}
+            className={`${PRIMARY_BTN} h-11 justify-center text-[14px] disabled:cursor-not-allowed disabled:opacity-60 sm:h-9 sm:text-[13px]`}
+          >
+            <Plus size={14} weight="bold" />
+            {t('routes.providers.add')}
+          </button>
+        )}
       </header>
 
       {/* Search — hidden when the user has no models */}
@@ -247,20 +310,25 @@ function ProvidersPage() {
 
       <div className="chat-panel flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto pt-1 pb-16">
         {/* Notices */}
-        {(gatewayMode || (!gatewayMode && models.length > 0)) && !loading && !loadError && (
+        {(gatewayMode || (!gatewayMode && hasChatModel)) && !loading && !loadError && (
           <div className="flex flex-col gap-2.5 px-3 pb-2">
             {gatewayMode && (
               <Notice>
                 <Lightning size={15} className="mt-px shrink-0 text-kumo-brand" />
                 <span>
-                  <strong className="font-medium text-kumo-default">AI-Gateway-Modus:</strong> integrierte
-                  Modelle werden von deinem Deployment verwaltet. Du kannst weiterhin eigene Modelle
-                  mit deinen eigenen API-Tokens hinzufügen.
+                  <strong className="font-medium text-kumo-default">AI-Gateway-Modus:</strong>{' '}
+                  {canAddModels
+                    ? 'integrierte Modelle werden von deinem Deployment verwaltet. Du kannst weiterhin ' +
+                      'andere Modelle der aktivierten Anbieter hinzufügen.'
+                    : 'die Modelle stellt der Administrator deines Deployments bereit. Eigene Modelle ' +
+                      'hinzuzufügen ist deaktiviert.'}
+                  {!quickModelChoosable &&
+                    ' Schnelle Aufgaben wie das Erzeugen von Chat-Titeln nutzen das eigene Modell deines Deployments.'}
                 </span>
               </Notice>
             )}
 
-            {!gatewayMode && models.length > 0 && (
+            {!gatewayMode && hasChatModel && (
               <Notice>
                 <Lightning size={15} className="mt-px shrink-0 text-kumo-brand" />
                 <span>
@@ -295,15 +363,21 @@ function ProvidersPage() {
               <Lightning size={18} />
             </div>
             <div>
-              <p className="text-sm font-medium text-kumo-default">{t('routes.providers.emptyTitle')}</p>
+              <p className="text-sm font-medium text-kumo-default">
+                {canAddModels ? t('routes.providers.emptyTitle') : 'Keine KI-Modelle verfügbar'}
+              </p>
               <p className="mt-1 text-[13px] leading-[18px] text-kumo-subtle">
-                {t('routes.providers.emptyBody')}
+                {canAddModels
+                  ? t('routes.providers.emptyBody')
+                  : 'Der Administrator deines Deployments bietet derzeit keine Modelle an.'}
               </p>
             </div>
-            <button type="button" onClick={() => setSheetOpen(true)} className={PRIMARY_BTN}>
-              <Plus size={14} weight="bold" />
-              {t('routes.providers.addFirst')}
-            </button>
+            {canAddModels && (
+              <button type="button" onClick={openAdd} className={PRIMARY_BTN}>
+                <Plus size={14} weight="bold" />
+                {t('routes.providers.addFirst')}
+              </button>
+            )}
           </div>
         ) : filtered.length === 0 ? (
           <div className="py-12 text-center text-sm text-kumo-inactive">Keine Anbieter gefunden</div>
@@ -317,8 +391,13 @@ function ProvidersPage() {
                 model={model}
                 isQuick={quickModel === model.id}
                 isBuiltIn={isBuiltIn(model.id)}
+                canEdit={canAddModels}
+                onEdit={() => openWithSource('edit', model)}
+                onClone={() => openWithSource('clone', model)}
                 onDelete={() => handleDelete(model)}
-                onSetQuick={() => handleSetQuick(model.id)}
+                onSetQuick={!quickModelChoosable || decisionModels.includes(model)
+                  ? undefined
+                  : () => handleSetQuick(model.id)}
               />
             </div>
           ))
@@ -336,6 +415,20 @@ function ProvidersPage() {
         authenticatedApi={authenticatedApi}
         aiConfig={aiConfig}
       />
+      {sourceMode && (
+        <AddModelModal
+          key={`${sourceMode.type}:${sourceMode.source.profile.id}`}
+          visible
+          mode={sourceMode}
+          onCancel={() => setSourceMode(null)}
+          onSuccess={() => {
+            setSourceMode(null)
+            fetchAll()
+          }}
+          authenticatedApi={authenticatedApi}
+          aiConfig={aiConfig}
+        />
+      )}
     </div>
   )
 }

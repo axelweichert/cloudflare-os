@@ -10,13 +10,17 @@ import {
   HookTargetMetadata,
   ResourceDescription,
   ApprovalQueue,
+  type ObservationDescription,
   VendorDescription,
   GatekeeperConnectCallback,
   AccountDescription,
   SupportedResource,
   ResourceConfiguratorFrame,
   stripTrailingSlashes,
+  workerVersionTag,
+  type ConnectHandoff,
 } from '@gadgets/workshop-shared/gatekeeper';
+import { connectHandoffPageHtml, htmlResponse } from "@gadgets/gatekeeper-kit/connect-pages";
 import {
   EmailSession,
   EmailHook,
@@ -31,6 +35,17 @@ import EMAIL_CONFIGURATOR_HTML from "./generated/email-configurator-ui.txt";
 import type { EmailMailboxConfiguratorRpc } from "./configurator/email-configurator-types";
 import EMAIL_LOGO_SVG from "./email-logo.svg";
 import { obsContext } from "./observability.js";
+
+/** Observation that must state its subresources, so an omitted list is a type error. */
+type ObservationWithSubresources = ObservationDescription & { subresources: string[] };
+
+/** Reports a read; this gatekeeper's reads expose no tracked subresources, so callers pass `[]`. */
+async function authorizeRead(
+  queue: { authorizeObservation(observation: ObservationDescription): PromiseLike<unknown> },
+  observation: ObservationWithSubresources,
+): Promise<void> {
+  await queue.authorizeObservation(observation);
+}
 
 const VENDOR_ID = "email";
 
@@ -131,14 +146,6 @@ class EmailMailboxConfiguratorUI extends RpcTarget implements EmailMailboxConfig
 
 // =======================================================================================
 
-const SELF_CLOSING_HTML = `<!DOCTYPE html>
-<html lang="en">
-  <body>
-    <script type="text/javascript">window.close();</script>
-    <p>Authorization complete. You may close this tab and return to Cloudflare OS.
-  </body>
-</html>`;
-
 const INVALID_LINK_HTML = `<!DOCTYPE html>
 <html lang="en">
   <head>
@@ -172,16 +179,13 @@ export default {
       // This is a connectAccount completion URL. Route to the UserAccount DO.
       let userObjectId = ctx.exports.UserAccount.idFromString(path[0]);
       let stub: DurableObjectStub<UserAccount> = ctx.exports.UserAccount.get(userObjectId);
-      if (!await stub.complete(path[1])) {
+      let handoff = await stub.complete(path[1]);
+      if (!handoff) {
         return new Response(INVALID_LINK_HTML, {
           headers: { "Content-Type": "text/html; charset=utf-8" }
         });
       }
-      return new Response(SELF_CLOSING_HTML, {
-        headers: {
-          "Content-Type": "text/html; charset=utf-8"
-        }
-      });
+      return htmlResponse(connectHandoffPageHtml(handoff));
     } else {
       return new Response("Not Found", { status: 404 });
     }
@@ -271,6 +275,10 @@ export class GatekeeperVendor extends WorkerEntrypoint<Env> implements Gatekeepe
     };
   }
 
+  async versionTag(): Promise<string | undefined> {
+    return workerVersionTag(this.env);
+  }
+
   async connectAccount(callback: Fetcher<GatekeeperConnectCallback>): Promise<{url: string}> {
     let userObjectId = this.ctx.exports.UserAccount.newUniqueId();
     let nonce = generateNonce();
@@ -307,29 +315,32 @@ export class UserAccount extends DurableObject<Env> {
     this.ctx.storage.kv.put("nonce", { value: nonce, expiresAt: Date.now() + NONCE_LIFETIME_MS });
   }
 
-  /** Returns false if the nonce is invalid or expired. */
-  async complete(nonce: string): Promise<boolean> {
+  /**
+   * Returns the handoff for the page the browser lands on, or null if the nonce is invalid or
+   * expired.
+   */
+  async complete(nonce: string): Promise<ConnectHandoff | null> {
     let stored = this.ctx.storage.kv.get<{value: string, expiresAt: number}>("nonce");
     if (!stored || Date.now() >= stored.expiresAt || !constantTimeEqual(stored.value, nonce)) {
-      return false;
+      return null;
     }
     this.ctx.storage.kv.delete("nonce");
 
     let callback = this.ctx.storage.kv.get<Fetcher<GatekeeperConnectCallback>>("callback");
     if (!callback) {
-      return false;
+      return null;
     }
 
     let props: GatekeeperUserImplProps = {
       userAccountId: this.ctx.id.toString(),
     };
-    await callback.complete(this.ctx.exports.GatekeeperUserImpl({ props }));
+    let handoff = await callback.complete(this.ctx.exports.GatekeeperUserImpl({ props }));
 
     // Clean up the callback, but keep the DO alive to track claimed email addresses.
     this.ctx.storage.deleteAlarm();
     this.ctx.storage.kv.delete("callback");
 
-    return true;
+    return handoff;
   }
 
   async alarm(alarmInfo?: AlarmInvocationInfo): Promise<void> {
@@ -451,6 +462,11 @@ export class GatekeeperUserImpl extends WorkerEntrypoint<Env, GatekeeperUserImpl
   async reconnect(): Promise<{url: string}> {
     // Email connections do not use OAuth and never expire.
     throw new Error("Email connections do not require re-authentication.");
+  }
+
+  async commitReconnect(_stageId: string): Promise<void> {
+    // reconnect() never starts a flow, so nothing can ever be staged.
+    throw new Error("No reconnect is awaiting confirmation. Please try again.");
   }
 
   async ensureResources(_resourceUrlPatterns: string[]): Promise<{url?: string}> {
@@ -578,19 +594,30 @@ export class EmailGatekeeperImpl extends DurableObject<Env, EmailGatekeeperImplP
    * Observer tracking: the email gatekeeper uses the "low-stakes" strategy. Each mailbox is a fresh
    * address minted on the deployment's own domain for this Gadget; there is no external ACL and no
    * other party who "independently has access" to that inbox, so the Gadget's own collaborators are
-   * the natural audience. Any collaborator may observe: addObserver/removeObserver are no-ops and we
-   * never set excludeObservers on observations.
+   * the natural audience. Any collaborator may observe: addObserver/removeObserver are no-ops and
+   * reads report `subresources: []`, so verifyObserverAccess allows every observer.
    */
   async addObserver(_id: string, _user: Fetcher<GatekeeperUserVerifier>): Promise<void> {}
   async removeObserver(_id: string): Promise<void> {}
+  /** addObserver never restricted anyone, so there is no historical requirement to export. */
+  async getHistoricalSubresources(): Promise<string[]> { return []; }
+
+  /** Allows every observer under the low-stakes observer policy. */
+  async verifyObserverAccess(
+    observers: { id: string; verifier: Fetcher<GatekeeperUserVerifier> }[],
+    _subresources: string[],
+  ): Promise<{ allowedObserverIds: string[] }> {
+    return { allowedObserverIds: observers.map((observer) => observer.id) };
+  }
 }
 
 @validateRpc()
 export class EmailHookControllerImpl extends WorkerEntrypoint<Env, EmailGatekeeperImplProps>
     implements HookController<EmailHookTarget> {
   /**
-   * `_target` is unused -- email doesn't display its hooks -- but must be declared, since RPC
-   * argument validation is generated from this signature and would reject the extra argument.
+   * `_target` is unused -- email doesn't display its hooks. It no longer strictly needs to be
+   * declared (since capnweb-validate 0.3.0, extra arguments to a validated method are dropped
+   * rather than rejected), but declaring it keeps the signature aligned with the interface.
    */
   async enable(initiator: Fetcher<HookInitiator<EmailHookTarget>>,
                _target: HookTargetMetadata): Promise<void> {
@@ -675,7 +702,8 @@ export class EmailAddress extends DurableObject<Env> {
     let sender = email.from.name
         ? `${email.from.name} <${email.from.address}>`
         : email.from.address;
-    await startHookResult.approvalQueue.authorizeObservation({
+    await authorizeRead(startHookResult.approvalQueue, {
+      subresources: [],
       title: `Email from ${email.from.address}: ${email.subject}`,
       description: `Received email from ${sender}\n\n`
           + `**Subject:** ${email.subject}\n`

@@ -1,8 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { AutoApprovalDrainer, AutoApprovalStorage, ApplyPendingActionFn }
+import { AutoApprovalDrainer, AutoApprovalStorage, ApplyPendingActionFn, autoApprovalRule }
     from "../src/auto-approval.js";
-import type { ActionRecord } from "../src/overseer.js";
+import type { ActionRecord, StoredActionDescription }
+    from "../src/storage-schema/overseer-storage.js";
 import type { AiChatAuthorInfo } from "@gadgets/workshop-shared/api";
+import type { ActionDescription } from "@gadgets/workshop-shared/gatekeeper";
 import { makeMockStorage } from "./mock-storage.js";
 import { makeActionStorage, makePreIndexActionStorage, putAction } from "./fixtures.js";
 
@@ -21,6 +23,9 @@ function getAction(storage: AutoApprovalStorage, id: number): ActionRecord & {ty
   if (!record || record.type !== "action") throw new Error(`No action ${id}`);
   return record;
 }
+
+// No decision in flight anywhere, which is every case but the one that claims one.
+const NONE_DECIDING = () => false;
 
 // An apply fn that resolves immediately, mirroring OverseerImpl.applyPendingAction's effect:
 // mark the record approved and persist. Records the order of applied action ids.
@@ -89,7 +94,7 @@ describe("AutoApprovalDrainer.drain", () => {
     putAction(storage, 3);
 
     let { applyFn, calls } = makeImmediateApply(storage);
-    await new AutoApprovalDrainer(storage, applyFn).drain(GK);
+    await new AutoApprovalDrainer(storage, applyFn, NONE_DECIDING).drain(GK);
 
     expect(calls).toEqual([1, 2, 3]);
     for (let id of [1, 2, 3]) {
@@ -108,7 +113,7 @@ describe("AutoApprovalDrainer.drain", () => {
     putAction(storage, 3);
 
     let { applyFn, calls } = makeImmediateApply(storage);
-    let drainer = new AutoApprovalDrainer(storage, applyFn);
+    let drainer = new AutoApprovalDrainer(storage, applyFn, NONE_DECIDING);
     await drainer.drain(GK);
 
     // Only the action before the gate is applied; the gate and everything behind it stay pending.
@@ -135,47 +140,77 @@ describe("AutoApprovalDrainer.drain", () => {
     putAction(storage, 1);
 
     let apply = makeControlledApply(storage);
-    let drainer = new AutoApprovalDrainer(storage, apply.applyFn);
+    let drainer = new AutoApprovalDrainer(storage, apply.applyFn, NONE_DECIDING);
 
     let first = drainer.drain(GK);   // starts, calls apply(1), parks mid-apply
     let second = drainer.drain(GK);  // must coalesce, not start a second apply
-    await second;
+    await flush();
 
     expect(apply.calls).toEqual([1]);
     expect(apply.inFlight()).toBe(1);
 
     apply.releaseNext();             // resolve apply(1); record becomes approved
-    await first;                     // rerun pass re-lists: action 1 no longer pending -> no re-apply
+    await Promise.all([first, second]);  // rerun re-lists: action 1 no longer pending
 
     expect(apply.calls).toEqual([1]);
     expect(getAction(storage, 1).state).toBe("approved");
   });
 
-  // Work that arrives while a drain is parked must still be applied -- the coalescing
-  // "rerun" flag must not drop the wakeup.
-  it("applies work submitted while a drain is parked mid-apply", async () => {
+  // A manual decision in flight leaves its action reading as pending until it lands, so the
+  // pending re-check alone would let the drain apply it a second time.
+  it("stops at an action someone is already deciding, without skipping ahead", async () => {
+    let storage = makeStorage();
+    enableRule(storage);
+    putAction(storage, 1);
+    putAction(storage, 2);
+    putAction(storage, 3);
+
+    let deciding = new Set([2]);
+    let { applyFn, calls } = makeImmediateApply(storage);
+    let drainer = new AutoApprovalDrainer(storage, applyFn, id => deciding.has(id));
+    await drainer.drain(GK);
+
+    // Not #2, and not #3 behind it either: applying past an action that is still being decided
+    // would land them out of order.
+    expect(calls).toEqual([1]);
+    expect(getAction(storage, 2).state).toBe("pending");
+    expect(getAction(storage, 3).state).toBe("pending");
+
+    // The decision lands (here, as a rejection), which drains again.
+    let decided = getAction(storage, 2);
+    decided.state = "rejected";
+    storage.actions.put(decided);
+    deciding.delete(2);
+    await drainer.drain(GK);
+
+    expect(calls).toEqual([1, 3]);
+  });
+
+  // Work that arrives while a drain is parked must still be applied -- the coalescing "rerun" flag
+  // must not drop the wakeup -- and the coalesced caller must see it applied when drain() resolves.
+  it("applies work submitted mid-drain before resolving the drain that requested it", async () => {
     let storage = makeStorage();
     enableRule(storage);
     putAction(storage, 1);
 
     let apply = makeControlledApply(storage);
-    let drainer = new AutoApprovalDrainer(storage, apply.applyFn);
+    let drainer = new AutoApprovalDrainer(storage, apply.applyFn, NONE_DECIDING);
 
     let first = drainer.drain(GK);   // parks mid-apply on action 1
 
     putAction(storage, 2);           // new eligible action arrives mid-drain
-    let second = drainer.drain(GK);  // coalesces -> sets the rerun flag
-    await second;
-    expect(apply.calls).toEqual([1]);
+    let secondResolved = false;
+    let second = drainer.drain(GK).then(() => { secondResolved = true; });
 
     apply.releaseNext();             // finish action 1; rerun pass should pick up action 2
     await flush();
 
     expect(apply.calls).toEqual([1, 2]);
     expect(apply.inFlight()).toBe(1);
+    expect(secondResolved).toBe(false);
 
     apply.releaseNext();             // finish action 2
-    await first;
+    await Promise.all([first, second]);
 
     expect(apply.calls).toEqual([1, 2]);
     expect(getAction(storage, 1).state).toBe("approved");
@@ -198,7 +233,7 @@ describe("AutoApprovalDrainer.drain", () => {
     }
 
     let { applyFn, calls } = makeImmediateApply(storage);
-    await new AutoApprovalDrainer(storage, applyFn).drain(GK);
+    await new AutoApprovalDrainer(storage, applyFn, NONE_DECIDING).drain(GK);
 
     expect(calls).toEqual(eligible);
   });
@@ -212,7 +247,7 @@ describe("AutoApprovalDrainer.drain", () => {
     }
 
     let { applyFn, calls } = makeImmediateApply(storage);
-    await new AutoApprovalDrainer(storage, applyFn).drain(GK);
+    await new AutoApprovalDrainer(storage, applyFn, NONE_DECIDING).drain(GK);
 
     expect(calls).toEqual(Array.from({ length: gateId }, (_, i) => i));
     expect(getAction(storage, gateId).state).toBe("pending");
@@ -235,7 +270,7 @@ describe("AutoApprovalDrainer.drain", () => {
 
     // The apply persists a resolved state, which must not throw on the backfilled index.
     let { applyFn, calls } = makeImmediateApply(storage);
-    await new AutoApprovalDrainer(storage, applyFn).drain(GK);
+    await new AutoApprovalDrainer(storage, applyFn, NONE_DECIDING).drain(GK);
 
     expect(calls).toEqual([1, 3]);
     expect(getAction(storage, 1).state).toBe("approved");
@@ -254,7 +289,7 @@ describe("AutoApprovalDrainer.drain", () => {
       if (record.id === 2) throw new Error("apply failed");
       return inner.applyFn(record, resolvedBy, autoApproved);
     };
-    await new AutoApprovalDrainer(storage, applyFn).drain(GK);
+    await new AutoApprovalDrainer(storage, applyFn, NONE_DECIDING).drain(GK);
 
     expect(inner.calls).toEqual([1]);
     expect(getAction(storage, 2).state).toBe("pending");
@@ -270,7 +305,7 @@ describe("AutoApprovalDrainer.drain", () => {
     putAction(storage, 1);
 
     let apply = makeControlledApply(storage);
-    let drainer = new AutoApprovalDrainer(storage, apply.applyFn);
+    let drainer = new AutoApprovalDrainer(storage, apply.applyFn, NONE_DECIDING);
     let first = drainer.drain(GK);   // snapshots pending = [1]
 
     putAction(storage, 2);           // arrives mid-drain, with no accompanying drain() call
@@ -279,5 +314,85 @@ describe("AutoApprovalDrainer.drain", () => {
 
     expect(apply.calls).toEqual([1]);
     expect(getAction(storage, 2).state).toBe("pending");
+  });
+
+  it("applies nothing while the workspace is latched, even with a matching rule", async () => {
+    let storage = makeStorage();
+    enableRule(storage);
+    putAction(storage, 1);
+    storage.containsRestrictedData.put(true);
+
+    let apply = makeImmediateApply(storage);
+    await new AutoApprovalDrainer(storage, apply.applyFn, NONE_DECIDING).drain(GK);
+
+    expect(apply.calls).toEqual([]);
+    expect(getAction(storage, 1).state).toBe("pending");
+  });
+});
+
+// A description that passes every gate, for the predicate tests to knock single gates out of.
+function eligibleDescription(overrides: Partial<ActionDescription> = {}): ActionDescription {
+  return {
+    title: "Edit the thing",
+    description: "Edits the thing.",
+    implementsRevert: true,
+    actionKind: { tag: "edit", label: "Edits" },
+    autoApprovable: true,
+    ...overrides,
+  };
+}
+
+describe("autoApprovalRule", () => {
+  it("returns the enabling rule when every gate passes", () => {
+    let storage = makeStorage();
+    enableRule(storage);
+    let rule = autoApprovalRule(storage, GK, eligibleDescription());
+    expect(rule?.enabledBy).toEqual(ENABLER);
+  });
+
+  it("requires the author's autoApprovable verdict", () => {
+    let storage = makeStorage();
+    enableRule(storage);
+    expect(autoApprovalRule(storage, GK, eligibleDescription({ autoApprovable: false })))
+        .toBeUndefined();
+  });
+
+  it("refuses a stored description that predates the verdict", () => {
+    let storage = makeStorage();
+    enableRule(storage);
+    let legacy: StoredActionDescription = {
+      title: "Edit the thing",
+      description: "Edits the thing.",
+      implementsRevert: true,
+      actionKind: { tag: "edit", label: "Edits" },
+    };
+    expect(autoApprovalRule(storage, GK, legacy)).toBeUndefined();
+  });
+
+  it("requires an actionKind", () => {
+    let storage = makeStorage();
+    enableRule(storage);
+    expect(autoApprovalRule(storage, GK, eligibleDescription({ actionKind: undefined })))
+        .toBeUndefined();
+  });
+
+  it("requires a user-enabled rule for the kind on this gatekeeper", () => {
+    let storage = makeStorage();
+    expect(autoApprovalRule(storage, GK, eligibleDescription())).toBeUndefined();
+    enableRule(storage, "edit", GK + 1);  // right tag, wrong gatekeeper
+    expect(autoApprovalRule(storage, GK, eligibleDescription())).toBeUndefined();
+    enableRule(storage, "delete", GK);    // right gatekeeper, wrong tag
+    expect(autoApprovalRule(storage, GK, eligibleDescription())).toBeUndefined();
+  });
+
+  it("refuses every action while the restricted-data latch is set", () => {
+    let storage = makeStorage();
+    enableRule(storage);
+    enableRule(storage, "edit", GK + 1);
+    storage.containsRestrictedData.put(true);
+    // The latch is workspace-wide: every action submitAction lets pend must be read by a human,
+    // on every gatekeeper.
+    expect(autoApprovalRule(storage, GK, eligibleDescription())).toBeUndefined();
+    expect(autoApprovalRule(storage, GK + 1, eligibleDescription())).toBeUndefined();
   });
 });

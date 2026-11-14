@@ -59,8 +59,10 @@ const SEARCH_COLUMNS: Record<CrmEntity, readonly string[]> = {
   activity: ["subject", "body"],
 };
 
-// ---------------------------------------------------------------------------
-// In-Memory-Store — deterministisch, für Tests & lokale Nutzung.
+/**
+ * ---------------------------------------------------------------------------
+ * In-Memory-Store — deterministisch, für Tests & lokale Nutzung.
+ */
 export class MemoryCrmStore implements CrmStore {
   private tables: Record<CrmEntity, Map<string, CrmRow>> = {
     contact: new Map(),
@@ -109,9 +111,11 @@ export class MemoryCrmStore implements CrmStore {
   }
 }
 
-// ---------------------------------------------------------------------------
-// D1-Store — parametrisiert, Spalten aus statischer Allowlist.
-// Minimales D1-Interface (workerd) — kein cloudflare:workers-Import nötig.
+/**
+ * ---------------------------------------------------------------------------
+ * D1-Store — parametrisiert, Spalten aus statischer Allowlist.
+ * Minimales D1-Interface (workerd) — kein cloudflare:workers-Import nötig.
+ */
 export interface D1Like {
   prepare(query: string): {
     bind(...values: unknown[]): {

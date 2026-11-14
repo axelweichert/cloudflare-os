@@ -68,7 +68,7 @@ test("tools/list verengt: fremdes Feld weg, cross-mailbox-Tool entfernt", () => 
   const { audit, events } = collector();
   const { advertised } = buildPinPlan(UPSTREAM_TOOLS, { mailbox: PINNED, audit });
 
-  const names = advertised.map(t => t.name).sort();
+  const names = advertised.map(t => t.name).toSorted();
   assert.deepEqual(names, ["list_messages", "send_message"], "cross-mailbox-Tool muss verschwinden");
 
   const send = advertised.find(t => t.name === "send_message")!;

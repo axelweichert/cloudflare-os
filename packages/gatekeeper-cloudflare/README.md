@@ -26,11 +26,25 @@ and the Worker picker searches the full retention window. Suggested bindings are
 
 ### Sharing a gadget that reads telemetry
 
-A binding is not transferable. When a gadget with an observability binding is shared, each
-collaborator is admitted only if **their own** connected Cloudflare account can read that resource
-(`addObserver` checks it against their credentials, not the owner's). A collaborator without access is
+A binding is not transferable. Every read, through an account or a Worker binding alike, reports the
+account it queried as the subresource `account/<accountId>`, and the Workshop admits a collaborator
+to what was read only if **their own** connected Cloudflare account can read telemetry in that
+account (`verifyObserverAccess` checks their credentials, not the owner's). The check is an
+account-wide telemetry read; no individual Worker is checked. A collaborator without access is
 refused, and a verification that fails for any other reason — a 5xx, a transport error — is also a
 refusal rather than an admission.
+
+The Workshop may ask about a collaborator on any read, so each collaborator's answers are cached in
+their own connected account and reused across every workspace: an allowed answer for up to 15
+minutes and a denial for up to 15 seconds, until their credentials are next installed. A pasted API
+token records no scopes, so the live telemetry probe is the only check of its permissions: Cloudflare
+does not say when a role or a token's permissions change, so access revoked in Cloudflare (a role
+removed, the token's Workers Observability permission dropped, or the token revoked) can still admit a
+collaborator for up to 15 minutes, and a new grant is noticed within 15 seconds. A connection that no
+longer holds a token is refused whatever it learned before, a check a reconnect overtakes fails, and a
+failed check is never reused.
+`addObserver` still checks each binding live on every open, as it did before reads reported a
+subresource: a Worker binding with a telemetry query filtered to its Worker name.
 
 ### What a Worker binding trusts, and what it re-checks
 
@@ -60,10 +74,10 @@ the account. Whenever a discovery call has to be constrained (a Worker binding, 
 filter), the answer is derived instead from a filtered `telemetry/query` events sample, which the
 provider does filter correctly. Unconstrained account-wide discovery still uses the cheap endpoints.
 
-> Unresolved: whether the `workers-observability.read` scope alone is accepted, or whether Cloudflare
-> requires the Workers Observability **Write** permission to read telemetry. This has not been
-> verified against a live token; if reads 403 on a correctly-scoped grant, that is the first thing to
-> check.
+> Unresolved: whether the Workers Observability **Read** token permission alone is accepted, or
+> whether Cloudflare requires the Workers Observability **Write** permission to read telemetry. This
+> has not been verified against a live token; if reads 403 on a token with the Read permission, that
+> is the first thing to check.
 
 ### Two names for one field
 

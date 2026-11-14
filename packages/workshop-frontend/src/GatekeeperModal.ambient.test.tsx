@@ -47,7 +47,7 @@ vi.mock('@cloudflare/kumo', () => {
 vi.mock('./AuthContext', () => ({ useAuthenticatedApi: () => ({ authenticatedApi: currentApi }) }))
 vi.mock('./ServerConfigContext', () => ({ useSiteName: () => 'vonBusch' }))
 vi.mock('./useDialogSelectPortalContainer', () => ({ useDialogSelectPortalContainer: () => null }))
-vi.mock('./errorReporting', () => ({ reportIssue: vi.fn() }))
+vi.mock('./errorReporting', () => ({ reportIssue: vi.fn<(site: string, err: unknown, options?: object) => void>() }))
 
 vi.mock('./components/WorkshopControls', () => ({
   WorkshopButton: ({ children, ...props }: ComponentProps<'button'>) => (

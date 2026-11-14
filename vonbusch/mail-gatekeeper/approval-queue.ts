@@ -188,7 +188,7 @@ export class MailApprovalQueue {
     const all = await this.store.list();
     const filtered = status ? all.filter((i) => i.status === status) : all;
     // Neueste zuerst.
-    return filtered.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+    return filtered.toSorted((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
   }
 }
 

@@ -15,6 +15,7 @@ import {
   markdownToBlocks,
   notionUrlFromId,
   databaseSchema,
+  itemResponseToSummary,
   pageToMetadata,
   pageToSummary,
   plainToRichText,
@@ -27,7 +28,16 @@ import {
   type NotionPageResponse,
 } from "./notion-api";
 import type { RpcStub } from "cloudflare:workers";
-import type { ActionDescription, ApprovalQueue, ObservationDescription } from "@gadgets/workshop-shared/gatekeeper";
+import {
+  type ActionDescriptionBuilder,
+  buildDescription,
+} from "@gadgets/gatekeeper-kit/action-description";
+import type {
+  ActionDescription,
+  ActionKind,
+  ApprovalQueue,
+  ObservationDescription,
+} from "@gadgets/workshop-shared/gatekeeper";
 import type {
   NotionComment,
   NotionDatabaseSchema,
@@ -46,7 +56,9 @@ import type {
 export type NotionActionParent =
   | { kind: "page"; pageId: string }
   | { kind: "database"; databaseId: string }
-  | { kind: "workspace" };
+  // The page a workspace-level page is created under, chosen when the action is staged so the
+  // approver sees it. Absent on records staged before that, which choose it when applied.
+  | { kind: "workspace"; pageId?: string; title?: string };
 
 export type NotionAction =
   | { type: "appendContent"; pageId: string; markdown: string }
@@ -79,6 +91,11 @@ export type StoredActionRecord = {
   action: NotionAction;
   state: "pending" | "applied" | "reverted";
   submittedAt: number;
+  /**
+   * When the overseer first applied it, which proves it received the action even if the submit
+   * reply was lost (see stageAction).
+   */
+  applyStartedAt?: number;
   /** For appendContent revert: the IDs of the blocks created on apply. */
   appendedBlockIds?: string[];
   /** For createPage: the real Notion page ID assigned on apply. */
@@ -674,71 +691,175 @@ export function observation(title: string, description: string): ObservationDesc
 // ---------------------------------------------------------------------------------------------
 // Action descriptions
 
+// Starts a description naming, by ID, the page an action writes to or under.
+function onPage(intro: string, pageId: string, label = "Page ID"): ActionDescriptionBuilder {
+  const builder = buildDescription(intro).inline(label, pageId);
+  return NotionStore.isProvisional(pageId)
+    ? builder.prose("An ID starting with `~` names a page created by an earlier action in this workspace.")
+    : builder;
+}
+
+const EDIT_PAGES: ActionKind = { tag: "edit-pages", label: "Edit page titles, properties and icons" };
+
+/**
+ * The kind of each action, which users' auto-approval rules key on, so a tag must never change.
+ * Appending is kept apart from edits that overwrite, and restoring apart from trashing.
+ */
+const ACTION_KINDS: Record<NotionAction["type"], ActionKind> = {
+  appendContent: { tag: "append-content", label: "Add content to pages" },
+  setTitle: EDIT_PAGES,
+  setProperties: EDIT_PAGES,
+  setIcon: EDIT_PAGES,
+  createPage: { tag: "create-pages", label: "Create pages and database rows" },
+  archive: { tag: "trash-pages", label: "Move pages to trash" },
+  restore: { tag: "restore-pages", label: "Restore pages from trash" },
+  addComment: { tag: "post-comments", label: "Comment on pages" },
+};
+
+// Moving a page to trash removes it (and its sub-pages) from every member's view, so it is never
+// auto-approvable.
+const NEVER_AUTO_APPROVABLE: NotionAction["type"] = "archive";
+
+// Every action may be applied without a person once the user has enabled its kind, except moving
+// a page to trash and storing an agent-chosen URL that Notion loads by itself: an external image
+// icon, shown wherever the page is, or a file in a files property (always external from here),
+// shown in gallery and board card previews. Either URL could carry page content to its host.
+// Emoji icons and cleared files properties stay auto-approvable.
+function isAutoApprovable(action: NotionAction): boolean {
+  switch (action.type) {
+    case NEVER_AUTO_APPROVABLE: return false;
+    case "setIcon": return !isExternalIcon(action.icon);
+    case "setProperties": return !hasExternalFiles(action.properties);
+    case "createPage": return !isExternalIcon(action.icon) && !hasExternalFiles(action.properties);
+    default: return true;
+  }
+}
+
+function isExternalIcon(icon: NotionIconInput | null | undefined): boolean {
+  return icon != null && "imageUrl" in icon;
+}
+
+function hasExternalFiles(properties: Record<string, NotionPropertyInput> | undefined): boolean {
+  return Object.values(properties ?? {}).some(input => input.type === "files" && input.files.length > 0);
+}
+
+/** The kinds an action can be auto-approved under. Every binding can submit all of them. */
+export const AUTO_APPROVABLE_KINDS: ActionKind[] = [...new Set(
+  (Object.keys(ACTION_KINDS) as NotionAction["type"][])
+    .filter(type => type !== NEVER_AUTO_APPROVABLE)
+    .map(type => ACTION_KINDS[type]),
+)];
+
+/**
+ * The approver's text, built so every value the agent supplied (page bodies, comments, titles,
+ * property values, icons) is shown in full in a field, and the completeness claim is
+ * the builder's; plus the action's kind and auto-approval verdict.
+ */
 export function describeAction(action: NotionAction): ActionDescription {
+  return {
+    ...describeActionText(action),
+    actionKind: ACTION_KINDS[action.type],
+    autoApprovable: isAutoApprovable(action),
+  };
+}
+
+function describeActionText(action: NotionAction): Omit<ActionDescription, "actionKind" | "autoApprovable"> {
   switch (action.type) {
     case "appendContent":
       return {
         title: "Append content to Notion page",
-        description: `Append the following Markdown to the page body:\n\n${truncate(action.markdown)}`,
+        ...onPage("Append the following Markdown to the page body.", action.pageId)
+          .verbatim("Content", action.markdown, "markdown")
+          .finish(),
         implementsRevert: true,
       };
     case "setTitle":
       return {
         title: "Rename Notion page",
-        description: `Change the page title to **${action.title}** (was “${action.previousTitle}”).`,
+        ...onPage("Change the page title.", action.pageId)
+          .inline("Current title", action.previousTitle)
+          .inline("New title", action.title)
+          .finish(),
         implementsRevert: true,
       };
     case "setProperties":
       return {
         title: "Update Notion page properties",
-        description: `Update properties: ${Object.keys(action.properties).join(", ") || "(none)"}.`,
+        ...onPage("Update the page's properties to the values below.", action.pageId)
+          .json("Properties", action.properties)
+          .finish(),
         implementsRevert: true,
       };
     case "setIcon":
       return {
         title: "Change Notion page icon",
-        description: action.icon
-          ? `Set the page icon to ${iconInputDisplay(action.icon)}.`
-          : "Remove the page icon.",
+        ...(action.icon
+          ? onPage("Set the page icon.", action.pageId).inline("Icon", iconInputDisplay(action.icon)).finish()
+          : onPage("Remove the page icon.", action.pageId).finish()),
         implementsRevert: true,
       };
     case "archive":
       return {
         title: "Move Notion page to trash",
-        description: "Move the page to the Notion trash (reversible).",
+        ...onPage("Move the page to the Notion trash (reversible).", action.pageId).finish(),
         implementsRevert: true,
       };
     case "restore":
       return {
         title: "Restore Notion page from trash",
-        description: "Restore the page from the Notion trash.",
+        ...onPage("Restore the page from the Notion trash.", action.pageId).finish(),
         implementsRevert: true,
       };
     case "addComment":
       return {
         title: "Comment on Notion page",
-        description: `Post a comment:\n\n${truncate(action.text)}`,
+        ...onPage("Post a comment.", action.pageId).verbatim("Comment", action.text).finish(),
         // The Notion public API can't delete comments, so this can't be reverted automatically.
         implementsRevert: false,
       };
     case "createPage": {
-      const where =
-        action.parent.kind === "page" ? "as a sub-page"
-        : action.parent.kind === "database" ? "as a database row"
+      const { parent } = action;
+      let builder: ActionDescriptionBuilder;
+      if (parent.kind === "page") {
+        builder = onPage("Create a new page as a sub-page.", parent.pageId, "Parent page ID");
+      } else if (parent.kind === "database") {
+        builder = buildDescription("Create a new page as a database row.")
+          .inline("Database ID", parent.databaseId);
+      } else if (parent.pageId !== undefined) {
         // Workspace-level: the API needs a concrete parent, so the page lands under the most
-        // recently edited shared page (chosen when this action is approved).
-        : "under the most recently edited shared page (Notion has no true top-level page)";
+        // recently edited shared page, found when the action was staged.
+        builder = buildDescription(
+          "Create a new page under the most recently edited shared page, chosen now (Notion has " +
+          "no top-level page).")
+          .inline("Parent page ID", parent.pageId)
+          .inline("Parent page title", parent.title ?? "");
+      } else {
+        builder = buildDescription(
+          "Create a new page under the most recently edited shared page, chosen when this action " +
+          "is approved (Notion has no top-level page).");
+      }
+      builder.inline("Provisional ID", action.provisionalId);
+      // The title the page is created with, as `buildCreateBody` resolves it: a database row takes
+      // a title-typed entry in the properties over `title`, and the properties field shows it.
+      const titleProperty = Object.values(action.properties ?? {}).some(p => p.type === "title");
+      const titleOverridden = titleProperty && (parent.kind === "database" || action.title === undefined);
+      if (!titleOverridden) builder.inline("Title", action.title ?? "");
+      // A database row's title is written under the data source's title column, a property name
+      // apply sends alongside the value.
+      if (parent.kind === "database" && action.title !== undefined) {
+        const key = titlePropertyKey(true, action.properties, action.titlePropertyName);
+        if (key !== undefined) builder.inline("Title property", key);
+      }
+      if (action.properties) builder.json("Properties", action.properties);
+      builder.verbatim("Content", action.content ?? "", "markdown");
+      if (action.icon) builder.inline("Icon", iconInputDisplay(action.icon));
       return {
         title: "Create Notion page",
-        description: `Create a new page ${where} titled **${action.title ?? "Untitled"}**.`,
+        ...builder.finish(),
         implementsRevert: true,
       };
     }
   }
-}
-
-function truncate(text: string, max = 2000): string {
-  return text.length > max ? text.slice(0, max) + "…" : text;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -953,8 +1074,17 @@ async function resolveCreateParent(
     const databaseId = requireResolved(store, parent.databaseId);
     return { type: "data_source_id", data_source_id: await store.getDataSourceId(databaseId) };
   }
-  // Workspace-level: the Notion API needs a concrete parent, so pick the most recently edited
-  // shared page to create under.
+  // Workspace-level: the page chosen when the action was staged, or for a record staged before
+  // that was recorded, the most recently edited shared page now.
+  const pageId = parent.pageId ?? (await findWorkspaceParentPage(store)).id;
+  return { type: "page_id", page_id: pageId };
+}
+
+/**
+ * The page a workspace-level page is created under: the Notion API needs a concrete parent, so this
+ * is the most recently edited page shared with the connection.
+ */
+export async function findWorkspaceParentPage(store: NotionStore): Promise<{ id: string; title: string }> {
   const search = await store.api.search({
     filter: { property: "object", value: "page" },
     sort: { direction: "descending", timestamp: "last_edited_time" },
@@ -966,7 +1096,8 @@ async function resolveCreateParent(
       "No writable Notion page is shared with this connection to create the page under.",
     );
   }
-  return { type: "page_id", page_id: parentPage.id };
+  const { id, title } = itemResponseToSummary(parentPage);
+  return { id, title };
 }
 
 async function titlePropName(store: NotionStore, pageId: string): Promise<string> {
@@ -975,6 +1106,20 @@ async function titlePropName(store: NotionStore, pageId: string): Promise<string
   return entry ? entry[0] : "title";
 }
 
+// The property `buildCreateBody` writes a page's `title` under. A sub-page's is always `title`. A
+// database row's is the data source's title column, named by `titlePropertyName` when known and
+// `Name` otherwise, or none when a title-typed entry in `properties` already supplies the title.
+function titlePropertyKey(
+  isDatabaseRow: boolean,
+  properties: Record<string, NotionPropertyInput> | undefined,
+  titlePropertyName: string | undefined,
+): string | undefined {
+  if (!isDatabaseRow) return "title";
+  const hasTitle = properties ? Object.values(properties).some(p => p.type === "title") : false;
+  return hasTitle ? undefined : titlePropertyName ?? "Name";
+}
+
+/** The Notion create-page request body for a staged `createPage` action and its resolved parent. */
 export function buildCreateBody(
   parent: NotionCreateParent,
   title: string | undefined,
@@ -988,13 +1133,8 @@ export function buildCreateBody(
     : {};
 
   if (title !== undefined) {
-    if (parent.type === "page_id") {
-      notionProperties["title"] = { title: plainToRichText(title) };
-    } else {
-      const hasTitle = properties ? Object.values(properties).some(p => p.type === "title") : false;
-      // Use the data source's actual title column name when known, else fall back to "Name".
-      if (!hasTitle) notionProperties[titlePropertyName ?? "Name"] = { title: plainToRichText(title) };
-    }
+    const key = titlePropertyKey(parent.type === "data_source_id", properties, titlePropertyName);
+    if (key !== undefined) notionProperties[key] = { title: plainToRichText(title) };
   }
 
   const body: Record<string, unknown> = { parent, properties: notionProperties };
@@ -1017,6 +1157,10 @@ export async function stageAction(
   try {
     await approvalQueue.submitAction(id, describeAction(action));
   } catch (err) {
+    // An auto-approval can apply the action before the reply arrives, so a lost reply on an
+    // action the overseer has started applying proves it received it: failing would invite a
+    // repeated write, and deleting would take away its retry.
+    if (store.getAction(id)?.applyStartedAt !== undefined) return id;
     store.deleteAction(id);
     throw err;
   }
@@ -1026,9 +1170,20 @@ export async function stageAction(
 // ---------------------------------------------------------------------------------------------
 // Overseer-facing dispatch (called by the gatekeeper DO's applyAction/rejectAction/revertAction).
 
+/** Records that the overseer has started applying `record`, before anything reaches the provider. */
+function markApplyStarted(store: NotionStore, record: StoredActionRecord): void {
+  if (record.applyStartedAt !== undefined) return;
+  record.applyStartedAt = Date.now();
+  store.putAction(record);
+}
+
 export async function applyStoredAction(store: NotionStore, id: number): Promise<void> {
   const record = store.getAction(id);
   if (!record) throw new Error(`Unknown action: ${id}`);
+  // The overseer records completion only after this returns, so a lost reply or a restart in
+  // between re-delivers an apply that already ran; running it again would repeat the write.
+  if (record.state === "applied") return;
+  markApplyStarted(store, record);
   await applyNotionAction(store, record);
 }
 

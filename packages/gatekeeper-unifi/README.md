@@ -15,9 +15,13 @@ Modeled 1:1 on `gatekeeper-homeassistant`: a URL + token style connect flow with
    **unifi.ui.com → Settings → Control Plane → Integrations (API)**.
 3. The worker validates the key with a cheap `GET /v1/hosts` call, stores it in the DO's encrypted
    KV storage, and calls back `complete()`. The key is **never** logged, echoed, or committed.
+4. The final page delivers the returned connect handoff to the Workshop (gatekeeper-kit's
+   `connectHandoffPageHtml`); the connection becomes active once the Workshop redeems it.
 
-Reconnect (`reconnect()`) reuses the same form to replace an expired key. `revoke()` deletes the DO
-and its stored key.
+Reconnect (`reconnect()`) reuses the same form to replace an expired key. The new key is only
+*staged* until the Workshop confirms the owner's browser finished the flow and calls
+`commitReconnect()`; until then gadgets keep using the current key. `revoke()` deletes the DO and
+its stored key.
 
 ## Access
 
