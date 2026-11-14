@@ -8,6 +8,9 @@ import {
 
 import { redactSecrets, safeServerText } from "./util.js";
 
+/** Re-exported so connectors can seed a manual OAuth client without depending on the SDK directly. */
+export type { StoredOAuthClientInformation };
+
 /** SDK tokens plus the absolute expiry used by the account's hot path. */
 export type OAuthTokens = StoredOAuthTokens & { expiresAt?: number };
 
@@ -21,6 +24,18 @@ const CREDENTIAL_REJECTIONS = new Set([
 /** Only an authorization-server verdict retires a credential; transport failures remain retryable. */
 export function isCredentialRejection(err: unknown): boolean {
   return OAuthError.isInstance(err) && CREDENTIAL_REJECTIONS.has(String(err.code));
+}
+
+/**
+ * The Dynamic Client Registration rejection an allowlist server returns when it refuses to register
+ * our redirect URI (`invalid_client_metadata` / "redirect_uri is not allowed …"). Distinct from a
+ * credential rejection: nothing we hold is wrong, the server just won't self-register clients, so the
+ * fix is to allowlist our redirect URI or paste a pre-registered client instead.
+ */
+export function isRedirectUriRejection(err: unknown): boolean {
+  const text = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  return text.includes("invalid_client_metadata") ||
+    (text.includes("redirect_uri") && text.includes("not allowed"));
 }
 
 /** SDK errors may quote a rejected request. Scrub submitted credentials before logging or display. */

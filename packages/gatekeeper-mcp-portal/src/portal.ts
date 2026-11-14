@@ -37,6 +37,7 @@ import { McpSessionBase } from "@gadgets/mcp-shared/session";
 import { McpFacetBase } from "@gadgets/mcp-shared/facet";
 import { asVerifier, observerAccessVerifier } from "@gadgets/gatekeeper-kit/observers";
 import { formatSubresourceId, parseSubresourceId } from "@gadgets/gatekeeper-kit/subresource-ids";
+import { readTextCapped } from "@gadgets/gatekeeper-kit/response-body";
 import {
   looksLikePortal,
   parsePortalServers,
@@ -60,6 +61,9 @@ import {
   INVALID_LINK_HTML,
 } from "@gadgets/mcp-shared/html";
 import { handleMcpHttpRequest } from "@gadgets/mcp-shared/http";
+import { isRedirectUriRejection, type StoredOAuthClientInformation }
+  from "@gadgets/mcp-shared/oauth";
+import { redirectBlockedHtml } from "./connect-form.js";
 import {
   McpGatekeeperUserBase,
   mcpGatekeeperUserContext,
@@ -234,9 +238,29 @@ export default {
       accountForId: id => ctx.exports.McpAccount.get(
         ctx.exports.McpAccount.idFromString(id)),
       log: logger,
-      connect: async (request, account, initiationNonce) => {
-        if (request.method !== "GET") return new Response("Method Not Allowed", { status: 405 });
-        return continueConnect(account, initiationNonce, env);
+      connect: async (request, account, initiationNonce, path) => {
+        if (request.method !== "GET" && request.method !== "POST") {
+          return new Response("Method Not Allowed", { status: 405 });
+        }
+        // The only POST here is the redirect-blocked recovery form: a pasted OAuth client that lets
+        // us skip Dynamic Client Registration against a portal that won't allowlist our redirect URI.
+        let manualClient: StoredOAuthClientInformation | undefined;
+        if (request.method === "POST") {
+          let form: URLSearchParams;
+          try {
+            form = new URLSearchParams(await readTextCapped(request, 16 * 1024));
+          } catch {
+            return new Response("Invalid form submission.", { status: 400 });
+          }
+          const clientId = String(form.get("client_id") ?? "").trim();
+          if (clientId) {
+            const clientSecret = String(form.get("client_secret") ?? "").trim();
+            manualClient = clientSecret
+              ? { client_id: clientId, client_secret: clientSecret }
+              : { client_id: clientId };
+          }
+        }
+        return continueConnect(account, initiationNonce, env, path, manualClient);
       },
     });
   },
@@ -248,6 +272,8 @@ async function continueConnect(
   account: DurableObjectStub<McpAccount>,
   initiationNonce: string,
   env: Env,
+  formPath: string,
+  manualClient?: StoredOAuthClientInformation,
 ): Promise<Response> {
   const config = readPortalConfig(env);
   if (!config) {
@@ -258,9 +284,17 @@ async function continueConnect(
 
   let outcome: ConnectOutcome;
   try {
-    outcome = await account.beginConnect(initiationNonce, portalServer(config));
+    outcome = await account.beginConnect(initiationNonce, portalServer(config), manualClient);
   } catch (err) {
     logger.warn("connect failed", { event: "connect.failed", error: err });
+    // The portal refused to register our redirect URI. A raw error blob is a dead end, so guide the
+    // user: allowlist the redirect URI (derived live, never hardcoded — OWL-1600/1614/1615) or paste
+    // a pre-registered client. Suppressed once a manual client was already tried, since the failure
+    // then lies with that client, not with registration.
+    if (!manualClient && isRedirectUriRejection(err)) {
+      return htmlResponse(
+        redirectBlockedHtml(formPath, `${getBaseUrl(env)}/oauth`), 400);
+    }
     return htmlResponse(errorPageHtml(
       "Could not connect", err instanceof Error ? err.message : String(err)), 502);
   }
