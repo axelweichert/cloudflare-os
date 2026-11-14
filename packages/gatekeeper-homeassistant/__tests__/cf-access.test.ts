@@ -104,6 +104,8 @@ describe("REST requests", () => {
     expect(headers.get("CF-Access-Client-Id")).toBe("client-id.access");
     expect(headers.get("CF-Access-Client-Secret")).toBe("client-secret");
     expect(headers.get("Authorization")).toBe("Bearer llat");
+    // An empty User-Agent is blocked by zone WAF rules before Access sees the request.
+    expect(headers.get("User-Agent")).toBeTruthy();
   });
 
   it("carry no Access headers when unconfigured", async () => {
@@ -112,7 +114,7 @@ describe("REST requests", () => {
     const headers = new Headers(fetch.mock.calls[0]![1].headers);
     expect(headers.has("CF-Access-Client-Id")).toBe(false);
     expect(headers.has("CF-Access-Client-Secret")).toBe(false);
-    expect([...headers.keys()]).toEqual(["authorization"]);
+    expect([...headers.keys()]).toEqual(["authorization", "user-agent"]);
   });
 
   it("carry no Access headers to an unlisted host", async () => {
