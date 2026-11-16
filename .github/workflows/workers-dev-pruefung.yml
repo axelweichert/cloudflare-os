@@ -1,0 +1,23 @@
+# Bricht ab, wenn eine Wrangler-Konfiguration workers.dev oder Vorschau-Adressen offen lässt
+# (OWL-2360). Die Gegenprobe beweist bei jedem Lauf, dass die Prüfung eine Datei ohne die
+# Zeile wirklich rot werden lässt.
+name: workers.dev-Prüfung
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  pruefen:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: workers_dev und preview_urls sind false
+        run: node scripts/pruefe-workers-dev.mjs
+      - name: Gegenprobe – Datei ohne die Zeile muss scheitern
+        run: |
+          mkdir -p "$RUNNER_TEMP/gegenprobe"
+          printf 'name = "gegenprobe"\nmain = "src/index.js"\n' > "$RUNNER_TEMP/gegenprobe/wrangler.toml"
+          if node scripts/pruefe-workers-dev.mjs "$RUNNER_TEMP/gegenprobe"; then
+            echo "Prüfung hat die fehlende Zeile nicht erkannt"; exit 1
+          fi
