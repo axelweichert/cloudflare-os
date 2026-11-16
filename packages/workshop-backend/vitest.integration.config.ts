@@ -7,6 +7,45 @@ const EXPECTED_OPEN_ERROR_CODES = new Set([
   "WORKSPACE_ACCESS_DENIED",
 ]);
 
+// Hermetic gatekeeper vendors used only by gatekeeper-vendor-isolation.test.ts (OWL-1752). They
+// exercise the per-vendor isolation in listGatekeeperVendors without pulling in a real gatekeeper
+// worker: one healthy, one that throws on describe(), one that resolves with structurally-broken
+// data. The reply must still list the healthy vendor and downgrade the bad ones to `unavailable`
+// tiles rather than rejecting the whole call.
+const HEALTHY_VENDOR = `
+import { WorkerEntrypoint } from "cloudflare:workers";
+export class GatekeeperVendor extends WorkerEntrypoint {
+  async describe() { return { displayName: "Healthy", url: "https://healthy.example" }; }
+  async getSupportedResources() {
+    return [{ urlPattern: "https://healthy.example/*", title: "Thing", description: "A thing." }];
+  }
+  async getTypeScriptTypes() { return ""; }
+}
+export default { fetch() { return new Response("ok"); } };
+`;
+const THROWING_VENDOR = `
+import { WorkerEntrypoint } from "cloudflare:workers";
+export class GatekeeperVendor extends WorkerEntrypoint {
+  async describe() { throw new Error("vendor worker boot failure (simulated)"); }
+  async getSupportedResources() { throw new Error("vendor worker boot failure (simulated)"); }
+  async getTypeScriptTypes() { return ""; }
+}
+export default { fetch() { return new Response("throwing"); } };
+`;
+const MALFORMED_VENDOR = `
+import { WorkerEntrypoint } from "cloudflare:workers";
+export class GatekeeperVendor extends WorkerEntrypoint {
+  // Resolves (does not throw) with a VendorDescription that violates the schema: displayName is a
+  // number and url is missing. Pre-OWL-1752 this was forwarded verbatim into the shared reply array.
+  async describe() { return { displayName: 123 }; }
+  async getSupportedResources() {
+    return [{ urlPattern: "https://malformed.example/*", title: "T", description: "d" }];
+  }
+  async getTypeScriptTypes() { return ""; }
+}
+export default { fetch() { return new Response("malformed"); } };
+`;
+
 export default defineConfig({
   esbuild: {
     target: "es2022",
@@ -18,6 +57,18 @@ export default defineConfig({
       remoteBindings: false,
       wrangler: {
         configPath: "./wrangler.jsonc",
+      },
+      miniflare: {
+        serviceBindings: {
+          GATEKEEPER_HEALTHYVENDOR: { name: "healthy-vendor", entrypoint: "GatekeeperVendor" },
+          GATEKEEPER_THROWINGVENDOR: { name: "throwing-vendor", entrypoint: "GatekeeperVendor" },
+          GATEKEEPER_MALFORMEDVENDOR: { name: "malformed-vendor", entrypoint: "GatekeeperVendor" },
+        },
+        workers: [
+          { name: "healthy-vendor", modules: true, compatibilityDate: "2026-02-02", script: HEALTHY_VENDOR },
+          { name: "throwing-vendor", modules: true, compatibilityDate: "2026-02-02", script: THROWING_VENDOR },
+          { name: "malformed-vendor", modules: true, compatibilityDate: "2026-02-02", script: MALFORMED_VENDOR },
+        ],
       },
     }),
   ],
